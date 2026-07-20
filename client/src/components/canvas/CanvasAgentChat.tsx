@@ -23,7 +23,7 @@ import { videoDurationCap } from "../../../../shared/videoModelParams";
 import { extractFrameMedia } from "../../lib/nodeMedia";
 import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
-import { buildPortraitPrompt, PORTRAIT_ASPECT } from "@/lib/characterPortrait";
+import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 
 /** 浮动「画布助手」：对话式让 AI（如本机 Claude）边聊边直接改画布。复用智能体节点同一套引擎
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
@@ -604,26 +604,35 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setTurns((p) => p.map((x, i) => (i === idx ? { ...x, undone: true } : x)));
   };
 
-  // #227 角色自动定妆照：规划落地后，为本轮【新建】且【还没有参考图】的人物角色节点
-  // 逐个按角色描述生成定妆照并写入主参考图（fill-only，绝不覆盖已有图——角色库代入的
-  // 定妆照优先）。串行执行防生图并发风暴；单个失败不阻断其余。fire-and-forget：不占用
-  // 聊天 busy 状态，进度用 toast 反馈。提示词/比例与角色卡「一键定妆照」同源（characterPortrait.ts）。
+  // #227 角色自动定妆照 / #271 场景自动场景图：规划落地后，为本轮【新建】且【还没有
+  // 参考图】的角色/场景节点，逐个按描述生成主参考图（fill-only，绝不覆盖已有图——角色
+  // 库代入的定妆照优先）。串行执行防生图并发风暴；单个失败不阻断其余。fire-and-forget：
+  // 不占用聊天 busy 状态。提示词/比例与角色卡按钮同源（characterPortrait.ts 统一入口：
+  // 人物→定妆照 3:4、场景→空镜概念图 16:9——#271 用户实报勾了自动定妆但场景没被覆盖，
+  // 根因就是此前只筛 person 且只有人物提示词组装）。
+  // #271 进度指示：生成期间给节点写 payload.status="processing"——BaseNode 常驻进度条
+  // 据此显示（节点收缩/未选中也可见），成功清除、失败留 failed 红条；此前只有 toast，
+  // 一闪即逝，用户盯着节点完全不知道正在生成。
   const autoPortraits = async (createdIds: string[]) => {
     const st = useCanvasStore.getState();
     const targets = st.nodes
       .filter((n) => createdIds.includes(n.id) && n.data.nodeType === "character")
       .map((n) => ({ id: n.id, p: n.data.payload as CharacterNodeData }))
-      .filter(({ p }) => (p.characterKind ?? "person") === "person" && !p.referenceImageUrl?.trim() && !!buildPortraitPrompt(p));
+      .filter(({ p }) => !p.referenceImageUrl?.trim() && !!buildCharacterImagePrompt(p));
     if (!targets.length) return;
-    toast.info(`正在为 ${targets.length} 个角色生成定妆照…`, { duration: 3500 });
+    const nScene = targets.filter(({ p }) => (p.characterKind ?? "person") === "scene").length;
+    const label = (n: number, s: number) => [n - s > 0 ? `${n - s} 个角色定妆照` : "", s > 0 ? `${s} 个场景图` : ""].filter(Boolean).join("与");
+    toast.info(`正在生成 ${label(targets.length, nScene)}…`, { duration: 3500 });
     let ok = 0;
     for (const t of targets) {
+      const aspect = characterImageAspect(t.p);
+      useCanvasStore.getState().updateNodeData(t.id, { status: "processing", errorMessage: undefined } as Partial<CharacterNodeData>, true);
       try {
         const gen = await utils.client.imageGen.generate.mutate({
-          prompt: buildPortraitPrompt(t.p),
-          aspectRatio: PORTRAIT_ASPECT,
-          poyoAspectRatio: PORTRAIT_ASPECT,
-          reveAspectRatio: PORTRAIT_ASPECT,
+          prompt: buildCharacterImagePrompt(t.p),
+          aspectRatio: aspect,
+          poyoAspectRatio: aspect,
+          reveAspectRatio: aspect,
           projectId,
           ...(quickPrefs.imageModel ? { model: quickPrefs.imageModel } : {}),
         } as Parameters<typeof utils.client.imageGen.generate.mutate>[0]);
@@ -631,15 +640,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         // 节点可能在生成期间被删除/撤销——落图前复核仍在画布且仍无参考图。
         const live = useCanvasStore.getState().nodes.find((n) => n.id === t.id);
         if (url && live && !(live.data.payload as CharacterNodeData).referenceImageUrl?.trim()) {
-          useCanvasStore.getState().updateNodeData(t.id, { referenceImageUrl: url, referenceStorageKey: undefined }, true);
+          useCanvasStore.getState().updateNodeData(t.id, { referenceImageUrl: url, referenceStorageKey: undefined, status: undefined, errorMessage: undefined } as Partial<CharacterNodeData>, true);
           ok++;
+        } else if (live) {
+          // 图没落地（生成空返回 / 期间被填了图）——清运行态，不留永转进度条。
+          useCanvasStore.getState().updateNodeData(t.id, { status: undefined } as Partial<CharacterNodeData>, true);
         }
       } catch (err) {
-        console.warn("[autoPortrait] 角色定妆照生成失败", t.id, err);
+        console.warn("[autoPortrait] 定妆照/场景图生成失败", t.id, err);
+        const live = useCanvasStore.getState().nodes.find((n) => n.id === t.id);
+        if (live) useCanvasStore.getState().updateNodeData(t.id, { status: "failed", errorMessage: `自动生成失败：${err instanceof Error ? err.message : String(err)}` } as Partial<CharacterNodeData>, true);
       }
     }
-    if (ok > 0) toast.success(`已为 ${ok} 个角色生成定妆照（写入角色卡主参考图）`);
-    else toast.error("角色定妆照自动生成未成功（可在角色卡上点「一键定妆照」重试）");
+    if (ok > 0) toast.success(`已生成 ${ok} 张主参考图（角色定妆照/场景图已写入节点）`);
+    else toast.error("定妆照/场景图自动生成未成功（可在节点上点「一键定妆照/场景图」重试）");
   };
 
   // #225 外观锚点自动压缩（快捷设置「外观锚点压缩」，默认开）：规划落地后，为本轮
@@ -1034,7 +1048,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             </div>
             {secHead("自动增强")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["autoPortrait", "角色自动定妆照", "规划落地后，自动为本轮新建、还没有参考图的人物角色节点按其角色描述生成一张「全身正面素背景」定妆照并设为主参考图——运行工作流前角色即已锁脸，无需逐个手动定妆。使用上方锁定的图像模型（未锁定则用系统默认），每个角色计一次生图费用。已有参考图的角色（如从角色库代入）自动跳过。"], ["anchorCompress", "外观锚点压缩（默认开）", "规划落地后，自动把本轮新建人物角色的外貌/服装/标志描述压缩成 15-30 字「外观锚点短语」写入角色卡——之后所有下游节点的提示词注入用「名字，身份，锚点」替代全量字段：省 token、跨镜头措辞恒定更利一致性。全量字段原样保留；在角色卡上可随时点小按钮切回未压缩的全量注入。每个角色一次极小的文本 LLM 调用；已有锚点的角色自动跳过。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"], ["leanPrompt", "按对话类型精简提示词（实验）", "开启后：本轮消息是明确的生产指令（不含「怎么/在哪/什么」等疑问特征）时，规划提示词省略约 600 字的「应用操作答疑」段——更短更快更省；带任何疑问特征或拿不准时自动保留全量，答疑能力不受影响。关闭时提示词与现状逐字一致。kie 网关用户建议先开着跑一轮确认效果。"], ["selfCheck", "输出前自查清单（默认开）", "要求助手在输出规划 JSON 前逐项自查——payload 字段都在节点目录内、每条视频提示词含五要素且动作量匹配时长、硬约束逐条核对、连线引用真实存在。长计划的一次成功率更高（真机 A/B 实证：自查后主动补齐角色一致性管线），代价是每轮响应略慢。关闭后提示词恢复与旧版逐字一致。"]] as const).map(([k, label, tip]) => (
+              {([["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["autoPortrait", "自动定妆照/场景图", "规划落地后，自动为本轮新建、还没有参考图的角色/场景节点按其描述生成主参考图：人物→「全身正面素背景」定妆照（3:4）、场景→空镜概念图（16:9）——运行工作流前即已锁脸/锁场景，无需逐个手动生成。生成期间节点顶部显示进度条。使用上方锁定的图像模型（未锁定则用系统默认），每个节点计一次生图费用。已有参考图的（如从库代入）自动跳过。"], ["anchorCompress", "外观锚点压缩（默认开）", "规划落地后，自动把本轮新建人物角色的外貌/服装/标志描述压缩成 15-30 字「外观锚点短语」写入角色卡——之后所有下游节点的提示词注入用「名字，身份，锚点」替代全量字段：省 token、跨镜头措辞恒定更利一致性。全量字段原样保留；在角色卡上可随时点小按钮切回未压缩的全量注入。每个角色一次极小的文本 LLM 调用；已有锚点的角色自动跳过。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"], ["leanPrompt", "按对话类型精简提示词（实验）", "开启后：本轮消息是明确的生产指令（不含「怎么/在哪/什么」等疑问特征）时，规划提示词省略约 600 字的「应用操作答疑」段——更短更快更省；带任何疑问特征或拿不准时自动保留全量，答疑能力不受影响。关闭时提示词与现状逐字一致。kie 网关用户建议先开着跑一轮确认效果。"], ["selfCheck", "输出前自查清单（默认开）", "要求助手在输出规划 JSON 前逐项自查——payload 字段都在节点目录内、每条视频提示词含五要素且动作量匹配时长、硬约束逐条核对、连线引用真实存在。长计划的一次成功率更高（真机 A/B 实证：自查后主动补齐角色一致性管线），代价是每轮响应略慢。关闭后提示词恢复与旧版逐字一致。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>

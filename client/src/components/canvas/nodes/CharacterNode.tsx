@@ -38,7 +38,7 @@ import { useLightbox } from "../studio/Lightbox";
 import { downloadMedia } from "../../../lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
-import { buildPortraitPrompt, PORTRAIT_ASPECT } from "@/lib/characterPortrait";
+import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { multiAngleResultPatch, MULTI_ANGLE_IDENTITY_CLAUSE } from "@/lib/characterMultiAngle";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
 
@@ -325,17 +325,25 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     }
   };
 
-  // 一键定妆照（#227）：按角色描述生成单张「全身正面素背景」定妆照 → 设为主参考图
-  //（原主图自动移入备用视角，不丢）。提示词/比例与画布助手「角色自动定妆照」共用
-  // characterPortrait.ts 单一事实源；模型沿用下方「生成模型」选择（与一键多视角共用）。
+  // 一键定妆照（#227）/ 一键场景图（#271）：按描述生成主参考图（原主图自动移入备用
+  // 视角，不丢）。提示词/比例与画布助手「自动定妆」共用 characterPortrait.ts 单一事实源
+  //（人物→定妆照 3:4，场景→空镜概念图 16:9）；模型沿用下方「生成模型」选择（与一键多视角共用）。
   const [portraitBusy, setPortraitBusy] = useState(false);
+  // #271 用户实报「自动定妆生成时角色节点没有进度指示」：本地 useState 只驱动按钮
+  // 自身的 spinner，节点收缩/未选中就什么都看不见。写 payload.status——BaseNode 的
+  // 常驻进度条读它，任何折叠状态都可见；成功清除、失败留 failed 红条（与生成类节点
+  // 同一套指示体系）。status 属 CLONE_RUNTIME_FIELDS：复制剥离、协作广播过滤。
   const handlePortrait = async () => {
     if (portraitBusy) return;
-    const prompt = buildPortraitPrompt(payload);
-    if (!prompt) { toast.error("请先填写角色外貌 / 服装等描述"); return; }
+    const isScene = (payload.characterKind ?? "person") === "scene";
+    const imgLabel = isScene ? "场景图" : "定妆照";
+    const prompt = buildCharacterImagePrompt(payload);
+    if (!prompt) { toast.error(isScene ? "请先填写场景地点 / 氛围 / 描述等信息" : "请先填写角色外貌 / 服装等描述"); return; }
+    const genAspect = characterImageAspect(payload);
     const oldMain = payload.referenceImageUrl?.trim();
-    if (oldMain && !window.confirm("已有主参考图。生成定妆照将设为新的主参考图（原主图自动移入备用视角），继续？")) return;
+    if (oldMain && !window.confirm(`已有主参考图。生成${imgLabel}将设为新的主参考图（原主图自动移入备用视角），继续？`)) return;
     setPortraitBusy(true);
+    updateNodeData(id, { status: "processing", errorMessage: undefined }, true);
     try {
       let url = "";
       if (maModel === COMFY_LOCAL_MODEL) {
@@ -353,28 +361,38 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
         const gen = await maGenMut.mutateAsync({
           prompt,
           ...(oldMain ? { referenceImageUrl: oldMain } : {}),
-          aspectRatio: PORTRAIT_ASPECT,
-          poyoAspectRatio: PORTRAIT_ASPECT,
-          reveAspectRatio: PORTRAIT_ASPECT,
+          aspectRatio: genAspect,
+          poyoAspectRatio: genAspect,
+          reveAspectRatio: genAspect,
           projectId: data.projectId,
           ...(maModel ? { model: maModel, estimatedCost: maCost } : {}),
         } as Parameters<typeof maGenMut.mutateAsync>[0]);
         url = gen.urls?.[0] || gen.url || "";
       }
-      if (!url) { toast.error("定妆照生成失败：未返回图像"); return; }
+      if (!url) {
+        toast.error(`${imgLabel}生成失败：未返回图像`);
+        updateNodeData(id, { status: "failed", errorMessage: `${imgLabel}生成失败：未返回图像` }, true);
+        return;
+      }
       const extras = (payload.additionalImageUrls ?? []).map((u) => (u ?? "").trim()).filter(Boolean);
       updateNodeData(id, {
         referenceImageUrl: url,
         referenceStorageKey: undefined,
+        status: undefined, errorMessage: undefined, // 成功清运行态（常驻进度条随之消失）
         ...(oldMain && oldMain !== url
           ? { additionalImageUrls: Array.from(new Set([oldMain, ...extras.filter((u) => u !== url)])).slice(0, MAX_ADDITIONAL_IMAGES) }
           : {}),
       });
-      toast.success("定妆照已生成并设为主参考图");
+      toast.success(`${imgLabel}已生成并设为主参考图`);
     } catch (err) {
-      toast.error("定妆照生成失败：" + (err instanceof Error ? err.message : String(err)));
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`${imgLabel}生成失败：` + msg);
+      updateNodeData(id, { status: "failed", errorMessage: `${imgLabel}生成失败：${msg}` }, true);
     } finally {
       setPortraitBusy(false);
+      // 兜底：本地 ComfyUI 分支的前置校验 return（未走 try 内清理）也不能留下永转进度条。
+      const cur = useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as CharacterNodeData | undefined;
+      if (cur?.status === "processing") updateNodeData(id, { status: undefined }, true);
     }
   };
 
@@ -943,18 +961,22 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
               <span style={{ fontSize: 11 }}>{uploading ? "上传中..." : "上传参考图（可选）"}</span>
             </button>
           )}
-          {kind === "person" && (
-            <button
-              onClick={() => void handlePortrait()}
-              disabled={portraitBusy}
-              className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
-              style={{ marginTop: 6, background: accentA(0.10), border: `1px solid ${accentA(0.32)}`, color: accent, cursor: portraitBusy ? "not-allowed" : "pointer" }}
-              title="按角色描述生成一张全身正面素背景定妆照，设为主参考图（原主图自动移入备用视角）。下游生图/生视频以此锁脸"
-            >
-              {portraitBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Sparkles style={{ width: 11, height: 11 }} />}
-              {portraitBusy ? "生成定妆照中…" : "一键定妆照（生成主参考图）"}
-            </button>
-          )}
+          {/* #271 场景类不再没有生成入口：人物=一键定妆照、场景=一键场景图（同一管线，
+              提示词/比例按类别分派——characterPortrait.ts 统一事实源）。 */}
+          <button
+            onClick={() => void handlePortrait()}
+            disabled={portraitBusy}
+            className="nodrag flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[10.5px] font-medium transition-all"
+            style={{ marginTop: 6, background: accentA(0.10), border: `1px solid ${accentA(0.32)}`, color: accent, cursor: portraitBusy ? "not-allowed" : "pointer" }}
+            title={kind === "scene"
+              ? "按场景地点/氛围/描述生成一张空镜概念图（16:9），设为主参考图（原主图自动移入备用视角）。下游生图/生视频以此锁场景"
+              : "按角色描述生成一张全身正面素背景定妆照，设为主参考图（原主图自动移入备用视角）。下游生图/生视频以此锁脸"}
+          >
+            {portraitBusy ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Sparkles style={{ width: 11, height: 11 }} />}
+            {portraitBusy
+              ? (kind === "scene" ? "生成场景图中…" : "生成定妆照中…")
+              : (kind === "scene" ? "一键场景图（生成主参考图）" : "一键定妆照（生成主参考图）")}
+          </button>
           {kind === "person" && (
             <button
               onClick={handleMultiAngle}
@@ -1441,8 +1463,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             onClick={() => fileInputRef.current?.click()} disabled={uploading} title="上传参考图（可拖入素材）" />
           <ToolChip icon={recognizeMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} label="识别"
             onClick={handleRecognize} disabled={recognizeMut.isPending} title="AI 看图识别，自动填充外貌/服装等字段" />
-          <ToolChip icon={portraitBusy ? <Loader2 size={13} className="animate-spin" /> : <User size={13} />} label="定妆照"
-            onClick={() => void handlePortrait()} disabled={portraitBusy} title="一键定妆照：按角色描述生成全身正面素背景主参考图（下游生图/生视频锁脸）" />
+          <ToolChip icon={portraitBusy ? <Loader2 size={13} className="animate-spin" /> : <User size={13} />} label={kind === "scene" ? "场景图" : "定妆照"}
+            onClick={() => void handlePortrait()} disabled={portraitBusy}
+            title={kind === "scene" ? "一键场景图：按场景描述生成空镜概念主参考图（下游生图/生视频锁场景）" : "一键定妆照：按角色描述生成全身正面素背景主参考图（下游生图/生视频锁脸）"} />
           <ToolChip icon={multiAngleBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} label="多视角"
             onClick={() => void handleMultiAngle()} disabled={multiAngleBusy} title="一键多视角（三视图参考，强化跨镜一致性）" />
           {/* #133 批C：高频操作一级化——姿势库 / 应用到分镜 从 hover 带提为输入条常驻 chip */}

@@ -928,6 +928,47 @@ describe("#269 排列指定节点 / 聚焦节点", () => {
     }
   });
 
+  it("#271 助手放置后拖动可单步撤销：Ctrl+Z 先撤拖动、再撤放置（不再一撤全没）", () => {
+    // 复刻用户实报场景：① 助手放置一批节点（runBatch=一步历史）→ ② 用户拖动某节点
+    // 摆位（此前不入历史）→ ③ Ctrl+Z。旧行为：past 栈顶是「放置前」快照，整批全没。
+    // 新行为：拖动结束时 commitHistorySnapshot(拖前快照) 入档——第一次 undo 只还原
+    // 拖动，批次仍在；第二次 undo 才撤掉整批放置。
+    const st = useCanvasStore.getState();
+    applyAgentOperations([
+      { op: "create", nodeType: "script", tempId: "a" },
+      { op: "create", nodeType: "prompt", tempId: "b" },
+    ] as AgentOperation[], { x: 0, y: 0 });
+    const placed = useCanvasStore.getState().nodes;
+    expect(placed.length).toBe(2);
+    const moved = placed[0];
+    const origPos = { ...moved.position };
+    // ② 模拟拖动：dragStart 抓快照（引用即快照）→ 位置变更（不入历史）→ dragStop 入档
+    const snap = { nodes: useCanvasStore.getState().nodes, edges: useCanvasStore.getState().edges };
+    st.onNodesChange([{ id: moved.id, type: "position", position: { x: origPos.x + 500, y: origPos.y + 300 }, dragging: false }]);
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === moved.id)!.position.x).toBe(origPos.x + 500);
+    st.commitHistorySnapshot(snap);
+    // ③ 第一次 undo：只还原拖动，两个节点都还在
+    st.undo();
+    const afterUndo1 = useCanvasStore.getState().nodes;
+    expect(afterUndo1.length).toBe(2);
+    expect(afterUndo1.find((n) => n.id === moved.id)!.position).toEqual(origPos);
+    // 第二次 undo：撤掉整批放置
+    st.undo();
+    expect(useCanvasStore.getState().nodes.length).toBe(0);
+  });
+
+  it("#271 commitHistorySnapshot 尊重 _suppressHistory（runBatch 期间不重复入档）", () => {
+    const st = useCanvasStore.getState();
+    const n = st.addNode("script", { x: 0, y: 0 });
+    const depth = useCanvasStore.getState().past.length;
+    st.runBatch(() => {
+      st.commitHistorySnapshot({ nodes: useCanvasStore.getState().nodes, edges: useCanvasStore.getState().edges });
+      st.updateNodeTitle(n.id, "批内改名");
+    });
+    // runBatch 自己入 1 步；批内的 commitHistorySnapshot 被抑制，不额外加档
+    expect(useCanvasStore.getState().past.length).toBe(depth + 1);
+  });
+
   it("focus_node：目标不存在 → failures（存在性校验先于事件派发，不发事件）", () => {
     const events: Event[] = [];
     (globalThis as { window?: unknown }).window = { dispatchEvent: (e: Event) => { events.push(e); return true; } };
