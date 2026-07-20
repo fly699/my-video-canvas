@@ -1387,9 +1387,15 @@ export interface AgentOperation {
   /** #267 新增 "group"（把 targetRefs 指定的多个节点编成一个「群组」容器）与
    *  "duplicate"（复制 targetRef 节点为副本；副本剥离运行时/产物字段，可带 tempId
    *  供同批后续 connect/update 引用）。两者都是纯画布确定性操作，不发任何网络请求。 */
-  op: "create" | "update" | "connect" | "delete" | "canvas" | "library" | "group" | "duplicate";
-  /** group: 要编组的节点引用列表（≥2 个；可混用已存在节点 id 与本批 tempId）。 */
+  /** #269 新增 "align"：把 targetRefs 指定的多个节点按 mode（横排/竖排/宫格）就地
+   *  重新排列——与 #124 整理布局同一套按实际节点尺寸留间距的算法，但只作用于指定
+   *  节点（整理布局是全画布自由节点）。纯画布确定性操作、一步可撤销。 */
+  op: "create" | "update" | "connect" | "delete" | "canvas" | "library" | "group" | "duplicate" | "align";
+  /** group / align: 要编组/排列的节点引用列表（≥2 个；可混用已存在节点 id 与本批 tempId）。 */
   targetRefs?: string[];
+  /** align: 排列方式——row=横向一排、column=垂直一列、grid=宫格。sanitize 层对缺失/
+   *  非法值统一回退 grid（与 video_task 参数「非法丢弃回退默认」同一容错哲学）。 */
+  mode?: "row" | "column" | "grid";
   /** canvas: 画布级动作（不针对单个节点）——极简显示开/关、整理布局、适应视图、批量下载成品。
    *  #266 新增三个「口令直达」动作：
    *   - assemble：按镜头表装配合并节点（targetRef 可选：省略时自动定位画布上唯一的
@@ -1400,7 +1406,10 @@ export interface AgentOperation {
   /** #268 批③：animatic=一键动态样片（分镜关键帧图+镜头表时长/转场直接渲染预览片，
    *  不花生成模型的钱；由 CanvasAgentChat 应用层执行 tRPC 渲染管线，apply 层不消费）；
    *  ungroup=解组（targetRef 可选：省略时自动定位唯一群组；仅删容器、成员保留）。 */
-  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup";
+  /** #269 批④：focus_node=把视口聚焦到 targetRef 指定的节点（放大居中，与双击节点
+   *  聚焦 #123 同一套视口逻辑；targetRef 必填——无目标的聚焦没有意义，sanitize 层
+   *  与 run_node 同口径直接 drop）。纯视口操作，不改画布数据、不入撤销历史。 */
+  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup" | "focus_node";
   /** library: 入库类型——person=角色库、scene=场景库。 */
   libraryKind?: "person" | "scene";
   /** library: 库条目名称（用户指定原文，如「李宁」「足球场」），入库后可 @名称 引用。 */

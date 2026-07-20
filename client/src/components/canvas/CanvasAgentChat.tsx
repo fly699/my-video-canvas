@@ -588,7 +588,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const u = ok.filter((o) => o.op === "update").length, d = ok.filter((o) => o.op === "delete").length;
     const cv = ok.filter((o) => o.op === "canvas").length; // #112 画布级动作
     const g = ok.filter((o) => o.op === "group").length, dp = ok.filter((o) => o.op === "duplicate").length; // #267
-    return [c && `新建 ${c}`, dp && `复制 ${dp}`, l && `连线 ${l}`, u && `改 ${u}`, d && `删 ${d}`, g && `编组 ${g}`, cv && `画布动作 ${cv}`].filter(Boolean).join(" · ");
+    const al = ok.filter((o) => o.op === "align").length; // #269 排列指定节点
+    return [c && `新建 ${c}`, dp && `复制 ${dp}`, l && `连线 ${l}`, u && `改 ${u}`, d && `删 ${d}`, g && `编组 ${g}`, al && `排列 ${al}`, cv && `画布动作 ${cv}`].filter(Boolean).join(" · ");
   };
 
   // 撤销 = 只删除本轮 AI【新建】的节点（createdIds），绝不删被 update/connect 的用户既有

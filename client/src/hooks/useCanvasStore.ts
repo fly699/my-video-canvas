@@ -236,6 +236,11 @@ interface CanvasStore {
   /** #124 整理布局：不传 mode 每次调用循环切换排法（流向分层/紧凑网格/横向一排/垂直一列），
    *  传 mode 固定用该排法。返回排到的节点数与排法名（供 toast）。 */
   autoLayout: (mode?: "flow" | "grid" | "row" | "column") => { count: number; label: string };
+  /** #269 排列指定节点：只把 ids 里的节点按 mode 就地重排（锚定这些节点原包围盒左上角），
+   *  画布其它节点纹丝不动——与 autoLayout（全画布自由节点）的关键区别。群组容器与群组
+   *  成员被自动剔除（挪动成员会破坏群组框选，同 autoLayout 的规避理由）。返回实际排到
+   *  的节点数（<2 时不动任何东西、返回 0）。一步入历史，可整体撤销。 */
+  arrangeNodes: (ids: string[], mode: "row" | "column" | "grid") => number;
   /** Clone a generation node into `count` A/B variants (fresh seed each, same
    *  upstream inputs re-wired). Returns the number of variants created. */
   createVariants: (id: string, count: number) => number;
@@ -1158,6 +1163,57 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       isDirty: true,
     }));
     return { count: free.length, label };
+  },
+
+  // #269 排列指定节点（画布助手 align 操作）：与 autoLayout 的 row/column/grid 分支
+  // 完全同一套「按阅读序 + 实际节点尺寸留间距」算法，但只作用于 ids 指定的节点、
+  // 锚定在【这些节点】原包围盒的左上角——用户指哪排哪，画布其余部分绝不被牵动。
+  // 刻意不做 flow（流向分层）：指定子集的连线大多跨出子集，分层结果反直觉；三种
+  // 几何排法足够覆盖「排成一排/一列/摆成宫格」的口头指令。
+  arrangeNodes: (ids, mode) => {
+    const { nodes } = get();
+    const idSet = new Set(ids);
+    // 剔除群组容器与群组成员（同 autoLayout 的理由：挪动成员会破坏群组框选；
+    // 群组容器自身该用 arrangeGroupMembers/整组拖动处理）。
+    const grouped = new Set<string>();
+    for (const n of nodes) if (n.data.nodeType === "group") for (const c of (n.data.payload as GroupNodeData).childIds ?? []) grouped.add(c);
+    const targets = nodes.filter((n) => idSet.has(n.id) && n.data.nodeType !== "group" && !grouped.has(n.id));
+    if (targets.length < 2) return 0;
+    const minX = Math.min(...targets.map((n) => n.position.x));
+    const minY = Math.min(...targets.map((n) => n.position.y));
+    const GAP = 60;
+    const pos = new Map<string, { x: number; y: number }>();
+    // 阅读序（先上后下、再左后右）：保持用户对「第一个/最后一个」的直觉顺序。
+    const sorted = [...targets].sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+    if (mode === "row") {
+      let x = minX;
+      for (const n of sorted) { pos.set(n.id, { x, y: minY }); x += nodeSizeOf(n).w + GAP; }
+    } else if (mode === "column") {
+      let y = minY;
+      for (const n of sorted) { pos.set(n.id, { x: minX, y }); y += nodeSizeOf(n).h + GAP; }
+    } else {
+      // grid：≈正方形列数，每列取最宽、每行取最高对齐（同 autoLayout/群组宫格排列）。
+      const cols = Math.max(1, Math.ceil(Math.sqrt(sorted.length)));
+      const colW: number[] = [], rowH: number[] = [];
+      sorted.forEach((n, i) => {
+        const { w, h } = nodeSizeOf(n);
+        const c = i % cols, r = Math.floor(i / cols);
+        colW[c] = Math.max(colW[c] ?? 0, w);
+        rowH[r] = Math.max(rowH[r] ?? 0, h);
+      });
+      const colX: number[] = []; let cx = minX;
+      for (let c = 0; c < cols; c++) { colX[c] = cx; cx += (colW[c] ?? 0) + GAP; }
+      const rowY: number[] = []; let cy = minY;
+      for (let r = 0; r < rowH.length; r++) { rowY[r] = cy; cy += (rowH[r] ?? 0) + GAP; }
+      sorted.forEach((n, i) => pos.set(n.id, { x: colX[i % cols], y: rowY[Math.floor(i / cols)] }));
+    }
+    set((s) => ({
+      // 尊重 runBatch 的历史抑制（助手一批操作合成一步撤销），独立调用时自己入一步历史。
+      ...(get()._suppressHistory ? {} : pushHistory(s)),
+      nodes: s.nodes.map((n) => (pos.has(n.id) ? { ...n, position: pos.get(n.id)! } : n)),
+      isDirty: true,
+    }));
+    return targets.length;
   },
 
   createVariants: (id, count) => {

@@ -828,3 +828,87 @@ describe("#267 编组 / 复制节点", () => {
     expect(useCanvasStore.getState().nodes.length).toBe(before);
   });
 });
+
+// ── #269 align（排列指定节点）/ focus_node（聚焦节点）apply 层守卫 ──────────────
+describe("#269 排列指定节点 / 聚焦节点", () => {
+  it("align row：混用已存在 id 与本批 tempId，三节点排成同一行（同 y、x 各不相同）", () => {
+    const st = useCanvasStore.getState();
+    const a = st.addNode("script", { x: 300, y: 400 });
+    const b = st.addNode("storyboard", { x: 50, y: 100 });
+    const r = applyAgentOperations([
+      { op: "create", nodeType: "prompt", tempId: "p1" },
+      { op: "align", targetRefs: [a.id, b.id, "p1"], mode: "row" },
+    ] as AgentOperation[], { x: 900, y: 900 });
+    expect(r.failures).toEqual([]);
+    expect(r.canvasActions).toBe(1);
+    const nodes = useCanvasStore.getState().nodes;
+    expect(new Set(nodes.map((n) => n.position.y)).size).toBe(1); // 同一行
+    expect(new Set(nodes.map((n) => n.position.x)).size).toBe(3); // x 按尺寸+间距错开
+  });
+
+  it("align column：排成同一列（同 x、y 递增），且只挪指定节点、旁观节点纹丝不动", () => {
+    const st = useCanvasStore.getState();
+    const a = st.addNode("script", { x: 500, y: 50 });
+    const b = st.addNode("script", { x: 100, y: 300 });
+    const bystander = st.addNode("note", { x: 4000, y: 4000 }); // 未被指定的旁观节点
+    const r = applyAgentOperations([{ op: "align", targetRefs: [a.id, b.id], mode: "column" } as AgentOperation], { x: 0, y: 0 });
+    expect(r.failures).toEqual([]);
+    const nodes = useCanvasStore.getState().nodes;
+    const na = nodes.find((n) => n.id === a.id)!, nb = nodes.find((n) => n.id === b.id)!;
+    expect(na.position.x).toBe(nb.position.x); // 同一列（锚定两者原 minX=100）
+    expect(na.position.x).toBe(100);
+    expect(na.position.y).not.toBe(nb.position.y);
+    const w = nodes.find((n) => n.id === bystander.id)!;
+    expect(w.position).toEqual({ x: 4000, y: 4000 }); // 旁观节点绝不被牵动
+  });
+
+  it("align：幽灵引用被过滤，解析后不足 2 个 → failures", () => {
+    const st = useCanvasStore.getState();
+    const only = st.addNode("script", { x: 0, y: 0 });
+    const r = applyAgentOperations([{ op: "align", targetRefs: [only.id, "ghost1", "ghost2"], mode: "grid" } as AgentOperation], { x: 0, y: 0 });
+    expect(r.failures.length).toBe(1);
+    expect(r.failures[0].reason).toContain("至少 2 个存在的节点");
+  });
+
+  it("align：目标全是群组成员 → 明确失败（提示先解组），不静默成功", () => {
+    const st = useCanvasStore.getState();
+    const a = st.addNode("script", { x: 0, y: 0 });
+    const b = st.addNode("script", { x: 100, y: 100 });
+    st.groupSelected([a.id, b.id]);
+    const r = applyAgentOperations([{ op: "align", targetRefs: [a.id, b.id], mode: "grid" } as AgentOperation], { x: 0, y: 0 });
+    expect(r.failures.length).toBe(1);
+    expect(r.failures[0].reason).toContain("先解组");
+  });
+
+  it("focus_node：目标存在时派发 canvas:focus-node 事件、detail 带解析后的真实 id", () => {
+    // vitest 是 node 环境（无 window）——stub 一个只有 dispatchEvent 的 window 捕获事件
+    //（与 #266 minimal_on 分支收进 document 的教训同源：apply 层的 DOM 依赖必须可观测）。
+    const st = useCanvasStore.getState();
+    const v = st.addNode("video_task", { x: 0, y: 0 });
+    const events: Array<CustomEvent<{ id?: string }>> = [];
+    (globalThis as { window?: unknown }).window = { dispatchEvent: (e: Event) => { events.push(e as CustomEvent<{ id?: string }>); return true; } };
+    try {
+      const r = applyAgentOperations([{ op: "canvas", action: "focus_node", targetRef: v.id } as AgentOperation], { x: 0, y: 0 });
+      expect(r.failures).toEqual([]);
+      expect(r.canvasActions).toBe(1);
+      expect(events.length).toBe(1);
+      expect(events[0].type).toBe("canvas:focus-node");
+      expect(events[0].detail?.id).toBe(v.id);
+    } finally {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  });
+
+  it("focus_node：目标不存在 → failures（存在性校验先于事件派发，不发事件）", () => {
+    const events: Event[] = [];
+    (globalThis as { window?: unknown }).window = { dispatchEvent: (e: Event) => { events.push(e); return true; } };
+    try {
+      const r = applyAgentOperations([{ op: "canvas", action: "focus_node", targetRef: "ghost" } as AgentOperation], { x: 0, y: 0 });
+      expect(r.failures.length).toBe(1);
+      expect(r.failures[0].reason).toContain("未找到");
+      expect(events.length).toBe(0);
+    } finally {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  });
+});

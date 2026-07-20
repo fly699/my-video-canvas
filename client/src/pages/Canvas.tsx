@@ -1964,6 +1964,25 @@ function CanvasInner({ projectId }: { projectId: number }) {
     return () => window.removeEventListener("canvas:fit-view", onFit);
   }, [reactFlow]);
 
+  // #269 画布助手的 focus_node（「聚焦到镜3」口令）：与 fit_view 同一事件转交机制。
+  // 视口计算与双击聚焦（#123 handleCanvasDoubleClick）同款：节点约占视口 75%、缩放
+  // 钳制 [0.8, 3]、setCenter 动画 420ms。刻意不接入 dblFocusRef 的「二次双击还原」
+  // 状态机——口令聚焦没有「再说一次就还原」的语义，掺进去反而会让下一次真实双击
+  // 误判为还原；两条路径各自独立、互不干扰。
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
+      const n = id ? useCanvasStore.getState().nodes.find((nn) => nn.id === id) : undefined;
+      if (!n || n.data.nodeType === "group") return; // 群组容器聚焦无意义（同双击豁免口径）
+      const nw = n.measured?.width ?? 340;
+      const nh = n.measured?.height ?? 240;
+      const zoom = Math.min(3, Math.max(0.8, Math.min(window.innerWidth * 0.75 / nw, window.innerHeight * 0.75 / nh)));
+      void reactFlow.setCenter(n.position.x + nw / 2, n.position.y + nh / 2, { zoom, duration: 420 });
+    };
+    window.addEventListener("canvas:focus-node", onFocus);
+    return () => window.removeEventListener("canvas:focus-node", onFocus);
+  }, [reactFlow]);
+
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

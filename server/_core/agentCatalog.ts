@@ -421,7 +421,7 @@ export function sanitizeOperationDetailed(
   if (!raw || typeof raw !== "object") return { drop: "无法识别的操作（非对象）" };
   const o = raw as Record<string, unknown>;
   const op = o.op;
-  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete" && op !== "canvas" && op !== "library" && op !== "group" && op !== "duplicate") return { drop: `未知的操作类型「${String(op)}」` };
+  if (op !== "create" && op !== "update" && op !== "connect" && op !== "delete" && op !== "canvas" && op !== "library" && op !== "group" && op !== "duplicate" && op !== "align") return { drop: `未知的操作类型「${String(op)}」` };
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
   // note 是给人看的一句话理由，行内展示——超长（LLM 跑偏）截到 120 字防撑爆消息存储。
   const noteStr = (v: unknown) => { const t = str(v); return t && t.length > 120 ? t.slice(0, 120) + "…" : t; };
@@ -445,13 +445,15 @@ export function sanitizeOperationDetailed(
   // 节点、run_node 指定运行目标；其余动作没有目标语义，即便 LLM 乱带也无害——应用层
   // 只在需要时读取）。run_node 缺 targetRef 直接 drop（无目标的单节点运行无意义）。
   if (op === "canvas") {
-    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup"]);
+    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node"]);
     const action = str(o.action);
     if (!action || !CANVAS_ACTIONS.has(action)) return { drop: `未知的画布动作「${String(o.action)}」` };
     if (action === "run_node" && !str(o.targetRef)) return { drop: "run_node 画布动作缺少 targetRef（要运行哪个节点）" };
-    // targetRef 只对 assemble/run_node/ungroup 有意义；旧五个动作维持原输出（不带该键），
-    // 保证旧动作 sanitize 结果与 #266 之前逐字节一致（零回归守卫测试锁定）。
-    const keepRef = action === "assemble" || action === "run_node" || action === "ungroup";
+    // #269 focus_node 与 run_node 同口径：无目标的「聚焦」没有意义，缺 targetRef 直接 drop。
+    if (action === "focus_node" && !str(o.targetRef)) return { drop: "focus_node 画布动作缺少 targetRef（要聚焦哪个节点）" };
+    // targetRef 只对 assemble/run_node/ungroup/focus_node 有意义；旧五个动作维持原输出
+    // （不带该键），保证旧动作 sanitize 结果与 #266 之前逐字节一致（零回归守卫测试锁定）。
+    const keepRef = action === "assemble" || action === "run_node" || action === "ungroup" || action === "focus_node";
     return { op: { op: "canvas", action: action as AgentOperation["action"], ...(keepRef ? { targetRef: str(o.targetRef) } : {}), note: noteStr(o.note) } };
   }
 
@@ -462,6 +464,19 @@ export function sanitizeOperationDetailed(
     const refs = Array.from(new Set(raw.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()))).slice(0, 50);
     if (refs.length < 2) return { drop: `编组至少需要 2 个节点引用（收到 ${refs.length} 个）` };
     return { op: { op: "group", targetRefs: refs, title: str(o.title), note: noteStr(o.note) } };
+  }
+
+  // #269 排列指定节点：targetRefs 形状校验与 group 完全同口径（≥2 个非空去重、上限 50、
+  // 可混已存在 id 与本批 tempId，客户端 resolve 后按存活节点二次校验）。mode 缺失/非法
+  // 统一回退 grid——与 video_task 参数「非法丢弃回退默认」同一容错哲学，绝不因 LLM 把
+  // mode 写成 "横排" 就把整个操作丢掉（用户口头意图明确，宫格是最不会出错的兜底排法）。
+  if (op === "align") {
+    const raw = Array.isArray(o.targetRefs) ? o.targetRefs : [];
+    const refs = Array.from(new Set(raw.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()))).slice(0, 50);
+    if (refs.length < 2) return { drop: `排列至少需要 2 个节点引用（收到 ${refs.length} 个）` };
+    const m = str(o.mode);
+    const mode = (m === "row" || m === "column" || m === "grid") ? m : "grid";
+    return { op: { op: "align", targetRefs: refs, mode, note: noteStr(o.note) } };
   }
 
   // #267 复制节点：targetRef 必填（要复制谁）；tempId 可选（副本的引用名，供同批

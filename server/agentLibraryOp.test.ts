@@ -112,3 +112,31 @@ describe("sanitize: animatic / ungroup（#268）", () => {
     expect("op" in u2).toBe(true);
   });
 });
+
+// ── #269 align / focus_node sanitize 守卫 ────────────────────────────────────
+describe("sanitize: align / focus_node（#269）", () => {
+  it("align：≥2 个引用放行（去重去空），mode 缺失/非法回退 grid、合法值原样保留", () => {
+    const ok = sanitizeOperationDetailed({ op: "align", targetRefs: ["a", "b", " b ", ""], mode: "row" });
+    expect("op" in ok).toBe(true);
+    if ("op" in ok) { expect(ok.op.targetRefs).toEqual(["a", "b"]); expect(ok.op.mode).toBe("row"); }
+    const noMode = sanitizeOperationDetailed({ op: "align", targetRefs: ["a", "b"] });
+    expect("op" in noMode && noMode.op.mode).toBe("grid");          // 缺失回退默认
+    const badMode = sanitizeOperationDetailed({ op: "align", targetRefs: ["a", "b"], mode: "横排" });
+    expect("op" in badMode && badMode.op.mode).toBe("grid");        // 非法回退默认（不丢操作）
+    expect("drop" in sanitizeOperationDetailed({ op: "align", targetRefs: ["only-one"] })).toBe(true);
+    expect("drop" in sanitizeOperationDetailed({ op: "align" })).toBe(true);
+  });
+
+  it("focus_node：targetRef 必填保留；缺 targetRef → drop（与 run_node 同口径）", () => {
+    const ok = sanitizeOperationDetailed({ op: "canvas", action: "focus_node", targetRef: "n3" });
+    expect("op" in ok && ok.op.action).toBe("focus_node");
+    expect("op" in ok && ok.op.targetRef).toBe("n3");
+    expect("drop" in sanitizeOperationDetailed({ op: "canvas", action: "focus_node" })).toBe(true);
+  });
+
+  it("旧动作零回归：arrange_layout / fit_view 输出不带 targetRef 键（keepRef 白名单外）", () => {
+    const r = sanitizeOperationDetailed({ op: "canvas", action: "arrange_layout", targetRef: "乱带的" });
+    expect("op" in r).toBe(true);
+    if ("op" in r) expect("targetRef" in r.op).toBe(false); // 与 #266 之前输出逐字节一致
+  });
+});
