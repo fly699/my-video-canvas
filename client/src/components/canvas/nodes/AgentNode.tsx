@@ -63,12 +63,17 @@ const OP_META: Record<AgentOperation["op"], { Icon: typeof Plus; label: string }
   // #267 编组 / 复制节点（Record 完备性：缺条目 tsc 直接报错，见 #260 同款教训）。
   group: { Icon: Link2, label: "编组" },
   duplicate: { Icon: Plus, label: "复制" },
+  // #269 排列指定节点（横排/竖排/宫格）。
+  align: { Icon: Sparkles, label: "排列" },
 };
 
-// #112 画布级动作的人话标签（操作预览行展示）。
+// #112 画布级动作的人话标签（操作预览行展示）。#269 补齐 #266/#268 起新增动作的
+// 人话标签（此前缺条目时兜底显示英文 action 原文，功能不受影响但不友好）。
 const CANVAS_ACTION_LABEL: Record<string, string> = {
   minimal_on: "开启极简显示", minimal_off: "恢复标准显示",
   arrange_layout: "整理布局", fit_view: "适应视图", download_all: "批量下载全部成品",
+  assemble: "按镜头表装配", run_all: "运行全部（需确认）", run_node: "运行节点（需确认）",
+  animatic: "生成动态样片", ungroup: "解组", focus_node: "聚焦节点",
 };
 
 function opText(op: AgentOperation): string {

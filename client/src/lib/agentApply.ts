@@ -135,6 +135,9 @@ export const GEN_NODE_TYPES = ["image_gen", "video_task", "comfyui_image", "comf
 // 极简显示与 Canvas 的 Alt+Q 完全同一套信号（attr + localStorage + 事件）；
 // fit_view 经自定义事件转交 Canvas 持有的 reactFlow 实例（本文件拿不到实例）。
 export const CANVAS_FIT_VIEW_EVENT = "canvas:fit-view";
+/** #269 聚焦到单个节点：detail 携带 { id }，由 Canvas 持有的 reactFlow 实例消费
+ *  （与 fit_view 同一转交机制——本文件拿不到实例；视口逻辑与双击聚焦 #123 同款）。 */
+export const CANVAS_FOCUS_NODE_EVENT = "canvas:focus-node";
 
 /** 与批量下载同规则的成品提取：视频优先 resultVideoUrl/videoUrl → outputUrl → 图片输出。 */
 const CANVAS_VIDEO_OUT_TYPES = new Set(["clip", "merge", "subtitle", "subtitle_motion", "smart_cut", "overlay", "video_task", "comfyui_video", "comfyui_workflow", "lip_sync", "avatar"]);
@@ -187,6 +190,15 @@ function runCanvasAction(op: AgentOperation, resolve: (ref?: string) => string |
       // 会在调用本函数【之前】把 animatic 动作抽走执行，正常路径不会走到这里；只有
       // 画布上的智能体节点（AgentNode）等旁路会看到这条明确提示。
       return "动态样片请通过画布助手聊天窗口发起（其他入口暂不支持）";
+    case "focus_node": {
+      // #269 聚焦节点：只动视口、不改任何画布数据（无需入历史）。存在性在这里校验——
+      // Canvas 侧的事件监听器拿到的一定是真实存活节点 id，无需二次防御。
+      const st = useCanvasStore.getState();
+      const targetId = resolve(op.targetRef);
+      if (!targetId || !st.nodes.some((n) => n.id === targetId)) return `要聚焦的节点未找到（${String(op.targetRef)}）`;
+      window.dispatchEvent(new CustomEvent(CANVAS_FOCUS_NODE_EVENT, { detail: { id: targetId } }));
+      return null;
+    }
     case "run_all":
     case "run_node": {
       // 花钱防线：这里只发 runRequest 信号——Canvas 消费该信号时走【既有】运行确认
@@ -677,6 +689,19 @@ export function applyAgentOperations(
           res.createdIds.push(dup.id);
           op.status = "applied";
           res.created++;
+        } else if (op.op === "align") {
+          // #269 排列指定节点：refs 解析口径与 group 完全一致（可混已存在 id 与本批
+          // tempId，按存活节点二次校验）。mode 缺失兜底 grid——sanitize 层已回退过一次，
+          // 这里再兜一层防旁路调用方（AgentNode 等）直接喂裸操作。
+          const ids = Array.from(new Set((op.targetRefs ?? []).map((r) => resolve(r)).filter((id): id is string => !!id && liveIds.has(id))));
+          if (ids.length < 2) { fail(index, op, `排列需要至少 2 个存在的节点（解析到 ${ids.length} 个）`); return; }
+          const moved = store.arrangeNodes(ids, op.mode ?? "grid");
+          // arrangeNodes 会剔除群组容器/组内成员——解析存活但全被剔除时明确报因，
+          // 不让操作静默「成功」而画布纹丝不动（那是最迷惑用户的失败形态）。
+          if (moved < 2) { fail(index, op, "可排列的节点不足 2 个（群组容器与组内成员不参与，请先解组）"); return; }
+          res.touchedIds.push(...ids);
+          op.status = "applied";
+          res.canvasActions++;
         }
       } catch (e) {
         fail(index, op, e instanceof Error ? e.message : String(e));
