@@ -59,9 +59,19 @@ export interface ApplyResult {
   /** 确定性自动接线的「角色→生成节点」边数（不含 LLM 显式 connect）。供 UI 透明反馈——
    *  这些边不对应任何 op，opsSummary 统计不到，否则用户看不到角色被自动接入。 */
   autoLinkedChars: number;
+  /** #285 被确定性合并到画布已有同名角色的 create 数（LLM 重复建角色 → 复用已有节点，
+   *  不新建、不重新定妆）。供 UI 透明反馈「已复用 N 个已有角色」。 */
+  reusedCharacters: number;
 }
 
 const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
+
+/** #285 角色复用判定 key：类别(person/scene) + 显示名（trim + 拉丁字母不区分大小写）。
+ *  空名返回 ""（无名角色不参与合并——没有可靠身份依据，宁可新建也不误并）。 */
+function charReuseKey(p: CharacterNodeData): string {
+  const name = charDisplayName(p);
+  return name ? `${p.characterKind ?? "person"}:${name.toLowerCase()}` : "";
+}
 
 /** Assign chosen ComfyUI server URLs onto a batch's comfy create ops (in place),
  *  spreading load by round-robin (顺序) or random. No-op when chosen is empty. */
@@ -291,7 +301,7 @@ export function applyAgentOperations(
   // would create a dangling edge, and an illegal pairing would bypass the rules.
   const liveIds = new Set(store.nodes.map((n) => n.id));
   const typeById = new Map<string, NodeType>(store.nodes.map((n) => [n.id, n.data.nodeType as NodeType]));
-  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, canvasActions: 0, failures: [], touchedIds: [], createdIds: [], autoLinkedChars: 0 };
+  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, canvasActions: 0, failures: [], touchedIds: [], createdIds: [], autoLinkedChars: 0, reusedCharacters: 0 };
   const fail = (index: number, op: AgentOperation, reason: string) => {
     op.status = "failed"; op.error = reason;
     res.failures.push({ index, op: op.op, reason });
@@ -425,6 +435,19 @@ export function applyAgentOperations(
   // (store.onConnect dedupes by source+target and silently no-ops) is not counted
   // as a freshly established connection — keeps `res.connected` truthful.
   const edgeKeys = new Set(store.edges.map((e) => `${e.source}${EDGE_SEP}${e.target}`));
+  // #285 已有角色确定性复用（用户实报：加新分镜时明明画布有该角色，助手还是重新建
+  // 角色重新定妆花钱）。LLM 层面不可靠——大画布摘要截断时 character 行第 2 优先被丢、
+  // 框选编辑模式角色可能根本不在摘要里，模型「看不到」就会再 create 一个同名角色。
+  // 这里在落地层做构造性保证：create character 的 (类别+名字) 与画布已有角色节点相同
+  // 时【不新建】，把 tempId 直接映射到已有节点 id——后续 connect 全部接到已有角色上，
+  // 已有定妆照/设定原样保留（用户的设置永远第一位），自动定妆因「已有图」天然跳过。
+  // 同一批内 LLM 重复建同名角色也一并合并。无名角色不参与（无身份依据，宁建勿并）。
+  const charSeen = new Map<string, string>();
+  for (const n of store.nodes) {
+    if (n.data.nodeType !== "character") continue;
+    const k = charReuseKey((n.data.payload ?? {}) as CharacterNodeData);
+    if (k && !charSeen.has(k)) charSeen.set(k, n.id);
+  }
   // Whole plan = one undo step.
   store.runBatch(() => {
     let createdIdx = 0;
@@ -435,6 +458,20 @@ export function applyAgentOperations(
           // 未知节点类型（服务端 sanitize 漏网 / 非官方客户端）——友好拦截，避免 store.addNode
           // 读 NODE_CONFIGS[未知].defaultTitle 抛「Cannot read properties of undefined」内部错误。
           if (!(op.nodeType in NODE_CONFIGS)) { fail(index, op, `未知节点类型：${op.nodeType}`); return; }
+          // #285 已有角色确定性复用：同 (类别+名字) 的 character 已在画布（或本批已建）
+          // → 不再新建，tempId 映射到已有节点，后续 connect 全部接到它身上。
+          if (op.nodeType === "character") {
+            const k = charReuseKey((op.payload ?? {}) as CharacterNodeData);
+            const existingId = k ? charSeen.get(k) : undefined;
+            if (existingId) {
+              if (op.tempId) idMap.set(op.tempId, existingId);
+              liveIds.add(existingId);
+              typeById.set(existingId, "character");
+              if (!res.touchedIds.includes(existingId)) res.touchedIds.push(existingId);
+              res.reusedCharacters += 1;
+              return;
+            }
+          }
           // imageFirst（生图→生视频）在服务端确定性插入的图像节点：tempId 前缀 imgfirst_。
           // 它是「结构性管线注入」而非 LLM 自选节点类型——若被下面的「允许生成节点/模板」硬约束
           // 拦掉（用户把 imageFirst 打开、却又没把 image_gen/该出图模板列入允许项，这种自相矛盾
@@ -524,6 +561,9 @@ export function applyAgentOperations(
               cp,
             );
             if (overlay) payload = { ...payload, ...overlay };
+            // #285 登记本批新建角色——同批内 LLM 再建同名角色时也走复用合并。
+            const k = charReuseKey(payload as CharacterNodeData);
+            if (k && !charSeen.has(k)) charSeen.set(k, node.id);
           }
           // 防宫格兜底：智能体新建的分镜/图像生成节点，negativePrompt 确定性追加反宫格词
           // （宫格参考图下游图生视频无法处理；LLM 忘写时由这里补齐）。
@@ -862,6 +902,9 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       //（真机实测：图在画布上、模型仍答『没有关键帧图』拒发 animatic）。注入 1 个
       // 布尔即可让 animatic / 批量生图跳过判断有据可依，token 成本 ~15 字符/镜。
       if (type === "storyboard" && typeof p.imageUrl === "string" && p.imageUrl) kv.hasImage = true;
+      // #285 角色「已有定妆照/场景图」信号：模型答「哪些角色还没定妆」类问题有据可依，
+      // 也让复用已有角色（而非重建重定妆）的判断可见。URL 本身不注入（同 hasImage 哲学）。
+      if (type === "character" && typeof p.referenceImageUrl === "string" && p.referenceImageUrl) kv.hasImage = true;
       // #280 视频「已出片」信号（与 hasImage 同哲学）：SUMMARY_FIELDS 不含结果 URL，
       // 模型对「视频已生成」完全失明——用户说「把已生成的视频合并/装配」时模型误答
       // 「画布上没有可用视频」（用户实报『明明有视频节点却找不到』的一半根因）。

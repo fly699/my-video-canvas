@@ -1019,3 +1019,73 @@ describe("#269 排列指定节点 / 聚焦节点", () => {
     }
   });
 });
+
+describe("#285 已有角色确定性复用（重复 create 同名角色 → 合并到已有节点，不重建不重定妆）", () => {
+  it("画布已有同名角色时 create character 不新建，connect 接到已有节点", () => {
+    const store = useCanvasStore.getState();
+    const existing = store.addNode("character", { x: 0, y: 0 });
+    store.updateNodeData(existing.id, { characterKind: "person", name: "林风", appearance: "黑发剑客", referenceImageUrl: "https://x/linfeng.png" }, true);
+
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { characterKind: "person", name: "林风", appearance: "另一套外观（应被忽略）" } },
+      { op: "create", nodeType: "storyboard", tempId: "s1", payload: { sceneNumber: 1, description: "新镜头" } },
+      { op: "connect", sourceRef: "c1", targetRef: "s1" },
+    ];
+    const res = applyAgentOperations(ops, { x: 0, y: 0 });
+
+    const nodes = useCanvasStore.getState().nodes;
+    const chars = nodes.filter((n) => n.data.nodeType === "character");
+    expect(chars.length).toBe(1); // 未重建
+    expect(res.reusedCharacters).toBe(1);
+    // 已有角色的设定与定妆照原样保留（用户的设置永远第一位）
+    const cp = chars[0].data.payload as { appearance?: string; referenceImageUrl?: string };
+    expect(cp.appearance).toBe("黑发剑客");
+    expect(cp.referenceImageUrl).toBe("https://x/linfeng.png");
+    // connect 打到了已有节点身上
+    const sb = nodes.find((n) => n.data.nodeType === "storyboard")!;
+    const edges = useCanvasStore.getState().edges;
+    expect(edges.some((e) => e.source === existing.id && e.target === sb.id)).toBe(true);
+    // 复用节点不算新建（自动定妆按 createdIds 触发，不会对它重跑）
+    expect(res.createdIds).not.toContain(existing.id);
+  });
+
+  it("类别不同（person vs scene）同名不合并；同批内重复同名角色也合并", () => {
+    const store = useCanvasStore.getState();
+    const person = store.addNode("character", { x: 0, y: 0 });
+    store.updateNodeData(person.id, { characterKind: "person", name: "长安" }, true);
+
+    const ops: AgentOperation[] = [
+      // 同名但类别是场景 → 不能并入人物节点，应新建
+      { op: "create", nodeType: "character", tempId: "sc1", payload: { characterKind: "scene", sceneName: "长安" } },
+      // 同批内再建一次同场景 → 并入本批第一个
+      { op: "create", nodeType: "character", tempId: "sc2", payload: { characterKind: "scene", sceneName: "长安" } },
+    ];
+    const res = applyAgentOperations(ops, { x: 0, y: 0 });
+    const chars = useCanvasStore.getState().nodes.filter((n) => n.data.nodeType === "character");
+    expect(chars.length).toBe(2); // 人物「长安」 + 场景「长安」
+    expect(res.reusedCharacters).toBe(1); // 仅同批第二个场景被合并
+  });
+
+  it("无名角色不参与合并（无身份依据，宁建勿并）", () => {
+    const store = useCanvasStore.getState();
+    const anon = store.addNode("character", { x: 0, y: 0 });
+    store.updateNodeData(anon.id, { characterKind: "person" }, true);
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { characterKind: "person" } },
+    ];
+    const res = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(useCanvasStore.getState().nodes.filter((n) => n.data.nodeType === "character").length).toBe(2);
+    expect(res.reusedCharacters).toBe(0);
+  });
+
+  it("buildGraphSummary 给有定妆照的角色行注入 hasImage 信号", () => {
+    const store = useCanvasStore.getState();
+    const withImg = store.addNode("character", { x: 0, y: 0 });
+    store.updateNodeData(withImg.id, { characterKind: "person", name: "有图", referenceImageUrl: "https://x/a.png" }, true);
+    const noImg = store.addNode("character", { x: 0, y: 200 });
+    store.updateNodeData(noImg.id, { characterKind: "person", name: "无图" }, true);
+    const parsed = JSON.parse(buildGraphSummary("none")) as { nodes: Array<{ id: string; hasImage?: boolean }> };
+    expect(parsed.nodes.find((n) => n.id === withImg.id)?.hasImage).toBe(true);
+    expect(parsed.nodes.find((n) => n.id === noImg.id)?.hasImage).toBeUndefined();
+  });
+});
