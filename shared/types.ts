@@ -816,6 +816,9 @@ export interface CharacterNodeData {
   status?: "processing" | "failed";
   progress?: number;
   errorMessage?: string;
+  /** #272 入库来源项目 id（零迁移：写在角色库条目的 payload JSON 里，面板据此分项目
+   *  检索）。库条目再实例化为节点时随 payload 带回，无任何运行时语义、纯溯源标记。 */
+  librarySourceProjectId?: number;
   // Shared
   referenceImageUrl?: string;
   referenceStorageKey?: string;
@@ -1415,7 +1418,11 @@ export interface AgentOperation {
   /** #269 批④：focus_node=把视口聚焦到 targetRef 指定的节点（放大居中，与双击节点
    *  聚焦 #123 同一套视口逻辑；targetRef 必填——无目标的聚焦没有意义，sanitize 层
    *  与 run_node 同口径直接 drop）。纯视口操作，不改画布数据、不入撤销历史。 */
-  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup" | "focus_node";
+  /** #272 批⑤：save_library=把画布上的角色/场景节点保存进角色库（targetRef 可选：
+   *  省略=画布全部有名字的 character 节点）。需要 tRPC（characterLibrary.create），
+   *  由 CanvasAgentChat 应用层在画布操作落地后抽走执行——apply 层纯 store 不发网络
+   *  （与 animatic/library 同一架构边界）。同名条目跳过不覆盖（保护既有库内容）。 */
+  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup" | "focus_node" | "save_library";
   /** library: 入库类型——person=角色库、scene=场景库。 */
   libraryKind?: "person" | "scene";
   /** library: 库条目名称（用户指定原文，如「李宁」「足球场」），入库后可 @名称 引用。 */

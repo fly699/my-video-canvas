@@ -24,6 +24,7 @@ import { extractFrameMedia } from "../../lib/nodeMedia";
 import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
+import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
 
 /** 浮动「画布助手」：对话式让 AI（如本机 Claude）边聊边直接改画布。复用智能体节点同一套引擎
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
@@ -687,6 +688,38 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     if (ok > 0) toast.success(`已为 ${ok} 个角色生成外观锚点（提示词压缩注入，角色卡可切回全量）`, { duration: 4000 });
   };
 
+  // #272 批量入库执行器（助手「将画布内所有角色/场景入库」口令）：与角色卡「存库」按钮
+  // 共用 buildLibrarySaveInput 单一事实源（同一套剥离规则 + 来源项目标记）。同名条目跳过
+  // 不覆盖——批量场景绝不能弹几十个覆盖确认，也绝不能静默覆盖用户库里的既有内容
+  //（「用户的设置永远第一位」）；跳过数在汇总 toast 里明示。串行执行，逐个失败不阻断。
+  const batchSaveLibrary = async (targetId?: string) => {
+    const st = useCanvasStore.getState();
+    const chars = st.nodes.filter((n) => n.data.nodeType === "character" && (!targetId || n.id === targetId));
+    if (targetId && chars.length === 0) { toast.error("要入库的角色/场景节点未找到"); return; }
+    const inputs = chars
+      .map((n) => buildLibrarySaveInput(n.data.payload as CharacterNodeData, projectId))
+      .filter((x): x is NonNullable<typeof x> => !!x);
+    const unnamed = chars.length - inputs.length;
+    if (!inputs.length) {
+      toast.error(targetId ? "目标节点还没有名字，无法入库" : "画布上没有已命名的角色/场景节点");
+      return;
+    }
+    let ok = 0, dup = 0, fail = 0;
+    for (const input of inputs) {
+      try {
+        await utils.client.characterLibrary.create.mutate(input);
+        ok++;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/已存在同名/.test(msg)) dup++;
+        else { fail++; console.warn("[saveLibrary] 入库失败", input.name, e); }
+      }
+    }
+    void utils.characterLibrary.list.invalidate(); // 角色库面板/@ 菜单/「已入库」徽章立即刷新
+    const bits = [`已入库 ${ok} 个`, dup ? `${dup} 个同名跳过（不覆盖库内既有条目）` : "", fail ? `${fail} 个失败` : "", unnamed ? `${unnamed} 个未命名跳过` : ""].filter(Boolean).join(" · ");
+    (ok > 0 ? toast.success : toast.warning)(`角色/场景批量入库：${bits}`, { duration: 6000 });
+  };
+
   // 规划结果统一落地（send 与 #251 跨会话恢复共用）：应用操作 → 追加助手回合 → 自动增强。
   // 恢复路径用的是「当前」quickPrefs（附件等一次性上下文只影响规划本身，结果应用不依赖）。
   const applyChatResult = (r: AgentChatResult) => {
@@ -699,9 +732,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     // 入库操作异步执行（不阻塞画布应用）：复用「存为角色主体」同一后端接口与 payload 形状。
     // 同名冲突不覆盖（尊重 characterLibrary.create 的默认语义），提示用户改名重试。
     for (const lib of resolved.libraryOps) {
+      // #272 附件入库同样带来源项目标记（librarySourceProjectId，面板分项目检索用）。
       const payload = lib.kind === "scene"
-        ? { characterKind: "scene", sceneName: lib.name, referenceImageUrl: lib.url }
-        : { characterKind: "person", name: lib.name, referenceImageUrl: lib.url };
+        ? { characterKind: "scene", sceneName: lib.name, referenceImageUrl: lib.url, librarySourceProjectId: projectId }
+        : { characterKind: "person", name: lib.name, referenceImageUrl: lib.url, librarySourceProjectId: projectId };
       libraryCreateMut.mutate(
         { name: lib.name, characterKind: lib.kind, payload, thumbnail: lib.url },
         {
@@ -717,9 +751,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     // 多条只执行一次（渲染是全镜头表级别的重活，重复毫无意义）；异步启动不阻塞
     // 其余画布操作落地，进度/结果全程 toast 反馈（runAnimaticFromCanvas 内部负责）。
     const wantAnimatic = (resolved.nodeOps as AgentOperation[]).some((o) => o.op === "canvas" && o.action === "animatic");
-    const ops = wantAnimatic
-      ? (resolved.nodeOps as AgentOperation[]).filter((o) => !(o.op === "canvas" && o.action === "animatic"))
-      : resolved.nodeOps;
+    // #272 批量入库动作同样抽走（需要 characterLibrary.create tRPC）；记下 targetRef
+    //（省略=全部），执行放在画布操作落地【之后】——「建 3 个角色并全部入库」这类
+    // 同批指令要能把刚落地的新角色也收进去。
+    const saveLibOps = (resolved.nodeOps as AgentOperation[]).filter((o) => o.op === "canvas" && o.action === "save_library");
+    const ops = (resolved.nodeOps as AgentOperation[]).filter(
+      (o) => !(o.op === "canvas" && (o.action === "animatic" || o.action === "save_library")),
+    );
     if (wantAnimatic) {
       // utils.client 的 tRPC 精确类型与最小接口结构兼容（仅取 editor 四端点的所需形状）。
       void runAnimaticFromCanvas(utils.client as unknown as AnimaticEditorClient, { aspect: quickPrefs.aspect || undefined });
@@ -750,6 +788,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       if (quickPrefs.autoPortrait && createdIds.length) void autoPortraits(createdIds);
       // #225 外观锚点自动压缩（默认开）：后台跑，不阻塞对话。
       if (quickPrefs.anchorCompress && createdIds.length) void autoAnchors(createdIds);
+    }
+    // #272 批量入库在画布操作落地【之后】执行——「建 N 个角色并全部入库」这类同批
+    // 指令要能收进刚落地的新角色。任一条省略 targetRef → 全量；否则按指定节点逐个。
+    if (saveLibOps.length) {
+      const refs = Array.from(new Set(saveLibOps.map((o) => (o as AgentOperation).targetRef).filter((v): v is string => !!v)));
+      if (saveLibOps.some((o) => !(o as AgentOperation).targetRef) || refs.length === 0) void batchSaveLibrary();
+      else refs.forEach((ref) => void batchSaveLibrary(ref));
     }
     const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
     setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);

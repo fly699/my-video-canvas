@@ -39,6 +39,7 @@ import { downloadMedia } from "../../../lib/download";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { characterReferenceImages, deriveCharacterConditioning } from "@/lib/characterConditioning";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
+import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
 import { multiAngleResultPatch, MULTI_ANGLE_IDENTITY_CLAUSE } from "@/lib/characterMultiAngle";
 import { detectUpstreamImagesExpanded } from "@/lib/comfyWorkflowParams";
 
@@ -416,25 +417,14 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       toast.error("保存到角色库失败：" + err.message);
     },
   });
+  // #272 快照组装抽到 characterLibrarySave.ts（与画布助手「全部入库」口令共用单一事实源），
+  // 并注入来源项目 id（librarySourceProjectId，角色库面板分项目检索用）。
   const saveToLibrary = useCallback(() => {
-    const name = (payload.name || payload.sceneName || "").trim();
-    if (!name) { toast.error(kind === "scene" ? "请先填写场景名" : "请先填写角色名"); return; }
-    // Strip graph-specific/transient fields so a re-instantiated character doesn't
-    // inherit the original's agent ownership / scene membership / creator.
-    const { createdBy: _c, ownerAgentId: _o, sceneGroup: _s, ...rest } = payload as Record<string, unknown>;
-    void _c; void _o; void _s;
-    // Strip the OPPOSITE kind's fields: a node toggled person↔scene keeps the now-hidden
-    // fields in its payload, which would otherwise be saved and resurface if the library
-    // entry is later toggled. Keep only this kind's fields + the shared ones.
-    const PERSON_ONLY = ["name", "role", "gender", "age", "appearance", "personality", "outfit", "signature", "loraName", "loraStrength", "ipadapterWeight", "consistencySeed"];
-    const SCENE_ONLY = ["sceneName", "locationType", "sceneDescription", "atmosphere", "timeOfDay"];
-    const stripKeys = kind === "scene" ? PERSON_ONLY : SCENE_ONLY;
-    const clean = Object.fromEntries(Object.entries(rest).filter(([k]) => !stripKeys.includes(k)));
-    clean.characterKind = kind; // pin authoritatively (covers legacy/undefined)
-    const input = { name, characterKind: kind, payload: clean, thumbnail: payload.referenceImageUrl || undefined };
+    const input = buildLibrarySaveInput(payload, data.projectId);
+    if (!input) { toast.error(kind === "scene" ? "请先填写场景名" : "请先填写角色名"); return; }
     pendingSaveRef.current = input; // for overwrite-on-conflict
     saveLibMut.mutate(input);
-  }, [payload, kind, saveLibMut]);
+  }, [payload, kind, saveLibMut, data.projectId]);
 
   const consistencyMut = trpc.scripts.checkCharacterConsistency.useMutation({
     onSuccess: (result) => {
@@ -610,10 +600,17 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     </div>
   );
 
-  // #76 批3：hover 主图操作带 + 从库替换。库条目 payload 为角色快照，整包写回；
+  // #76 批3 从库替换（#273 起入口在底部输入条 chip）。库条目 payload 为角色快照，整包写回；
   // characterKind 以库条目为准；storageKey 清空避免误关联旧上传。
+  // #272 libQuery 改常开（原 enabled: libPickerOpen）：除下拉外还驱动「已入库」指示——
+  // 所有角色节点共享同一 React Query 缓存（同 key 去重），staleTime 60s，不会请求风暴。
   const [libPickerOpen, setLibPickerOpen] = useState(false);
-  const libQuery = trpc.characterLibrary.list.useQuery(undefined, { enabled: libPickerOpen });
+  const libQuery = trpc.characterLibrary.list.useQuery(undefined, { staleTime: 60_000 });
+  // #272 已入库指示：库里存在同名同类别条目即视为已入库（与 create 的同名查重同口径）。
+  const displayNameTrim = ((payload.name || payload.sceneName) ?? "").trim();
+  const inLibrary = !!displayNameTrim && (libQuery.data ?? []).some(
+    (e) => e.name.trim() === displayNameTrim && (e.characterKind === "scene" ? "scene" : "person") === kind,
+  );
   const replaceFromLibrary = useCallback((entry: { name: string; characterKind: string; payload: Record<string, unknown> }) => {
     updateNodeData(id, { ...entry.payload, characterKind: entry.characterKind as CharacterKind, referenceStorageKey: undefined });
     setLibPickerOpen(false);
@@ -691,6 +688,14 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       ) : (
         <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "#fff", textShadow: "0 1px 4px oklch(0 0 0 / 0.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {displayName || (kind === "scene" ? "未命名场景" : "未命名角色")}
+        </span>
+      )}
+      {/* #272 已入库指示（用户实报：角色节点看不出是否已入库）：库里有同名同类别条目
+          即显示。pointer-events:none 纯标识，不抢姓名条的改名点击。 */}
+      {inLibrary && (
+        <span className="pointer-events-none" title="该角色/场景已在角色库中"
+          style={{ flexShrink: 0, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 6, background: "oklch(0.72 0.18 155 / 0.22)", border: "1px solid oklch(0.72 0.18 155 / 0.55)", color: "oklch(0.85 0.14 155)", whiteSpace: "nowrap" }}>
+          已入库
         </span>
       )}
       {/* 类别按钮：点击直接在 人物↔场景 间切换（此前是纯标签，点击会冒泡到姓名条触发改名，
@@ -806,24 +811,10 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           {displayName || (kind === "scene" ? "未命名场景" : "未命名角色")}
         </div>
       )}
-      {/* #76 批3：hover 主图操作带（仅创意模式）——存库 / 从库替换 / 应用到分镜 */}
-      {isCreativeMode && (
-        <div className="nodrag absolute top-1.5 right-1.5 z-10 flex-col items-end gap-1 hidden group-hover/chero:flex" style={{ display: undefined }}>
-          <div className="flex items-center gap-1 opacity-0 group-hover/chero:opacity-100" style={{ transition: "opacity 150ms ease" }}>
-            {([
-              { key: "save", label: "存库", title: "保存到角色库（跨项目复用）", onClick: () => saveToLibrary() },
-              { key: "lib", label: "从库替换", title: "从角色库选择条目整包替换本节点", onClick: () => setLibPickerOpen((v) => !v) },
-              { key: "apply", label: "应用到分镜", title: "把本角色的参考/LoRA/种子套用到所有连接的生成/分镜节点", onClick: () => applyToConnectedShots(false) },
-            ] as const).map((b) => (
-              <button key={b.key} title={b.title} onClick={(e) => { e.stopPropagation(); b.onClick(); }}
-                style={{ padding: "3px 8px", fontSize: 10, fontWeight: 600, borderRadius: 7, border: "1px solid var(--c-bd3)", background: "oklch(0.08 0.006 260 / 0.85)", color: "var(--c-t1)", cursor: "pointer", whiteSpace: "nowrap", backdropFilter: "blur(6px)" }}>
-                {b.label}
-              </button>
-            ))}
-          </div>
-{libPickerOpen && libPickerDropdown}
-        </div>
-      )}
+      {/* #273 原 hover 主图操作带（存库/从库替换/应用到分镜）已删除：#133 全净卡后
+          heroBareHeader 的标题条叠加层（zIndex 12、选中/悬停时 pointerEvents:auto、
+          横跨全宽）盖住 z-10 的按钮带——三个按钮点不到，且「应用到分镜」与底部输入条
+          常驻 chip 重复（用户实报截图）。三项功能统一收进底部输入条 ToolChip 区。 */}
       {/* 姓名条仅创意模式——studio 选中态 hero 可见（CSS 只藏未选中态），不得漏入 */}
       {isCreativeMode && nameBar}
     </div>
@@ -1473,6 +1464,19 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
             onClick={() => setPosePickerOpen(true)} title="姿势库：22 款 3D 摆姿截图作参考（弹窗底部还可直通分镜）" />
           <ToolChip icon={<Clapperboard size={13} />} label="应用到分镜"
             onClick={() => applyToConnectedShots(false)} title="把本角色的参考/LoRA/一致性种子套用到所有连接的生成/分镜节点" />
+          {/* #273 存库/从库替换从 hero hover 带收进输入条（原带被标题条叠加层盖住点不到）。
+              #272 存库 chip 兼作「已入库」指示：库里有同名同类别条目时 label 变「已入库」
+              （仍可点击，同名冲突走既有「确认覆盖更新」流程）。 */}
+          <ToolChip icon={<Save size={13} />} label={inLibrary ? "已入库" : "存库"}
+            onClick={() => saveToLibrary()}
+            title={inLibrary ? "该名称已在角色库中——再次保存将询问是否覆盖更新库条目" : "保存到角色库（跨项目复用；入库会记录来源项目，角色库面板可按项目检索）"} />
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <ToolChip icon={<Users size={13} />} label="从库替换"
+              onClick={() => setLibPickerOpen((v) => !v)} title="从角色库选择条目整包替换本节点" />
+            {libPickerOpen && (
+              <div className="nodrag" style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 40 }}>{libPickerDropdown}</div>
+            )}
+          </span>
         </div>
         <div className="nodrag" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input

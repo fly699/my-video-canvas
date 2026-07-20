@@ -140,3 +140,14 @@ describe("sanitize: align / focus_node（#269）", () => {
     if ("op" in r) expect("targetRef" in r.op).toBe(false); // 与 #266 之前输出逐字节一致
   });
 });
+
+// ── #272 save_library sanitize 守卫 ──────────────────────────────────────────
+describe("sanitize: save_library（#272 批量入库口令）", () => {
+  it("放行且保留可选 targetRef；省略 targetRef（=全部角色/场景）同样放行", () => {
+    const one = sanitizeOperationDetailed({ op: "canvas", action: "save_library", targetRef: "c3" });
+    expect("op" in one && one.op.action).toBe("save_library");
+    expect("op" in one && one.op.targetRef).toBe("c3");
+    const all = sanitizeOperationDetailed({ op: "canvas", action: "save_library" });
+    expect("op" in all).toBe(true);
+  });
+});

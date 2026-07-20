@@ -5,6 +5,7 @@ import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { useFloatingBox, type Corner } from "../../hooks/useFloatingBox";
 import { mediaFetchUrl } from "@/lib/download";
+import { librarySourceProjectOf } from "@/lib/characterLibrarySave";
 import { useReactFlow } from "@xyflow/react";
 import { Users, X, Plus, Trash2, User as UserIcon, Mountain, Pin, PinOff, Pencil, Music, Film, Search } from "lucide-react";
 
@@ -27,12 +28,31 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
   const [pinned, setPinned] = usePersistentState<boolean>("ui:character-library:pinned:v1", false, { crossTab: false });
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | "person" | "scene">("all");
+  // #272 分项目检索：按入库时记录的来源项目筛选（librarySourceProjectId，写在条目
+  // payload 里的零迁移方案）。"all"=全部、"current"=本项目、数字=指定项目 id。
+  // 老条目没有来源标记——只在「全部」下可见，任何项目筛选都不显示（宁缺毋滥，
+  // 不把归属不明的条目伪装成某项目的）。
+  const [projFilter, setProjFilter] = useState<"all" | "current" | number>("all");
+  const currentProjectId = useCanvasStore((s) => s.projectId);
+  // 项目 id → 名称映射（projects.list 已被首页/AI 客户端使用，共享缓存不额外扇出；
+  // 返回形状是 {owned, shared} 两组，拍平后统一查——他人共享项目里入库的条目也能显示名）。
+  const { data: projects } = trpc.projects.list.useQuery(undefined, { staleTime: 60_000 });
+  const allProjects = Array.isArray(projects) ? projects : [...(projects?.owned ?? []), ...(projects?.shared ?? [])];
+  const projTitle = (pid: number) => allProjects.find((p: { id: number; name: string }) => p.id === pid)?.name || `项目 #${pid}`;
 
   const { data: items, refetch, isLoading } = trpc.characterLibrary.list.useQuery(undefined, { refetchOnWindowFocus: true });
+  const srcOf = (it: { payload?: Record<string, unknown> }) => librarySourceProjectOf(it.payload);
+  // 来源项目下拉的选项集：出现在库条目里的全部来源项目（去重、按 id 稳定排序）。
+  const sourceProjectIds = Array.from(new Set((items ?? []).map(srcOf).filter((v): v is number => v != null))).sort((a, b) => a - b);
   const qq = query.trim().toLowerCase();
   const shownItems = (items ?? []).filter((it) => {
     const kind = it.characterKind === "scene" ? "scene" : "person";
     if (kindFilter !== "all" && kind !== kindFilter) return false;
+    if (projFilter !== "all") {
+      const src = srcOf(it);
+      const want = projFilter === "current" ? currentProjectId : projFilter;
+      if (want == null || src !== want) return false;
+    }
     return !qq || (it.name ?? "").toLowerCase().includes(qq);
   });
   const delMut = trpc.characterLibrary.delete.useMutation({
@@ -141,6 +161,35 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         )}
+        {/* #272 分项目检索行：「本项目」快捷按钮 + 来源项目下拉（面板 fixed 定位、不在
+            transform:scale 容器内，原生 select 可安全使用——缩放窗坑不适用于此）。 */}
+        {(items?.length ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              className="nodrag"
+              onClick={() => setProjFilter((v) => (v === "current" ? "all" : "current"))}
+              disabled={currentProjectId == null}
+              title="只看在当前项目里入库的角色/场景（再点一次恢复全部）"
+              style={{ fontSize: 10.5, padding: "4px 8px", borderRadius: 7, cursor: "pointer", whiteSpace: "nowrap", border: `1px solid ${projFilter === "current" ? "oklch(0.66 0.18 30 / 0.4)" : "var(--c-bd2)"}`, background: projFilter === "current" ? "oklch(0.66 0.18 30 / 0.14)" : "transparent", color: projFilter === "current" ? "oklch(0.66 0.18 30)" : "var(--c-t3)" }}
+            >本项目</button>
+            <select
+              className="nodrag"
+              value={projFilter === "current" ? "current" : String(projFilter)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setProjFilter(v === "all" ? "all" : v === "current" ? "current" : Number(v));
+              }}
+              title="按入库来源项目检索（旧条目未记录来源，仅「全部项目」下可见）"
+              style={{ flex: 1, minWidth: 0, fontSize: 10.5, padding: "4px 6px", borderRadius: 7, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", outline: "none", cursor: "pointer" }}
+            >
+              <option value="all">全部项目</option>
+              {currentProjectId != null && <option value="current">本项目（{projTitle(currentProjectId)}）</option>}
+              {sourceProjectIds.filter((pid) => pid !== currentProjectId).map((pid) => (
+                <option key={pid} value={String(pid)}>{projTitle(pid)}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {/* 加载中显骨架，避免慢网/首帧误把「有数据的库」显示成空引导 */}
         {isLoading && !items && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 2px" }}>
@@ -197,6 +246,13 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
                     {it.name}
                   </span>
                   <span style={{ flexShrink: 0, fontSize: 8.5, fontWeight: 700, padding: "1px 5px", borderRadius: 6, background: isScene ? "oklch(0.62 0.16 240 / 0.5)" : "oklch(0.66 0.18 30 / 0.5)", color: "#fff" }}>{isScene ? "场景" : "人物"}</span>
+                  {/* #272 来源项目角标（有记录才显示；全部视图下辅助辨认归属） */}
+                  {srcOf(it) != null && (
+                    <span title={`入库来源：${projTitle(srcOf(it)!)}`}
+                      style={{ flexShrink: 0, fontSize: 8.5, padding: "1px 5px", borderRadius: 6, background: "oklch(0 0 0 / 0.45)", border: "1px solid oklch(1 0 0 / 0.18)", color: "oklch(0.85 0.02 260)", maxWidth: 56, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {projTitle(srcOf(it)!)}
+                    </span>
+                  )}
                   {hasAudio && <Music className="w-2.5 h-2.5 flex-shrink-0" style={{ color: "#fff", opacity: 0.85 }} />}
                   {hasVideo && <Film className="w-2.5 h-2.5 flex-shrink-0" style={{ color: "#fff", opacity: 0.85 }} />}
                 </div>
