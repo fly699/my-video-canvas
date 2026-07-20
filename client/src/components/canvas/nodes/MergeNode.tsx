@@ -12,7 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 import { MERGE_TRANSITION_OPTIONS, type MergeNodeData, type MergeSeamTransition, type MergeTransition, type VideoTaskNodeData } from "../../../../../shared/types";
 import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { trpc } from "@/lib/trpc";
-import { assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
+import { removeMergeSegmentPatch, reorderMergeSegmentsPatch, assembleFromStoryboards, assembledPlanToMergePatch } from "@/lib/storyboardGen";
 import { buildShotSubtitles } from "@/lib/shotSubtitles";
 import { toast } from "sonner";
 import { mediaFetchUrl } from "@/lib/download";
@@ -222,17 +222,23 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
         ...graphItems.filter((g) => !manualOrder.includes(g.url)),
       ]
     : graphItems;
+  // #281 删段/重排：逐缝转场与逐镜配音/音效/对白/时长/绑定六个平行数组【确定性跟随】
+  //（纯函数 removeMergeSegmentPatch/reorderMergeSegmentsPatch，可单测）。此前只更新
+  // inputVideoUrls，而 #244 守卫比对的快照恰好被同步更新、恒为真——删除点之后的转场
+  // 整体前移错套、配音错配到前一镜并被真实发送（用户实问后核查发现的静默错位）。
   const reorder = (from: number, to: number) => {
-    if (from === to) return;
-    const arr = orderItems.map((x) => x.url);
-    const [m] = arr.splice(from, 1);
-    arr.splice(to, 0, m);
-    update({ inputVideoUrls: arr });
+    const patch = reorderMergeSegmentsPatch(payload, orderItems.map((x) => x.url), from, to);
+    if (patch.inputVideoUrls) update(patch as Partial<typeof payload>);
+  };
+  const removeSegAt = (i: number) => {
+    const patch = removeMergeSegmentPatch(payload, orderItems.map((x) => x.url), i);
+    if (patch.inputVideoUrls) update(patch as Partial<typeof payload>);
   };
 
   // #244 逐接缝转场编辑：仅当 segTransitions 与当前段顺序对齐时视为「开启」——
-  // 「按镜头表装配」的产物天然满足此条件，可直接在此微调；顺序一变即自动失配收起
-  // （与发送端 aligned 守卫同一判定，UI 状态与实际生效状态永远一致）。
+  // 「按镜头表装配」的产物天然满足此条件，可直接在此微调。#281 后 UI 内的删段/重排
+  // 会连平行数组一起对齐（守卫保持为真、转场语义正确）；此守卫仍拦「图侧顺序变化
+  //（新连线/改标题）导致的失配」，失配即收起、发送端同判定不发错位数据。
   const seamUrls = orderItems.map((x) => x.url);
   const seamEditOn = !!payload.segTransitions?.length
     && payload.inputVideoUrls?.length === seamUrls.length
@@ -445,8 +451,8 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
                   <span style={{ width: 16, height: 16, flexShrink: 0, borderRadius: 4, background: accentA(0.18), color: accent, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: "var(--c-t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={it.url}>{it.label}</span>
                   <button
-                    onClick={() => update({ inputVideoUrls: orderItems.filter((_, j) => j !== i).map((x) => x.url) })}
-                    title="从合并列表移除"
+                    onClick={() => removeSegAt(i)}
+                    title="从合并列表移除（转场与配音对位自动跟随对齐）"
                     style={{ flexShrink: 0, padding: 2, lineHeight: 0, background: "none", border: "none", color: "var(--c-t4)", cursor: "pointer" }}
                   ><X style={{ width: 11, height: 11 }} /></button>
                 </div>

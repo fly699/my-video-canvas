@@ -298,6 +298,66 @@ export function assembledPlanToMergePatch(plan: AssembledPlan) {
   };
 }
 
+// ── #281 合并段列表手动删段/拖动重排：平行数组确定性跟随 ─────────────────────
+// 用户实问「手动删除某镜转场会自动对齐吗」——核查发现此前不会且【静默错位】：
+// 删除/重排只更新 inputVideoUrls，segTransitions 与逐镜配音/音效/对白/时长/绑定
+// 六个平行数组原地不动；而 #244 对齐守卫比对的 inputVideoUrls 快照恰好被 UI 同步
+// 更新、恒为真形同虚设——删除点之后的接缝转场整体前移一位错套、逐镜配音全部错配
+// 到前一镜，并被真实发送合成。语义约定（与装配一致）：segTransitions[j] 是【段 j
+// 自己的转场】、管辖接缝 j→j+1（前段决定转场）——删段删它自己的转场（删末段删最后
+// 一个接缝）；重排把转场当段的属性随段携带（末段补 none 参与置换、新末段的丢弃）。
+// 长度与当前段数不匹配的数组（本就失配的历史数据）原样不动，绝不伪造。
+
+/** 与段一一平行的合并 payload 数组键（装配产物，见 assembledPlanToMergePatch）。 */
+export interface MergeSegArrays {
+  inputVideoUrls?: string[];
+  segTransitions?: string[];
+  voiceUrls?: (string | null)[];
+  sfxUrls?: (string | null)[];
+  segDialogues?: (string | null)[];
+  segVoiceDurations?: (number | null)[];
+  sourceShots?: unknown[];
+}
+const SEG_PARALLEL_KEYS = ["voiceUrls", "sfxUrls", "segDialogues", "segVoiceDurations", "sourceShots"] as const;
+
+/** 删除第 i 段：urls 为当前生效段顺序（UI 的 orderItems）。返回要 update 的补丁。 */
+export function removeMergeSegmentPatch(p: MergeSegArrays, urls: string[], i: number): MergeSegArrays {
+  const n = urls.length;
+  if (i < 0 || i >= n) return {};
+  const patch: MergeSegArrays = { inputVideoUrls: urls.filter((_, j) => j !== i) };
+  for (const k of SEG_PARALLEL_KEYS) {
+    const arr = p[k];
+    if (Array.isArray(arr) && arr.length === n) (patch as Record<string, unknown>)[k] = arr.filter((_, j) => j !== i);
+  }
+  const seg = p.segTransitions;
+  if (Array.isArray(seg) && seg.length === n - 1 && n > 1) {
+    const cut = Math.min(i, seg.length - 1); // 删末段=删最后一个接缝；删其余=删该段自己的转场
+    const next = seg.filter((_, j) => j !== cut);
+    patch.segTransitions = next.length > 0 ? next : undefined;
+  }
+  return patch;
+}
+
+/** 段从 from 拖到 to：平行数组按同一置换重排；转场随段携带（own[末段]=none 填充）。 */
+export function reorderMergeSegmentsPatch(p: MergeSegArrays, urls: string[], from: number, to: number): MergeSegArrays {
+  const n = urls.length;
+  if (from === to || from < 0 || from >= n || to < 0 || to >= n) return {};
+  const perm = urls.map((_, j) => j);
+  const [moved] = perm.splice(from, 1);
+  perm.splice(to, 0, moved); // perm[新下标] = 旧下标
+  const patch: MergeSegArrays = { inputVideoUrls: perm.map((j) => urls[j]) };
+  for (const k of SEG_PARALLEL_KEYS) {
+    const arr = p[k];
+    if (Array.isArray(arr) && arr.length === n) (patch as Record<string, unknown>)[k] = perm.map((j) => arr[j]);
+  }
+  const seg = p.segTransitions;
+  if (Array.isArray(seg) && seg.length === n - 1) {
+    const own = [...seg, "none"]; // own[j] = 段 j 自己的转场；末段无接缝补 none
+    patch.segTransitions = perm.map((j) => own[j]).slice(0, n - 1);
+  }
+  return patch;
+}
+
 /** 从合并节点出发，按「上游视频 → 其上游分镜」回溯，按镜号排序产出装配清单。
  *  纯函数（画布快照注入），便于单测。仅纳入「能回溯到分镜」且已出片的视频节点。 */
 export function assembleFromStoryboards(
