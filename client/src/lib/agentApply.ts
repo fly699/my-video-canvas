@@ -945,6 +945,11 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
   //    摘要当全量画布，自信地回答「画布上没有 X」。
   const DROP_RANK: Partial<Record<string, number>> = { note: 0, character: 1, script: 2, prompt: 3 };
   let nl = nodeLines, el = edgeLines;
+  // #286 降级保身份（用户实报+截图：49 个角色被整条丢光，助手拿不到任何角色 id、
+  // 连「删哪个」都无法安全判断）：整条丢弃前先把低优先节点压成
+  // {id,type,title,name,hasImage} 存根——丢内容不丢身份。存根 ~60 字 vs 全量行数百字，
+  // 同样的 18000 帽下能装下多一个数量级的节点身份；全部压完仍超限才走整条丢弃。
+  const stubbed = new Set<unknown>();
   // ③ stats：各类型节点的【真实总数】（按全量 nodeLines 统计，与是否被省略无关）。
   // 「画布上共几个视频节点/缺不缺 SH06」这类清点问题，模型此前靠在几十行 JSON 里
   // 人肉数数，漏数了就反复否定用户（实报截图：先说缺 SH11、再说缺 SH06/SH09）。
@@ -954,8 +959,12 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
   const build = () => {
     const dropN = nodeLines.length - nl.length, dropE = edgeLines.length - el.length;
     const o: Record<string, unknown> = { stats, nodes: nl, edges: el };
-    if (dropN > 0 || dropE > 0) {
-      o.truncated = `画布过大，本摘要已省略${dropN > 0 ? ` ${dropN} 个节点` : ""}${dropN > 0 && dropE > 0 ? "、" : ""}${dropE > 0 ? ` ${dropE} 条连线` : ""}——省略≠不存在，回答「画布上有没有/找不到某节点」类问题前必须先说明摘要不完整`;
+    if (dropN > 0 || dropE > 0 || stubbed.size > 0) {
+      const parts: string[] = [];
+      if (dropN > 0) parts.push(`完全省略 ${dropN} 个节点`);
+      if (dropE > 0) parts.push(`省略 ${dropE} 条连线`);
+      if (stubbed.size > 0) parts.push(`将 ${stubbed.size} 个节点压缩为仅含 id/类型/标题/名字的存根（内容字段被省略，节点真实存在、可直接用其 id 操作）`);
+      o.truncated = `画布过大，本摘要已${parts.join("、")}——省略≠不存在，回答「画布上有没有/找不到某节点」类问题前必须先说明摘要不完整`;
     }
     return JSON.stringify(o);
   };
@@ -964,13 +973,35 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
     if (el.length > 0) {
       el = el.slice(0, -1);
     } else {
-      // 找「最可丢」的一条：DROP_RANK 越小越先丢；同级丢靠后的（保住早期主链）。
-      let victim = nl.length - 1, best = Number.POSITIVE_INFINITY;
+      // #286 ① 先降级：找「最可丢」且未存根化的低优先节点，压成身份存根（保 id/名字）。
+      let si = -1, sbest = Number.POSITIVE_INFINITY;
       for (let i = nl.length - 1; i >= 0; i--) {
-        const r = DROP_RANK[(nl[i] as { type?: string }).type ?? ""] ?? 10;
-        if (r < best) { best = r; victim = i; if (r === 0) break; }
+        const x = nl[i] as Record<string, unknown>;
+        const r = DROP_RANK[(x.type as string) ?? ""] ?? 10;
+        if (r >= 10 || stubbed.has(x.id)) continue;
+        if (r < sbest) { sbest = r; si = i; if (r === 0) break; }
       }
-      nl = nl.filter((_, i) => i !== victim);
+      if (si >= 0) {
+        const x = nl[si] as Record<string, unknown>;
+        const stub: Record<string, unknown> = { id: x.id, type: x.type, title: x.title };
+        // 角色/场景的身份即名字；hasImage（已有定妆照/场景图）是复用判断的关键信号，一并保留。
+        if (typeof x.name === "string") stub.name = x.name;
+        if (typeof x.sceneName === "string") stub.sceneName = x.sceneName;
+        if (x.hasImage === true) stub.hasImage = true;
+        stubbed.add(x.id);
+        nl = nl.map((v, i) => (i === si ? (stub as (typeof nl)[number]) : v));
+      } else {
+        // ② 全部可降级节点已存根仍超限 → 整条丢弃（原 #280 逻辑）：DROP_RANK 越小越先丢；
+        // 同级丢靠后的（保住早期主链）。
+        let victim = nl.length - 1, best = Number.POSITIVE_INFINITY;
+        for (let i = nl.length - 1; i >= 0; i--) {
+          const r = DROP_RANK[(nl[i] as { type?: string }).type ?? ""] ?? 10;
+          if (r < best) { best = r; victim = i; if (r === 0) break; }
+        }
+        const vid = (nl[victim] as { id?: unknown }).id;
+        stubbed.delete(vid); // 被整条丢弃的不再计入「存根」数，避免 truncated 双重计数
+        nl = nl.filter((_, i) => i !== victim);
+      }
     }
     json = build();
   }
