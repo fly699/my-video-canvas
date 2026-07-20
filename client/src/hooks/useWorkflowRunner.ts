@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { useCanvasStore, type CanvasNode } from "./useCanvasStore";
 import { compareUpstreamNodes } from "@/lib/inputOrder";
 import { toast } from "sonner";
-import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData, ComfyuiWorkflowNodeData } from "../../../shared/types";
+import type { NodeType, WorkflowParamBinding, StoryboardNodeData, ImageGenNodeData, NodeData, ComfyuiWorkflowNodeData, CharacterNodeData } from "../../../shared/types";
 import { VIDEO_PROVIDERS } from "../../../shared/types";
 import { detectUpstreamImageUrl, detectUpstreamStoryboardDuration, resolveComfyFramesFromDuration, resolveAudioParamsWithMap, listUpstreamAudioSources } from "../lib/comfyWorkflowParams";
 import { buildWorkflowRunInput } from "../lib/workflowRunInput";
@@ -15,6 +15,11 @@ import { buildImageGenInput } from "../lib/imageGenBuild";
 import { COMFY_LOCAL_MODEL } from "../lib/comfyLocalRoute";
 import { buildLocalComfyImageInput } from "../lib/comfyLocalImageGen";
 import { composeCharacterEffectPrompt } from "../lib/promptCompose";
+// #275 角色/场景节点执行：提示词/比例与角色卡「一键定妆照/场景图」按钮、助手
+// 「自动定妆」共用 characterPortrait 单一事实源；跳过判定与模型解析共用
+// costEstimate.characterRunPlan（与运行确认弹窗的估价严格同口径）。
+import { buildCharacterImagePrompt, characterImageAspect } from "../lib/characterPortrait";
+import { characterRunPlan } from "../lib/costEstimate";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { handleWhitelistError } from "./useWhitelistBlocked";
 import { effectiveCharacters, effectiveCharacterRefImages, effectiveSceneRefImages, stripCharacterMentions } from "../lib/characterConditioning";
@@ -1117,6 +1122,71 @@ export function useWorkflowRunner() {
             const wfDownstream = computeRefImageUpdates(nodeId, firstUrl, wfNodes, wfEdges);
             if (wfDownstream.length > 0) useCanvasStore.getState().batchUpdateNodeData(wfDownstream);
           }
+          completed.push(nodeId);
+          return "ok";
+
+        // ── Character / Scene（#275）────────────────────────────────────────
+        // 按类别生成定妆照(3:4)/场景图(16:9) 并写入主参考图。fill-only：已有主参考图
+        // 或没有可用描述 → 跳过（不生成不计费，绝不覆盖用户已有的图——用户设置第一位）。
+        // 下游生图/生视频节点在各自执行时经 effectiveCharacters 现读角色参考图，
+        // 因此这里只需写回本节点，无需显式向下游传播。
+        } else if (nodeType === "character") {
+          const plan = characterRunPlan(p, resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string);
+          if (plan.skip) {
+            completed.push(nodeId); // 视作已完成：下游照常解锁
+            return "skip";
+          }
+          const cp = p as unknown as CharacterNodeData;
+          const isScene = (cp.characterKind ?? "person") === "scene";
+          const imgLabel = isScene ? "场景图" : "定妆照";
+          const prompt = buildCharacterImagePrompt(cp);
+          const aspect = characterImageAspect(cp);
+          // 运行态写 payload.status——BaseNode 常驻进度条可见（#271 同一套指示体系）。
+          useCanvasStore.getState().updateNodeData(nodeId, { status: "processing", errorMessage: undefined }, true);
+          let url = "";
+          try {
+            if (plan.model === COMFY_LOCAL_MODEL) {
+              // 与 image_gen/storyboard 的本地 ComfyUI 路由同口径（ckpt/地址从全局共享读取）。
+              const local = buildLocalComfyImageInput({
+                prompt, aspect, projectId: node.data.projectId, nodeId,
+              });
+              if (!local.ok) {
+                useCanvasStore.getState().updateNodeData(nodeId, { status: "failed", errorMessage: `${imgLabel}生成失败：${local.blocked}` }, true);
+                failed.push(nodeId);
+                return "fail";
+              }
+              const gen = await comfyuiImageMutation.mutateAsync(local.input);
+              url = gen.url || "";
+            } else {
+              // 与角色卡 handlePortrait 云端分支同一提交口径（aspect 三字段冗余覆盖
+              // poyo/reve/通用；plan.model 为空时不传 model 走服务端默认——与按钮一致）。
+              const gen = await imageGenMutation.mutateAsync({
+                prompt,
+                aspectRatio: aspect,
+                poyoAspectRatio: aspect,
+                reveAspectRatio: aspect,
+                projectId: node.data.projectId,
+                ...(plan.model ? { model: plan.model } : {}),
+              } as Parameters<typeof imageGenMutation.mutateAsync>[0]);
+              url = gen.urls?.[0] || gen.url || "";
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            useCanvasStore.getState().updateNodeData(nodeId, { status: "failed", errorMessage: `${imgLabel}生成失败：${msg}` }, true);
+            throw err; // 交外层 catch 统一 toast + failed 记账
+          }
+          // 长任务期间节点可能被删——写回前防复活幽灵节点（与 comfyui 分支同守卫）。
+          if (!useCanvasStore.getState().nodes.some((n2) => n2.id === nodeId)) return "ok";
+          if (!url) {
+            useCanvasStore.getState().updateNodeData(nodeId, { status: "failed", errorMessage: `${imgLabel}生成失败：未返回图像` }, true);
+            failed.push(nodeId);
+            return "fail";
+          }
+          useCanvasStore.getState().updateNodeData(nodeId, {
+            referenceImageUrl: url,
+            referenceStorageKey: undefined,
+            status: undefined, errorMessage: undefined, // 成功清运行态（常驻进度条消失）
+          }, true);
           completed.push(nodeId);
           return "ok";
         }

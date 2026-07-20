@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget } from "./costEstimate";
+import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget, characterRunPlan, buildRunPlanItems, aggregateRunPlan } from "./costEstimate";
 
 describe("estimateVideoCost", () => {
   it("按时长线性计费（poyo kling 2.1 std：6 cr/s）", () => {
@@ -265,5 +265,104 @@ describe("estimateCanvasBudget — 画布级预算汇总", () => {
     ]);
     expect(b.pt).toBe(6);
     expect(b.runnableCount).toBe(1);
+  });
+  it("#275 角色/场景节点：fill-only——已有主图/无描述跳过不计价，无图有描述按生图模型计价", () => {
+    const resolve = (nt: string, slot: string): string | undefined =>
+      nt === "character" && slot === "image" ? "kie_gpt_image_2" : undefined;
+    const b = estimateCanvasBudget([
+      node("character", { name: "李雷", appearance: "短黑发", referenceImageUrl: "https://x/a.png" }), // 已有主图 → 跳过
+      node("character", {}),                                                                            // 无任何描述 → 跳过
+      node("character", { name: "韩梅梅", appearance: "长发" }),                                        // 定妆照 1K=6 点
+      node("character", { characterKind: "scene", sceneName: "足球场", atmosphere: "黄昏" }),           // 场景图 1K=6 点
+    ], resolve);
+    expect(b.pt).toBe(12);
+    expect(b.runnableCount).toBe(2);   // 两个跳过项不计入
+    expect(b.unknownCount).toBe(0);
+    expect(b.lines.some((l) => l.label.includes("定妆照"))).toBe(true);
+    expect(b.lines.some((l) => l.label.includes("场景图"))).toBe(true);
+  });
+});
+
+describe("#275 characterRunPlan — 运行器/估价/弹窗共用的角色运行决策", () => {
+  const resolve = (nt: string, slot: string): string | undefined =>
+    nt === "character" && slot === "image" ? "kie_gpt_image_2" : undefined;
+  it("已有主参考图 → skip（fill-only 绝不覆盖已有图）", () => {
+    expect(characterRunPlan({ name: "李雷", appearance: "短发", referenceImageUrl: " https://x/a.png " }, resolve).skip).toBeTruthy();
+  });
+  it("无可用描述 → skip，人物/场景各给对应原因", () => {
+    expect(characterRunPlan({}, resolve).skip).toContain("定妆照");
+    expect(characterRunPlan({ characterKind: "scene" }, resolve).skip).toContain("场景图");
+  });
+  it("无图有描述 → 不 skip，模型走 resolveModel（node 环境无 localStorage 工具箱模型）", () => {
+    const plan = characterRunPlan({ name: "韩梅梅", appearance: "长发" }, resolve);
+    expect(plan.skip).toBeUndefined();
+    expect(plan.model).toBe("kie_gpt_image_2");
+  });
+});
+
+describe("#276 buildRunPlanItems / aggregateRunPlan — 运行确认弹窗逐节点明细", () => {
+  const n = (id: string, nodeType: string, payload: Record<string, unknown> = {}, title = id) =>
+    ({ id, title, data: { nodeType, payload } });
+  const resolve = (nt: string, slot: string): string | undefined => {
+    if (slot === "image") return "kie_gpt_image_2";
+    if (nt === "video_task" && slot === "video") return "kie_kling21_std";
+    return undefined;
+  };
+  const mixed = [
+    n("v1", "video_task", { provider: "kie_kling21_std", duration: 5 }),   // priced 25 点
+    n("i1", "image_gen", { model: "kie_gpt_image_2" }),                    // priced 6 点
+    n("sb1", "storyboard", {}),                                            // skipped（有下游 image_gen）
+    n("sb2", "storyboard", { skipAutoImage: true }),                       // skipped
+    n("c1", "character", { name: "李雷", appearance: "短发" }),            // priced 6 点（定妆照）
+    n("c2", "character", { referenceImageUrl: "https://x/a.png", name: "韩" }), // skipped（fill-only）
+    n("d1", "video_task", { provider: "kie_kling21_std", disabled: true }),// skipped（跳过执行）
+    n("cl1", "clip", {}),                                                  // free
+    n("cf1", "comfyui_image", {}),                                         // local
+    n("note", "note", {}),                                                 // 非 RUNNABLE → 不出现在清单
+  ];
+  const edges = [{ source: "sb1", target: "i1" }];
+  it("kind 分类与跳过原因与运行器同口径；非 RUNNABLE 类型不入清单", () => {
+    const items = buildRunPlanItems(mixed, resolve, edges);
+    const by = (id: string) => items.find((i) => i.id === id)!;
+    expect(items.some((i) => i.id === "note")).toBe(false);
+    expect(by("v1").kind).toBe("priced");
+    expect(by("i1").kind).toBe("priced");
+    expect(by("sb1").kind).toBe("skipped");
+    expect(by("sb1").skipReason).toContain("出图工位");
+    expect(by("sb2").kind).toBe("skipped");
+    expect(by("c1").kind).toBe("priced");
+    expect(by("c1").modelLabel).toContain("定妆照");
+    expect(by("c2").kind).toBe("skipped");
+    expect(by("d1").kind).toBe("skipped");
+    expect(by("cl1").kind).toBe("free");
+    expect(by("cf1").kind).toBe("local");
+  });
+  it("全选汇总 == estimateCanvasBudget 的 pt/cr（同一画布、无 audio 节点时两函数必须同数）", () => {
+    const items = buildRunPlanItems(mixed, resolve, edges);
+    const agg = aggregateRunPlan(items);
+    const budget = estimateCanvasBudget(
+      mixed.map((x) => ({ id: x.id, data: x.data })), resolve, edges);
+    expect(agg.pt).toBe(budget.pt);   // 25 + 6 + 6 = 37
+    expect(agg.cr).toBe(budget.cr);
+    expect(agg.pt).toBe(37);
+  });
+  it("取消勾选实时重算：去掉 v1 后总价精确减去其单价；全部取消归零", () => {
+    const items = buildRunPlanItems(mixed, resolve, edges);
+    const all = aggregateRunPlan(items);
+    const minusV1 = aggregateRunPlan(items, new Set(["v1"]));
+    expect(minusV1.pt).toBe(all.pt - 25);
+    expect(minusV1.selectedCount).toBe(all.selectedCount - 1);
+    const none = aggregateRunPlan(items, new Set(items.map((i) => i.id)));
+    expect(none.pt).toBe(0);
+    expect(none.cr).toBe(0);
+    expect(none.selectedCount).toBe(0);
+  });
+  it("skipped 项不可选也不计数：deselect 它不影响任何统计", () => {
+    const items = buildRunPlanItems(mixed, resolve, edges);
+    const a = aggregateRunPlan(items);
+    const b = aggregateRunPlan(items, new Set(["sb1", "c2", "d1"]));
+    expect(b.pt).toBe(a.pt);
+    expect(b.selectedCount).toBe(a.selectedCount);
+    expect(a.skippedCount).toBe(4); // sb1 + sb2 + c2 + d1
   });
 });
