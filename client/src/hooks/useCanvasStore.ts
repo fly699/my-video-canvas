@@ -223,6 +223,13 @@ interface CanvasStore {
    *  suppress per-action history pushes during `fn` (used when the agent applies
    *  a multi-step plan so one Ctrl+Z reverts the whole batch). */
   runBatch: (fn: () => void) => void;
+  /** #271 手动提交一步历史快照（snap=某时刻的 nodes/edges，通常是拖动开始前抓取的）。
+   *  用途：拖动结束时把「拖前状态」入历史，使拖动可被 Ctrl+Z 单步撤销——此前拖动
+   *  by design 不入历史，助手放置一批节点后用户拖动摆位再按 Ctrl+Z，past 栈顶就是
+   *  「放置前」快照，一撤销整批 AI 节点全部消失（用户实报 bug 的根因）。
+   *  尊重 _suppressHistory（runBatch 期间调用不重复入档）；入档同时清空 redo 栈
+   *  （与 pushHistory 一致：新分支产生后旧 future 不再可达）。 */
+  commitHistorySnapshot: (snap: { nodes: CanvasNode[]; edges: CanvasEdge[] }) => void;
   /** internal: when true, mutating actions skip their own pushHistory. */
   _suppressHistory: boolean;
   updateNodeTitle: (id: string, title: string) => void;
@@ -962,6 +969,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       isDirty: true,
     }));
     return newGroupId;
+  },
+
+  // #271 拖动可撤销：Canvas 在拖动开始时抓 {nodes, edges} 引用（不可变数据，抓引用即
+  // 快照），拖动结束且确有位移时经此入一步历史——Ctrl+Z 先撤拖动、再撤更早的结构变更，
+  // 不再出现「助手放置一批后拖两下，一撤销整批全没」。
+  commitHistorySnapshot: (snap) => {
+    if (get()._suppressHistory) return;
+    set((s) => ({ past: [...s.past, { nodes: snap.nodes, edges: snap.edges }].slice(-MAX_HISTORY), future: [] }));
   },
 
   runBatch: (fn) => {

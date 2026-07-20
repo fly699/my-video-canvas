@@ -810,6 +810,12 @@ export interface CharacterNodeData {
   sceneDescription?: string;
   atmosphere?: string;
   timeOfDay?: string;
+  /** #271 定妆照/场景图生成运行态：生成中 "processing"（BaseNode 常驻进度条据此显示，
+   *  节点收缩也可见）、失败 "failed"（常驻红条 + errorMessage）；成功后清除。属
+   *  CLONE_RUNTIME_FIELDS——复制节点自动剥离、协作广播自动过滤，不会污染他人进度。 */
+  status?: "processing" | "failed";
+  progress?: number;
+  errorMessage?: string;
   // Shared
   referenceImageUrl?: string;
   referenceStorageKey?: string;

@@ -1459,10 +1459,17 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // ── 群组「统一拖动」：拖动 group 容器时，其成员（childIds 中、且未被一起多选拖动的）
   //    按相同位移实时跟随（绝对坐标 + 静默更新，与普通拖动一致不入历史）。 ──
   const groupDragRef = useRef<{ groupStart: { x: number; y: number }; children: { id: string; start: { x: number; y: number } }[] } | null>(null);
+  // #271 拖动可撤销：拖动开始抓 {nodes, edges} 引用作快照（store 数据不可变，抓引用零成本），
+  // 拖动结束且确有位移时 commitHistorySnapshot 入一步历史。此前拖动完全不入历史——
+  // 助手放置一批节点后用户拖动摆位，再按 Ctrl+Z 时 past 栈顶就是「放置前」快照，
+  // 整批 AI 节点一撤全没（用户实报 bug）。现在 Ctrl+Z 先逐步撤拖动、再撤放置。
+  const dragHistSnapRef = useRef<{ nodes: CanvasNode[]; edges: CanvasEdge[] } | null>(null);
   const handleNodeDragStart = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    const stNow = useCanvasStore.getState();
+    dragHistSnapRef.current = { nodes: stNow.nodes, edges: stNow.edges };
     // 「拖拽不展开」：把被拖动(含随之移动的整个选区)的节点标记为手势选中——不展开配置区，
     // 直到被真正点击。onNodeClick(仅无拖动时触发)会清除该标记。
-    const sel = useCanvasStore.getState().nodes.filter((n) => n.selected).map((n) => n.id);
+    const sel = stNow.nodes.filter((n) => n.selected).map((n) => n.id);
     markGestureSelected(sel.length ? sel : [node.id]);
     if (node.data.nodeType !== "group") { groupDragRef.current = null; return; }
     const childIds = ((node.data.payload as GroupNodeData).childIds) ?? [];
@@ -2943,6 +2950,15 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onNodeDragStart={handleNodeDragStart as unknown as Parameters<typeof ReactFlow>[0]["onNodeDragStart"]}
             onNodeDrag={handleNodeDrag as unknown as Parameters<typeof ReactFlow>[0]["onNodeDrag"]}
             onNodeDragStop={(_, node, draggedNodes) => {
+              // #271 拖动确有位移 → 把拖前快照入一步历史（纯点击/零位移不入，防历史噪音）。
+              {
+                const snap = dragHistSnapRef.current;
+                dragHistSnapRef.current = null;
+                const before = snap?.nodes.find((n) => n.id === node.id);
+                if (snap && before && (before.position.x !== node.position.x || before.position.y !== node.position.y)) {
+                  useCanvasStore.getState().commitHistorySnapshot(snap);
+                }
+              }
               // 群组容器拖动结束：成员已随动（静默），这里广播成员的最终位置给协作者。
               const g = groupDragRef.current;
               if (g && (node as CanvasNode).data.nodeType === "group" && g.children.length > 0) {
