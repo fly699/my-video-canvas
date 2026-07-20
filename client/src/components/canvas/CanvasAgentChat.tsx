@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { buildGraphSummary, applyAgentOperations, ensureAliasNums } from "@/lib/agentApply";
+import { buildGraphSummary, applyAgentOperations, ensureAliasNums, buildNodeDetailText } from "@/lib/agentApply";
 // #260 附件即可引用：{{refN}} 占位符 → 附件真实地址的确定性替换 + library 入库操作抽取。
 import { resolveAttachmentRefs } from "@/lib/attachmentRefs";
 import { runAnimaticFromCanvas, type AnimaticEditorClient } from "@/lib/animaticRun";
@@ -722,7 +722,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
 
   // 规划结果统一落地（send 与 #251 跨会话恢复共用）：应用操作 → 追加助手回合 → 自动增强。
   // 恢复路径用的是「当前」quickPrefs（附件等一次性上下文只影响规划本身，结果应用不依赖）。
-  const applyChatResult = (r: AgentChatResult): ReturnType<typeof applyAgentOperations> | null => {
+  const applyChatResult = (r: AgentChatResult): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
     let applyRes: ReturnType<typeof applyAgentOperations> | null = null;
     // #260 附件即可引用：先把 {{refN}} 占位符替换成发送时登记的附件真实地址、并抽走
     // library 入库操作（applyAgentOperations 只认画布语义）。attachRefsRef 在 send() 时
@@ -756,6 +756,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     //（省略=全部），执行放在画布操作落地【之后】——「建 3 个角色并全部入库」这类
     // 同批指令要能把刚落地的新角色也收进去。
     const saveLibOps = (resolved.nodeOps as AgentOperation[]).filter((o) => o.op === "canvas" && o.action === "save_library");
+    // #291 fetch_details：模型请求存根节点全文（信息收集轮）。收到即【不应用其余操作】
+    //（模型意图是先看内容再规划），把 ids 交回 send() 自动带全文重发一次。
+    const fetchOps = (resolved.nodeOps as AgentOperation[]).filter((o) => o.op === "canvas" && o.action === "fetch_details");
+    if (fetchOps.length) {
+      const fetchIds = Array.from(new Set(fetchOps.flatMap((o) => [...(o.targetRefs ?? []), ...(o.targetRef ? [o.targetRef] : [])])));
+      setTurns((p) => [...p, { role: "assistant", content: r.reply || "需要先查看部分节点的完整内容，正在自动补充后重新规划…" }]);
+      return { apply: null, fetchIds };
+    }
     const ops = (resolved.nodeOps as AgentOperation[]).filter(
       (o) => !(o.op === "canvas" && (o.action === "animatic" || o.action === "save_library")),
     );
@@ -803,7 +811,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     }
     const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
     setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
-    return applyRes;
+    return { apply: applyRes, fetchIds: [] };
   };
 
   // #251 跨进出画布续跑：挂载后查本项目是否有「进行中/已完成未取走」的规划任务
@@ -825,7 +833,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     void (async () => {
       try {
         const r = await pollAgentChatJob(utils.client, job.jobId, controller.signal, (p) => { if (p.stage) setPlanStage(p.stage); });
-        applyChatResult(r);
+        const out = applyChatResult(r);
+        // #291 恢复路径没有原消息可自动弹跳——提示用户重发即可（fetch_details 极少出现在恢复轮）。
+        if (out.fetchIds.length) toast.info("助手请求了部分节点的全文——请把刚才的消息重发一次以继续", { duration: 7000 });
         toast.success("已恢复并完成上次的规划任务", { duration: 3500 });
       } catch (e) {
         if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) return;
@@ -900,9 +910,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       // #290 摘要档位：压缩=短别名 nN（发送前 ensureAliasNums 持久化补号；框选白名单同时
       // 携带 短号+真实 id 双形态，模型引用哪种都过 sanitize/apply）；标准=全量真实 id 回退档。
       const aliasMode = quickPrefs.summaryMode !== "standard";
-      const doPlan = async (aliasOn: boolean) => {
+      const doPlan = async (aliasOn: boolean, extraDetail?: string) => {
         if (aliasOn) ensureAliasNums();
-        const summary = buildGraphSummary("", { ...(focus.length ? { focusNodeIds: focus } : {}), aliasIds: aliasOn });
+        const summary = buildGraphSummary("", { ...(focus.length ? { focusNodeIds: focus } : {}), aliasIds: aliasOn, relevanceQuery: msg });
         let selIds: string[] | undefined;
         if (focus.length) {
           const numById = new Map(useCanvasStore.getState().nodes.map((n) => [n.id, (n.data.payload as { aliasNum?: unknown } | undefined)?.aliasNum]));
@@ -916,15 +926,28 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
           // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
           // A3 增量规划：框选节点透传服务端 → prompt 硬约束 + sanitize 拦框选外的 update/delete。
-          { projectId, message: msg, history, graphSummary: summary || undefined, selectedNodeIds: selIds, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined },
+          { projectId, message: extraDetail ? `${msg}\n\n【系统注入·你上一轮 fetch_details 请求的节点全文】\n${extraDetail}` : msg, history, graphSummary: summary || undefined, selectedNodeIds: selIds, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined },
           controller.signal,
           (p) => { if (p.stage) setPlanStage(p.stage); },
         );
         return applyChatResult(r);
       };
-      const appliedRes = await doPlan(aliasMode);
+      let outcome = await doPlan(aliasMode);
+      // #291 fetch_details 单跳弹跳：模型请求存根全文 → 自动带全文重发一次；第二轮再要
+      // 则忽略并提示（防循环）。取详为空（引用全部无效）不弹跳，直接提示。
+      if (outcome.fetchIds.length) {
+        const detail = buildNodeDetailText(outcome.fetchIds, { aliasIds: aliasMode });
+        if (detail) {
+          setPlanStage("已取回节点全文，重新规划中…");
+          outcome = await doPlan(aliasMode, detail);
+          if (outcome.fetchIds.length) toast.warning("助手再次请求节点全文，已忽略（防循环）——可框选相关节点后重问", { duration: 6000 });
+        } else {
+          toast.warning("助手请求的节点全文未找到（引用无效），本轮未做画布改动", { duration: 6000 });
+        }
+      }
       // #290 自动回退（单次，防循环）：压缩档下失败项 ≥2 且过半是「未找到 nN」型
       // （幻觉短号/摘要-画布错位）→ 自动切全量 id 重发一次。零星幻觉引用不触发。
+      const appliedRes = outcome.apply;
       if (aliasMode && appliedRes && appliedRes.failures.length >= 2) {
         const misses = appliedRes.failures.filter((f) => /[（「(]n\d+[）」)]/.test(f.reason)).length;
         if (misses >= 2 && misses * 2 >= appliedRes.failures.length) {

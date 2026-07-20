@@ -947,7 +947,36 @@ export function ensureAliasNums(): void {
   }
 }
 
-export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[]; aliasIds?: boolean } = {}): string {
+/** #291 fetch_details 按需取详：把指定节点（短号或真实 id 皆可）的全文详情编成 JSON 文本，
+ *  供客户端自动带回重新规划。字段全量（URL/Key 类与 aliasNum 除外——长且无语义纯费 token），
+ *  字符串截 800（远宽于摘要 60/400）。上限 20 个节点，未找到的引用静默跳过。 */
+export function buildNodeDetailText(refs: string[], opts: { aliasIds?: boolean } = {}): string {
+  const { nodes } = useCanvasStore.getState();
+  const byAlias = new Map<string, (typeof nodes)[number]>();
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const n of nodes) {
+    const num = (n.data.payload as { aliasNum?: unknown } | undefined)?.aliasNum;
+    if (typeof num === "number") byAlias.set(`n${num}`, n);
+  }
+  const clip800 = (v: unknown) => (typeof v === "string" && v.length > 800 ? v.slice(0, 800) + "…" : v);
+  const rows: Record<string, unknown>[] = [];
+  for (const ref of refs.slice(0, 20)) {
+    const n = byId.get(ref) ?? byAlias.get(ref);
+    if (!n) continue;
+    const p = (n.data.payload ?? {}) as Record<string, unknown>;
+    const kv: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(p)) {
+      if (v == null || v === "") continue;
+      if (/(url|urls|key|keys)$/i.test(k) || k === "aliasNum") continue;
+      kv[k] = clip800(v);
+    }
+    const num = (p as { aliasNum?: unknown }).aliasNum;
+    rows.push({ id: opts.aliasIds && typeof num === "number" ? `n${num}` : n.id, type: n.data.nodeType, title: n.data.title, ...kv });
+  }
+  return rows.length ? JSON.stringify(rows) : "";
+}
+
+export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: string[]; aliasIds?: boolean; relevanceQuery?: string } = {}): string {
   const { nodes, edges } = useCanvasStore.getState();
   // #290 短别名：压缩档摘要以 nN 替代 21 字符 nanoid——节点行、每条连线×2、以及模型
   // 输出的全部 targetRef/sourceRef 同步受益（输出 token 是规划延迟大头）。号取自
@@ -960,12 +989,28 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
     }),
   );
   const aid = (id: string) => aliasById.get(id) ?? id;
+  // #291 相关行集合：收缩（存根/丢弃）时同 rank 内先动不相关行；存根替换后新行不在集合
+  // 中（视为不相关）——相关节点的存根也晚于其它存根被整条丢弃。
+  const rowRel = new Set<Record<string, unknown>>();
   const focus = opts.focusNodeIds && opts.focusNodeIds.length ? new Set(opts.focusNodeIds) : null;
   // 分级截断：小范围（微调选中/小画布，≤12 节点）放宽到 400 字——增量编辑需要看到
   // 原文全貌才能精准改写；大画布维持 60 字防摘要爆 token（18000 硬帽兜底）。
   const scopedCount = focus ? focus.size : nodes.length;
   const clipLen = scopedCount <= 12 ? 400 : 60;
-  const clip = (v: unknown) => (typeof v === "string" ? (v.length > clipLen ? v.slice(0, clipLen) + "…" : v) : v);
+  // #291 相关性优先填充：本轮消息里【点名】的节点（名字/标题出现在消息中）与 failed
+  // 节点视为「相关」——大画布下相关节点仍给 400 字全文（其余维持 60 字），且收缩时
+  // 同优先级【先存根/丢弃不相关的】。relevanceQuery 不传（既有全部调用）时行为逐字节不变。
+  const relQ = (opts.relevanceQuery ?? "").trim();
+  const isRelevantNode = (n: (typeof nodes)[number]): boolean => {
+    if (!relQ) return false;
+    const p = (n.data.payload ?? {}) as Record<string, unknown>;
+    if (p.status === "failed") return true; // 自愈轮需要 error 全文
+    const names = [n.data.title, p.name, p.sceneName]
+      .filter((v): v is string => typeof v === "string" && v.trim().length >= 2);
+    return names.some((k) => relQ.includes(k.trim()));
+  };
+  const clipTo = (v: unknown, len: number) => (typeof v === "string" ? (v.length > len ? v.slice(0, len) + "…" : v) : v);
+  const clip = (v: unknown) => clipTo(v, clipLen);
   const nodeLines = nodes
     .filter((n) => n.id !== excludeNodeId && (!focus || focus.has(n.id)))
     .map((n) => {
@@ -973,7 +1018,9 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       const fields = SUMMARY_FIELDS[type] ?? [];
       const p = (n.data.payload ?? {}) as Record<string, unknown>;
       const kv: Record<string, unknown> = {};
-      for (const f of fields) if (p[f] != null && p[f] !== "") kv[f] = clip(p[f]);
+      const relevant = isRelevantNode(n);
+      const clipHere = relevant ? (v: unknown) => clipTo(v, Math.max(clipLen, 400)) : clip;
+      for (const f of fields) if (p[f] != null && p[f] !== "") kv[f] = clipHere(p[f]);
       // #268 动态样片可用性信号：分镜是否已有关键帧图。SUMMARY_FIELDS 一直不含
       // imageUrl（URL 长且无语义价值，纯浪费 token），导致模型对「图已生成」完全失明
       //（真机实测：图在画布上、模型仍答『没有关键帧图』拒发 animatic）。注入 1 个
@@ -1001,6 +1048,7 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
         kv.error = p.errorMessage.length > 160 ? p.errorMessage.slice(0, 160) + "…" : p.errorMessage;
       }
       const row: Record<string, unknown> = { id: aid(n.id), type, title: n.data.title, ...kv };
+      if (relevant) rowRel.add(row);
       // #289 可推导冗余剔除（真无损，规则已写进规划提示的摘要读法）：
       // ① 角色标题与名字完全相同 → 省 title（缺 title 的角色行标题即其名字）；
       // ② 分镜 promptText 与 description 相同（生成本就按 promptText||description 回退）
@@ -1081,8 +1129,9 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       let si = -1, sbest = Number.POSITIVE_INFINITY;
       for (let i = nl.length - 1; i >= 0; i--) {
         const x = nl[i] as Record<string, unknown>;
-        const r = DROP_RANK[(x.type as string) ?? ""] ?? 10;
-        if (r >= 10 || stubbed.has(x.id)) continue;
+        const base = DROP_RANK[(x.type as string) ?? ""] ?? 10;
+        if (base >= 10 || stubbed.has(x.id)) continue;
+        const r = base + (rowRel.has(x) ? 0.5 : 0); // #291 相关行同级晚动
         if (r < sbest) { sbest = r; si = i; if (r === 0) break; }
       }
       if (si >= 0) {
@@ -1099,7 +1148,7 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
         // 同级丢靠后的（保住早期主链）。
         let victim = nl.length - 1, best = Number.POSITIVE_INFINITY;
         for (let i = nl.length - 1; i >= 0; i--) {
-          const r = DROP_RANK[(nl[i] as { type?: string }).type ?? ""] ?? 10;
+          const r = (DROP_RANK[(nl[i] as { type?: string }).type ?? ""] ?? 10) + (rowRel.has(nl[i] as Record<string, unknown>) ? 0.5 : 0);
           if (r < best) { best = r; victim = i; if (r === 0) break; }
         }
         const vid = (nl[victim] as { id?: unknown }).id;

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useCanvasStore } from "../hooks/useCanvasStore";
-import { applyAgentOperations, buildGraphSummary, summarizePlanOps, aspectFieldsFor, ensureAliasNums } from "./agentApply";
+import { applyAgentOperations, buildGraphSummary, summarizePlanOps, aspectFieldsFor, ensureAliasNums, buildNodeDetailText } from "./agentApply";
 import { setLibraryCharacters } from "./characterConditioning";
 import type { AgentOperation } from "../../../shared/types";
 
@@ -1308,5 +1308,54 @@ describe("#290 摘要二期短别名：稳定分配 + 摘要短号 + apply 双�
     // 新视频节点被创建且 update 落在它身上
     const nv = st.nodes.find((n) => n.data.nodeType === "video_task")!;
     expect((nv.data.payload as { prompt?: string }).prompt).toBe("改的是新节点");
+  });
+});
+
+describe("#291 摘要三期：相关性优先填充 + buildNodeDetailText 取详", () => {
+  it("消息点名的节点在大画布下保留 400 字全文，未点名节点仍 60 字截断；不传 relevanceQuery 行为不变", () => {
+    const store = useCanvasStore.getState();
+    // >12 个节点触发大画布 60 字截断
+    for (let i = 0; i < 13; i++) store.addNode("note", { x: i * 10, y: 500 });
+    const hero = store.addNode("character", { x: 0, y: 0 });
+    store.updateNodeData(hero.id, { characterKind: "person", name: "林风", appearance: "外观" + "甲".repeat(120) }, true);
+    const other = store.addNode("character", { x: 0, y: 200 });
+    store.updateNodeData(other.id, { characterKind: "person", name: "路人", appearance: "外观" + "乙".repeat(120) }, true);
+
+    const rel = JSON.parse(buildGraphSummary("none", { relevanceQuery: "给林风加一个新镜头" })) as { nodes: Array<{ id: string; appearance?: string }> };
+    const heroRow = rel.nodes.find((n) => n.id === hero.id)!;
+    const otherRow = rel.nodes.find((n) => n.id === other.id)!;
+    expect((heroRow.appearance ?? "").length).toBeGreaterThan(100); // 点名 → 400 宽
+    expect((otherRow.appearance ?? "").length).toBeLessThan(70); // 未点名 → 60 截断
+    // 不传 relevanceQuery：两者同为 60 截断（既有行为）
+    const plain = JSON.parse(buildGraphSummary("none")) as { nodes: Array<{ id: string; appearance?: string }> };
+    expect((plain.nodes.find((n) => n.id === hero.id)!.appearance ?? "").length).toBeLessThan(70);
+  });
+
+  it("failed 节点视为相关（自愈需要 error 全文语境）", () => {
+    const store = useCanvasStore.getState();
+    for (let i = 0; i < 13; i++) store.addNode("note", { x: i * 10, y: 500 });
+    const bad = store.addNode("prompt", { x: 0, y: 0 });
+    store.updateNodeData(bad.id, { positivePrompt: "内容" + "丙".repeat(120), status: "failed", errorMessage: "some error" }, true);
+    const rel = JSON.parse(buildGraphSummary("none", { relevanceQuery: "修一下失败的节点" })) as { nodes: Array<{ id: string; positivePrompt?: string }> };
+    expect((rel.nodes.find((n) => n.id === bad.id)!.positivePrompt ?? "").length).toBeGreaterThan(100);
+  });
+
+  it("buildNodeDetailText：短号/真实 id 都可取详，URL/Key/aliasNum 字段剔除、字符串截 800", () => {
+    const store = useCanvasStore.getState();
+    const c = store.addNode("character", { x: 0, y: 0 });
+    store.updateNodeData(c.id, { characterKind: "person", name: "林风", appearance: "长文" + "丁".repeat(1000), referenceImageUrl: "https://x/a.png" }, true);
+    ensureAliasNums();
+    const num = (useCanvasStore.getState().nodes.find((n) => n.id === c.id)!.data.payload as { aliasNum?: number }).aliasNum!;
+    const byAlias = JSON.parse(buildNodeDetailText([`n${num}`], { aliasIds: true })) as Array<Record<string, unknown>>;
+    expect(byAlias.length).toBe(1);
+    expect(byAlias[0].id).toBe(`n${num}`);
+    expect(byAlias[0].name).toBe("林风");
+    expect(String(byAlias[0].appearance).length).toBeLessThanOrEqual(801);
+    expect(byAlias[0].referenceImageUrl).toBeUndefined();
+    expect(byAlias[0].aliasNum).toBeUndefined();
+    const byReal = JSON.parse(buildNodeDetailText([c.id])) as Array<Record<string, unknown>>;
+    expect(byReal[0].id).toBe(c.id);
+    // 无效引用静默跳过 → 空串
+    expect(buildNodeDetailText(["no-such-ref"])).toBe("");
   });
 });

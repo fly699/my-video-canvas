@@ -445,12 +445,20 @@ export function sanitizeOperationDetailed(
   // 节点、run_node 指定运行目标；其余动作没有目标语义，即便 LLM 乱带也无害——应用层
   // 只在需要时读取）。run_node 缺 targetRef 直接 drop（无目标的单节点运行无意义）。
   if (op === "canvas") {
-    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node", "save_library"]);
+    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node", "save_library", "fetch_details"]);
     const action = str(o.action);
     if (!action || !CANVAS_ACTIONS.has(action)) return { drop: `未知的画布动作「${String(o.action)}」` };
     if (action === "run_node" && !str(o.targetRef)) return { drop: "run_node 画布动作缺少 targetRef（要运行哪个节点）" };
     // #269 focus_node 与 run_node 同口径：无目标的「聚焦」没有意义，缺 targetRef 直接 drop。
     if (action === "focus_node" && !str(o.targetRef)) return { drop: "focus_node 画布动作缺少 targetRef（要聚焦哪个节点）" };
+    // #291 fetch_details：按需取详（存根节点全文）。targetRefs 数组（容忍单 targetRef），
+    // 去重、上限 20 防幻觉爆表；缺引用直接 drop。独立返回，不影响旧动作输出形状。
+    if (action === "fetch_details") {
+      const raw = Array.isArray(o.targetRefs) ? o.targetRefs : (str(o.targetRef) ? [str(o.targetRef) as string] : []);
+      const refs = Array.from(new Set(raw.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()))).slice(0, 20);
+      if (!refs.length) return { drop: "fetch_details 画布动作缺少 targetRefs（要取全文的节点）" };
+      return { op: { op: "canvas", action: "fetch_details" as AgentOperation["action"], targetRefs: refs, note: noteStr(o.note) } };
+    }
     // targetRef 只对 assemble/run_node/ungroup/focus_node/save_library 有意义；旧五个动作
     // 维持原输出（不带该键），保证旧动作 sanitize 结果与 #266 之前逐字节一致（零回归守卫锁定）。
     const keepRef = action === "assemble" || action === "run_node" || action === "ungroup" || action === "focus_node" || action === "save_library";
