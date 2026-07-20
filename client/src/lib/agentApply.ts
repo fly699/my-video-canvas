@@ -67,10 +67,14 @@ export interface ApplyResult {
 const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
 
 /** #285 角色复用判定 key：类别(person/scene) + 显示名（trim + 拉丁字母不区分大小写）。
- *  空名返回 ""（无名角色不参与合并——没有可靠身份依据，宁可新建也不误并）。 */
+ *  空名返回 ""（无名角色不参与合并——没有可靠身份依据，宁可新建也不误并）。
+ *  #288 字段错位兜底：LLM 偶尔把场景名写进 name（或人物名写进 sceneName）——
+ *  charDisplayName 按类别取正字段为空时，回退取另一字段，同名场景不再漏合并。
+ *  类别仍是 key 前缀，person/scene 同名绝不互并。 */
 function charReuseKey(p: CharacterNodeData): string {
-  const name = charDisplayName(p);
-  return name ? `${p.characterKind ?? "person"}:${name.toLowerCase()}` : "";
+  const kind = p.characterKind ?? "person";
+  const name = (charDisplayName(p) || ((kind === "scene" ? p.name : p.sceneName) ?? "").trim());
+  return name ? `${kind}:${name.toLowerCase()}` : "";
 }
 
 /** Assign chosen ComfyUI server URLs onto a batch's comfy create ops (in place),
@@ -448,6 +452,10 @@ export function applyAgentOperations(
     const k = charReuseKey((n.data.payload ?? {}) as CharacterNodeData);
     if (k && !charSeen.has(k)) charSeen.set(k, n.id);
   }
+  // #288 复用角色保护集：tempId 被映射到的【画布已有】角色 id。同批的 update（LLM 常把
+  // create+update 当初始化两步）落到这些 id 上只允许填空（fill-only）、不改标题；delete
+  // 直接拒绝——复用的全部意义就是保留用户已有设定，绝不能反被本批操作改写/删除。
+  const reusedCharIds = new Set<string>();
   // Whole plan = one undo step.
   store.runBatch(() => {
     let createdIdx = 0;
@@ -467,6 +475,7 @@ export function applyAgentOperations(
               if (op.tempId) idMap.set(op.tempId, existingId);
               liveIds.add(existingId);
               typeById.set(existingId, "character");
+              reusedCharIds.add(existingId);
               if (!res.touchedIds.includes(existingId)) res.touchedIds.push(existingId);
               res.reusedCharacters += 1;
               return;
@@ -687,7 +696,8 @@ export function applyAgentOperations(
           // 上面的检查通不掉），若不校验 liveIds，幻觉/已删 id 会被 updateNodeData 静默空转，却仍
           // 记为成功 → 自愈循环（按 failures 重试）永远不重试这条本该失败的改动。
           if (!liveIds.has(target)) { fail(index, op, `要更新的节点不存在（${op.targetRef}）`); return; }
-          if (op.title) store.updateNodeTitle(target, op.title);
+          // #288 复用角色保护：标题不改（用户命名优先）。
+          if (op.title && !reusedCharIds.has(target)) store.updateNodeTitle(target, op.title);
           if (op.payload && Object.keys(op.payload).length) {
             // Guard: an update must not inject a templateId for a node whose template
             // isn't a real workflow template (would blank the node) — strip it.
@@ -707,6 +717,13 @@ export function applyAgentOperations(
                 if (cv.length > prefix.length && cv.startsWith(prefix)) delete up[k];
               }
             }
+            // #288 复用角色保护（fill-only）：该 id 是「同名复用」映射到的用户已有角色——
+            // LLM 的 create+update 两步初始化落到用户节点上时，只允许填【当前为空】的字段，
+            // 已有外观/参考图/设定一律保留（用户的设置永远第一位）。
+            if (reusedCharIds.has(target)) {
+              const filled = (v: unknown) => !(v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0));
+              for (const k of Object.keys(up)) if (filled(curPayload[k])) delete up[k];
+            }
             if (Object.keys(up).length) store.updateNodeData(target, up as Partial<NodeData>, true);
           }
           op.status = "applied";
@@ -716,6 +733,9 @@ export function applyAgentOperations(
           const target = resolve(op.targetRef);
           if (!target) { fail(index, op, `要删除的节点未找到（${op.targetRef}）`); return; }
           if (!liveIds.has(target)) { fail(index, op, `要删除的节点不存在（${op.targetRef}）`); return; }
+          // #288 复用角色保护：tempId 映射到的是用户已有角色节点——删除意图针对的是
+          // LLM 自建的临时节点，绝不能误删用户角色。
+          if (reusedCharIds.has(target)) { fail(index, op, `「${op.targetRef}」已合并到画布已有同名角色（复用保护），不允许删除用户已有角色节点`); return; }
           store.deleteNode(target);
           // 删后同步 live 集合：否则同一批里「先删 X、再 connect 到 X」会因 liveIds 仍含 X 而通过
           // 校验、建出一条指向已删节点的悬空边（正是 connect 守卫想拦的）。
