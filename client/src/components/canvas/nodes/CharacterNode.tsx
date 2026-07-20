@@ -612,7 +612,14 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
     (e) => e.name.trim() === displayNameTrim && (e.characterKind === "scene" ? "scene" : "person") === kind,
   );
   const replaceFromLibrary = useCallback((entry: { name: string; characterKind: string; payload: Record<string, unknown> }) => {
-    updateNodeData(id, { ...entry.payload, characterKind: entry.characterKind as CharacterKind, referenceStorageKey: undefined });
+    // #287 库行 name 是权威显示名（重命名/覆盖只改行名不改快照）：快照整包写回时必须用
+    // 行名覆写对应类别的名字字段，否则节点显示的还是入库时的旧名（与角色库面板不一致）。
+    const kd = entry.characterKind === "scene" ? "scene" : "person";
+    const nameFix = entry.name.trim()
+      ? (kd === "scene" ? { sceneName: entry.name.trim() } : { name: entry.name.trim() })
+      : {};
+    updateNodeData(id, { ...entry.payload, ...nameFix, characterKind: entry.characterKind as CharacterKind, referenceStorageKey: undefined });
+    if (entry.name.trim()) useCanvasStore.getState().updateNodeTitle(id, entry.name.trim());
     setLibPickerOpen(false);
     toast.success(`已替换为「${entry.name}」（库快照整包写回）`);
   }, [id, updateNodeData]);

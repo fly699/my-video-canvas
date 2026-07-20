@@ -70,12 +70,21 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
 
   // 放在当前视口中心（而非固定世界坐标），轻微抖动避免叠放。focus=true 时
   // 选中并居中到该节点，方便立即编辑。
-  const dropOnCanvas = (payload: Record<string, unknown>, kind: string, focus: boolean) => {
+  const dropOnCanvas = (payload: Record<string, unknown>, kind: string, focus: boolean, libName?: string) => {
     try {
       const c = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       const pos = { x: c.x + (Math.random() * 50 - 25), y: c.y + (Math.random() * 50 - 25) };
       const node = addNode("character", pos);
       const merged: Record<string, unknown> = { ...payload, characterKind: payload.characterKind ?? kind ?? "person" };
+      // #287 库行 name 才是权威显示名（面板卡片显示的就是它）：「重命名」「覆盖保存」都只改
+      // 行名、不改 payload 快照——整包落地会把入库时的旧 name/sceneName 带到画布，节点左上角
+      // 名字 chip（读 payload 的名字字段）显示的就不是实际角色名（用户实报）。落地时强制用
+      // 行名覆写对应类别的名字字段 + 节点标题，快照其余设定原样保留。
+      const nm = (libName ?? "").trim();
+      if (nm) {
+        if ((merged.characterKind as string) === "scene") merged.sceneName = nm; else merged.name = nm;
+        useCanvasStore.getState().updateNodeTitle(node.id, nm);
+      }
       updateNodeData(node.id, merged, true);
       if (focus) {
         const { nodes, setNodes } = useCanvasStore.getState();
@@ -215,7 +224,7 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
             return (
               <div key={it.id} className="group/clib nodrag relative rounded-xl overflow-hidden"
                 title="双击添加到画布"
-                onDoubleClick={() => dropOnCanvas(it.payload, it.characterKind, false)}
+                onDoubleClick={() => dropOnCanvas(it.payload, it.characterKind, false, it.name)}
                 style={{ aspectRatio: "3 / 4", background: "var(--c-input)", border: "1px solid var(--c-bd2)", cursor: "pointer" }}>
                 {it.thumbnail
                   ? <img src={mediaFetchUrl(it.thumbnail)} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
@@ -225,8 +234,8 @@ export function CharacterLibraryPanel({ onClose }: { onClose: () => void }) {
                 {/* hover 操作行（右上）：添加 / 编辑 / 删除 */}
                 <div className="absolute top-1 right-1 z-10 flex items-center gap-1 opacity-0 group-hover/clib:opacity-100" style={{ transition: "opacity 140ms ease" }}>
                   {([
-                    { key: "add", icon: <Plus className="w-3.5 h-3.5" />, title: "添加到画布（或双击整卡）", onClick: () => dropOnCanvas(it.payload, it.characterKind, false), accentBg: true },
-                    { key: "edit", icon: <Pencil className="w-3 h-3" />, title: "编辑（放到画布并选中，改完「保存到角色库」覆盖更新）", onClick: () => dropOnCanvas(it.payload, it.characterKind, true) },
+                    { key: "add", icon: <Plus className="w-3.5 h-3.5" />, title: "添加到画布（或双击整卡）", onClick: () => dropOnCanvas(it.payload, it.characterKind, false, it.name), accentBg: true },
+                    { key: "edit", icon: <Pencil className="w-3 h-3" />, title: "编辑（放到画布并选中，改完「保存到角色库」覆盖更新）", onClick: () => dropOnCanvas(it.payload, it.characterKind, true, it.name) },
                     { key: "del", icon: <Trash2 className="w-3 h-3" />, title: "删除", onClick: () => { if (window.confirm(`从角色库删除「${it.name}」？`)) delMut.mutate({ id: it.id }); } },
                   ] as const).map((b) => (
                     <button key={b.key} title={b.title}
