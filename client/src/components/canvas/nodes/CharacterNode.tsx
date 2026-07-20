@@ -800,14 +800,19 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       )}
       {/* #270 左上角常显角色名（仅创意模式，用户拍板）：有生成结果（hero 图）后，
           heroBareHeader 让标题栏只在悬停/选中时浮现、底部姓名条又可能随长图滚出视野——
-          非悬停状态下卡上完全看不到「这是谁」。此 chip 常驻左上角标识身份；悬停时顶部
-          渐变标题条（含标题+按钮）浮现，chip 同步淡出，避免同一区域双名字叠显。
+          非悬停状态下卡上完全看不到「这是谁」。此 chip 常驻左上角标识身份；标题条浮现
+          时 chip 同步淡出，避免同一区域双名字叠显。
+          淡出条件必须与 BaseNode 标题条的浮现条件（isHovered || storeSelected）严格对齐：
+          用整卡 group/node 悬停 + selected 内联置 0——此前只挂 group/chero（hero 图局部
+          悬停），节点【选中】或鼠标停在标题条区域时标题条已浮现而 chip 未退场，左上角
+          双名字重影（用户实报截图）。
           pointer-events:none：纯标识、绝不抢 hero 区的点击/拖拽/双击聚焦。 */}
       {isCreativeMode && (
-        <div className="pointer-events-none absolute z-10 group-hover/chero:opacity-0"
+        <div className="pointer-events-none absolute z-10 group-hover/node:opacity-0"
           // lineHeight 必须显式给：hero 图片容器为消除 img 行内缝隙把 line-height 置 0，
           // chip 若继承之则内容高度归零、文字被自身 overflow:hidden 拦腰裁掉（真机踩中）。
-          style={{ top: 5, left: isOwnStorageUrl(payload.referenceImageUrl) ? 20 : 6, maxWidth: "72%", padding: "2px 8px", borderRadius: 7, background: "oklch(0 0 0 / 0.55)", backdropFilter: "blur(4px)", color: "#fff", fontSize: 11.5, lineHeight: 1.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: "0 1px 3px oklch(0 0 0 / 0.5)", transition: "opacity 150ms ease" }}>
+          // 选中态用内联 opacity:0（内联优先级高于 hover 类，选中期间 chip 恒隐）。
+          style={{ top: 5, left: isOwnStorageUrl(payload.referenceImageUrl) ? 20 : 6, maxWidth: "72%", padding: "2px 8px", borderRadius: 7, background: "oklch(0 0 0 / 0.55)", backdropFilter: "blur(4px)", color: "#fff", fontSize: 11.5, lineHeight: 1.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: "0 1px 3px oklch(0 0 0 / 0.5)", transition: "opacity 150ms ease", ...(selected ? { opacity: 0 } : {}) }}>
           {displayName || (kind === "scene" ? "未命名场景" : "未命名角色")}
         </div>
       )}
