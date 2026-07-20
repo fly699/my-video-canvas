@@ -1422,7 +1422,7 @@ export interface AgentOperation {
    *  省略=画布全部有名字的 character 节点）。需要 tRPC（characterLibrary.create），
    *  由 CanvasAgentChat 应用层在画布操作落地后抽走执行——apply 层纯 store 不发网络
    *  （与 animatic/library 同一架构边界）。同名条目跳过不覆盖（保护既有库内容）。 */
-  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup" | "focus_node" | "save_library";
+  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup" | "focus_node" | "save_library" | "fetch_details";
   /** library: 入库类型——person=角色库、scene=场景库。 */
   libraryKind?: "person" | "scene";
   /** library: 库条目名称（用户指定原文，如「李宁」「足球场」），入库后可 @名称 引用。 */
