@@ -943,7 +943,14 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
       if (p.status === "failed" && typeof p.errorMessage === "string" && p.errorMessage.trim()) {
         kv.error = p.errorMessage.length > 160 ? p.errorMessage.slice(0, 160) + "…" : p.errorMessage;
       }
-      return { id: n.id, type, title: n.data.title, ...kv };
+      const row: Record<string, unknown> = { id: n.id, type, title: n.data.title, ...kv };
+      // #289 可推导冗余剔除（真无损，规则已写进规划提示的摘要读法）：
+      // ① 角色标题与名字完全相同 → 省 title（缺 title 的角色行标题即其名字）；
+      // ② 分镜 promptText 与 description 相同（生成本就按 promptText||description 回退）
+      //    → 省 promptText。两者均可由行内其余字段完整推导，不丢任何信息。
+      if (type === "character" && row.title === (kv.name ?? kv.sceneName)) delete row.title;
+      if (type === "storyboard" && kv.promptText !== undefined && kv.promptText === kv.description) delete row.promptText;
+      return row;
     });
   const edgeLines = edges
     .filter((e) => e.source !== excludeNodeId && e.target !== excludeNodeId)
@@ -976,9 +983,29 @@ export function buildGraphSummary(excludeNodeId: string, opts: { focusNodeIds?: 
   // 有了确定性计数，数量问题直接读 stats；即使摘要被截断，真实总数也不失真。
   const stats: Record<string, number> = {};
   for (const x of nodeLines) { const t = (x as { type?: string }).type ?? "unknown"; stats[t] = (stats[t] ?? 0) + 1; }
+  // #289 邻接分组编码（真无损）：同一起点、双默认句柄的多条连线合并为一条
+  // {from, to:[…]}——from 的 21 字符 id 与对象壳每合并一条就省一份；带句柄的连线保持
+  // 逐条对象（句柄语义随条走，不参与分组）。el 内部始终逐条存放（丢弃粒度与 truncated
+  // 计数仍按单条连线，数字不失真），仅在最终编码时分组。
+  const encodeEdges = (list: typeof el): Record<string, unknown>[] => {
+    const singles: Record<string, unknown>[] = [];
+    const groups = new Map<string, unknown[]>();
+    const order: string[] = [];
+    for (const e of list) {
+      if (e.fromHandle || e.toHandle) { singles.push(e); continue; }
+      const from = String(e.from);
+      if (!groups.has(from)) { groups.set(from, []); order.push(from); }
+      groups.get(from)!.push(e.to);
+    }
+    const grouped = order.map((from) => {
+      const tos = groups.get(from)!;
+      return { from, to: tos.length === 1 ? tos[0] : tos };
+    });
+    return [...grouped, ...singles];
+  };
   const build = () => {
     const dropN = nodeLines.length - nl.length, dropE = edgeLines.length - el.length;
-    const o: Record<string, unknown> = { stats, nodes: nl, edges: el };
+    const o: Record<string, unknown> = { stats, nodes: nl, edges: encodeEdges(el) };
     if (dropN > 0 || dropE > 0 || stubbed.size > 0) {
       const parts: string[] = [];
       if (dropN > 0) parts.push(`完全省略 ${dropN} 个节点`);
