@@ -1182,3 +1182,60 @@ describe("#288 复用角色保护（三轮核查发现）：同批 update/delete
     expect(res.reusedCharacters).toBe(1);
   });
 });
+
+describe("#289 摘要一期无损压缩：邻接分组 + 可推导冗余剔除", () => {
+  it("同起点默认句柄连线合并为 to 数组，展开后与原连线集合完全一致；带句柄连线不分组", () => {
+    const store = useCanvasStore.getState();
+    const a = store.addNode("prompt", { x: 0, y: 0 });
+    const b = store.addNode("video_task", { x: 200, y: 0 });
+    const c = store.addNode("video_task", { x: 200, y: 200 });
+    const m = store.addNode("merge", { x: 400, y: 100 });
+    store.onConnect({ source: a.id, target: b.id, sourceHandle: null, targetHandle: null });
+    store.onConnect({ source: a.id, target: c.id, sourceHandle: null, targetHandle: null });
+    store.onConnect({ source: b.id, target: m.id, sourceHandle: null, targetHandle: null });
+    // 手工造一条带非默认句柄的连线（句柄语义随条走，必须保持逐条对象）
+    useCanvasStore.setState((st) => ({ edges: [...st.edges, { id: "eh1", source: c.id, target: m.id, sourceHandle: "output", targetHandle: "ref-image-in" } as (typeof st.edges)[number]] }));
+
+    const parsed = JSON.parse(buildGraphSummary("none")) as { edges: Array<{ from: string; to: string | string[]; toHandle?: string }> };
+    // 展开分组 → 与 store 连线集合（source→target 对）完全一致（真无损性质）
+    const expanded = new Set<string>();
+    for (const e of parsed.edges) {
+      for (const t of Array.isArray(e.to) ? e.to : [e.to]) expanded.add(`${e.from}>${t}`);
+    }
+    const real = new Set(useCanvasStore.getState().edges.map((e) => `${e.source}>${e.target}`));
+    expect(expanded).toEqual(real);
+    // a 的两条出线被分组为数组
+    const ga = parsed.edges.find((e) => e.from === a.id)!;
+    expect(Array.isArray(ga.to)).toBe(true);
+    expect((ga.to as string[]).sort()).toEqual([b.id, c.id].sort());
+    // 带句柄的那条保持逐条对象且句柄保留
+    const gh = parsed.edges.find((e) => e.toHandle === "ref-image-in")!;
+    expect(gh.from).toBe(c.id);
+    expect(gh.to).toBe(m.id);
+  });
+
+  it("角色 title==名字 → 省 title；不同 → 保留（可推导剔除）", () => {
+    const store = useCanvasStore.getState();
+    const same = store.addNode("character", { x: 0, y: 0 });
+    store.updateNodeData(same.id, { characterKind: "person", name: "林风" }, true);
+    store.updateNodeTitle(same.id, "林风");
+    const diff = store.addNode("character", { x: 0, y: 200 });
+    store.updateNodeData(diff.id, { characterKind: "person", name: "苏瑶" }, true);
+    store.updateNodeTitle(diff.id, "女主角");
+    const parsed = JSON.parse(buildGraphSummary("none")) as { nodes: Array<{ id: string; title?: string; name?: string }> };
+    expect(parsed.nodes.find((n) => n.id === same.id)!.title).toBeUndefined();
+    expect(parsed.nodes.find((n) => n.id === diff.id)!.title).toBe("女主角");
+  });
+
+  it("分镜 promptText==description → 省 promptText；不同 → 保留", () => {
+    const store = useCanvasStore.getState();
+    const s1 = store.addNode("storyboard", { x: 0, y: 0 });
+    store.updateNodeData(s1.id, { description: "海边日出", promptText: "海边日出" }, true);
+    const s2 = store.addNode("storyboard", { x: 0, y: 200 });
+    store.updateNodeData(s2.id, { description: "海边日出", promptText: "金色海面，逆光剪影" }, true);
+    const parsed = JSON.parse(buildGraphSummary("none")) as { nodes: Array<{ id: string; promptText?: string; description?: string }> };
+    expect(parsed.nodes.find((n) => n.id === s1.id)!.promptText).toBeUndefined();
+    expect(parsed.nodes.find((n) => n.id === s1.id)!.description).toBe("海边日出");
+    expect(parsed.nodes.find((n) => n.id === s2.id)!.promptText).toBe("金色海面，逆光剪影");
+  });
+});
