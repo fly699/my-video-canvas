@@ -99,3 +99,16 @@ describe("sanitize: group / duplicate（#267）", () => {
     expect("drop" in sanitizeOperationDetailed({ op: "duplicate" })).toBe(true);
   });
 });
+
+// ── #268 animatic / ungroup sanitize 守卫 ────────────────────────────────────
+describe("sanitize: animatic / ungroup（#268）", () => {
+  it("animatic 放行（无 targetRef 语义）；ungroup 放行且保留 targetRef", () => {
+    const a = sanitizeOperationDetailed({ op: "canvas", action: "animatic" });
+    expect("op" in a && a.op.action).toBe("animatic");
+    const u = sanitizeOperationDetailed({ op: "canvas", action: "ungroup", targetRef: "g1" });
+    expect("op" in u && u.op.action).toBe("ungroup");
+    expect("op" in u && u.op.targetRef).toBe("g1");
+    const u2 = sanitizeOperationDetailed({ op: "canvas", action: "ungroup" }); // 省略=唯一群组
+    expect("op" in u2).toBe(true);
+  });
+});

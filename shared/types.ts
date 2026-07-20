@@ -1397,7 +1397,10 @@ export interface AgentOperation {
    *   - run_all：请求运行画布全部可运行节点。仅置 store.runRequest 信号——真正执行
    *     走 Canvas 既有的运行确认流程（费用可见、用户点确认才跑），助手绝不直接扣费。
    *   - run_node：请求运行 targetRef 指定的单个节点（同样走运行确认流程）。 */
-  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node";
+  /** #268 批③：animatic=一键动态样片（分镜关键帧图+镜头表时长/转场直接渲染预览片，
+   *  不花生成模型的钱；由 CanvasAgentChat 应用层执行 tRPC 渲染管线，apply 层不消费）；
+   *  ungroup=解组（targetRef 可选：省略时自动定位唯一群组；仅删容器、成员保留）。 */
+  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup";
   /** library: 入库类型——person=角色库、scene=场景库。 */
   libraryKind?: "person" | "scene";
   /** library: 库条目名称（用户指定原文，如「李宁」「足球场」），入库后可 @名称 引用。 */
