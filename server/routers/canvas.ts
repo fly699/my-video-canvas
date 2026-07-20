@@ -3492,6 +3492,13 @@ export const mergeRouter = router({
         originalVolume: z.number().min(0).max(2).optional(),
         projectId: z.number().optional(),
         nodeId: z.string().optional(),
+        // #284 隧道兜底取回票据（同 #255 imageGen）：多镜带转场的 ffmpeg 合并是数分钟级
+        // 长 HTTP，经 cloudflared 公网隧道时 ~100s 被传输层掐断（前端报 network error），
+        // 但本 mutation 不会被取消、合并照常完成——结果却无处回传，用户白等一场还以为
+        // 失败了（实报：「合并失败 network error」但实际之后已合并完成）。前端每次提交带
+        // 一次性 jobId，成功/失败双双回灌 genJobStore，掐线后凭 jobId 轮询取回。
+        // mergeVideos 无 dedupe 包装，recoveryJobId 不存在「污染去重键」问题（#255 的坑）。
+        recoveryJobId: z.string().min(1).max(64).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -3501,9 +3508,29 @@ export const mergeRouter = router({
       if (input.bgMusicUrl) guardUrl(input.bgMusicUrl);
       for (const v of input.voiceUrls ?? []) if (v) guardUrl(v);
       for (const v of input.sfxUrls ?? []) if (v) guardUrl(v);
-      const result = await mergeVideos(input);
-      await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "合并视频" });
-      return { url: result.url, duration: result.duration, segStarts: result.segStarts };
+      try {
+        const result = await mergeVideos(input);
+        await recordEditedAsset({ userId: ctx.user.id, projectId: input.projectId, nodeId: input.nodeId, url: result.url, type: "video", name: "合并视频" });
+        const out = { url: result.url, duration: result.duration, segStarts: result.segStarts };
+        if (input.recoveryJobId) setGenJobDone(input.recoveryJobId, ctx.user.id, out);
+        return out;
+      } catch (err) {
+        // 业务失败也回灌——掐线后前端轮询能拿到真实错误文本，而不是永等到超时。
+        if (input.recoveryJobId) setGenJobError(input.recoveryJobId, ctx.user.id, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
+    }),
+
+  // #284 隧道兜底取回（同 imageGen.result）：仅当 mergeVideos 的 HTTP 被传输层掐断时
+  // 前端才轮询本端点。pending = 合并仍在跑（或 jobId 不存在/已过期——前端有轮询时限）。
+  result: protectedProcedure
+    .input(z.object({ jobId: z.string().min(1).max(64) }))
+    .query(({ ctx, input }) => {
+      const r = getGenJob(input.jobId, ctx.user.id);
+      if (!r) return { status: "pending" as const };
+      return r.status === "done"
+        ? { status: "done" as const, value: r.value as { url: string; duration: number; segStarts?: number[] } }
+        : { status: "error" as const, error: r.error };
     }),
 });
 
