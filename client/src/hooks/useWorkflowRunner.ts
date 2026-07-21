@@ -1209,12 +1209,27 @@ export function useWorkflowRunner() {
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
+            // #313 迟到失败竞态守卫：fill-only 语义——若节点此刻已被并行路径（自动定妆/手动）
+            // 填上图，本条失败已无意义，只清运行态、按达成计，不把失败横幅糊到成果上。
+            const liveP = useCanvasStore.getState().nodes.find((n2) => n2.id === nodeId)?.data.payload as CharacterNodeData | undefined;
+            if (((liveP?.referenceImageUrl as string | undefined) ?? "").trim()) {
+              useCanvasStore.getState().updateNodeData(nodeId, { status: undefined, errorMessage: undefined }, true);
+              completed.push(nodeId);
+              return "ok";
+            }
             useCanvasStore.getState().updateNodeData(nodeId, { status: "failed", errorMessage: `${imgLabel}生成失败：${msg}` }, true);
             throw err; // 交外层 catch 统一 toast + failed 记账
           }
           // 长任务期间节点可能被删——写回前防复活幽灵节点（与 comfyui 分支同守卫）。
           if (!useCanvasStore.getState().nodes.some((n2) => n2.id === nodeId)) return "ok";
           if (!url) {
+            // #313 同上守卫：空返回但图已被并行路径填上 → 达成，不写失败。
+            const curP = useCanvasStore.getState().nodes.find((n2) => n2.id === nodeId)?.data.payload as CharacterNodeData | undefined;
+            if (((curP?.referenceImageUrl as string | undefined) ?? "").trim()) {
+              useCanvasStore.getState().updateNodeData(nodeId, { status: undefined, errorMessage: undefined }, true);
+              completed.push(nodeId);
+              return "ok";
+            }
             useCanvasStore.getState().updateNodeData(nodeId, { status: "failed", errorMessage: `${imgLabel}生成失败：未返回图像` }, true);
             failed.push(nodeId);
             return "fail";
