@@ -8,6 +8,7 @@ import { buildGraphSummary, applyAgentOperations, ensureAliasNums, buildNodeDeta
 // #260 附件即可引用：{{refN}} 占位符 → 附件真实地址的确定性替换 + library 入库操作抽取。
 import { resolveAttachmentRefs } from "@/lib/attachmentRefs";
 import { runAnimaticFromCanvas, type AnimaticEditorClient } from "@/lib/animaticRun";
+import { runDubbingFromCanvas, type DubbingClient } from "@/lib/dubbingRun";
 import { runAgentChatJob, pollAgentChatJob, type AgentChatResult } from "@/lib/agentChatJob";
 import { friendlyClientLLMError } from "@/lib/friendlyClientError";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
@@ -800,6 +801,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     // 多条只执行一次（渲染是全镜头表级别的重活，重复毫无意义）；异步启动不阻塞
     // 其余画布操作落地，进度/结果全程 toast 反馈（runAnimaticFromCanvas 内部负责）。
     const wantAnimatic = (resolved.nodeOps as AgentOperation[]).some((o) => o.op === "canvas" && o.action === "animatic");
+    // #298 批量配音口令同样抽走（需要 audioGen tRPC）。执行放在画布操作落地【之后】——
+    // 「把陈默锁成温柔女声并给每个镜头配音」这类同批指令要先让 set_voice 落进角色档案，
+    // 配音收集器才能读到刚锁的音色。
+    const wantDub = (resolved.nodeOps as AgentOperation[]).some((o) => o.op === "canvas" && o.action === "dub_shots");
     // #272 批量入库动作同样抽走（需要 characterLibrary.create tRPC）；记下 targetRef
     //（省略=全部），执行放在画布操作落地【之后】——「建 3 个角色并全部入库」这类
     // 同批指令要能把刚落地的新角色也收进去。
@@ -813,7 +818,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       return { apply: null, fetchIds };
     }
     const ops = (resolved.nodeOps as AgentOperation[]).filter(
-      (o) => !(o.op === "canvas" && (o.action === "animatic" || o.action === "save_library")),
+      (o) => !(o.op === "canvas" && (o.action === "animatic" || o.action === "save_library" || o.action === "dub_shots")),
     );
     if (wantAnimatic) {
       // utils.client 的 tRPC 精确类型与最小接口结构兼容（仅取 editor 四端点的所需形状）。
@@ -852,6 +857,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       // #225 外观锚点自动压缩（默认开）：后台跑，不阻塞对话。
       if (quickPrefs.anchorCompress && createdIds.length) void autoAnchors(createdIds);
     }
+    // #298 批量配音在画布操作落地【之后】启动：set_voice/新分镜已进 store，收集器
+    // 拿到的是最新音色与对白。异步不阻塞，confirm 计价确认 + 进度/结果 toast 由
+    // runDubbingFromCanvas 内部负责（与镜头表面板「批量配音」同源同口径）。
+    if (wantDub) void runDubbingFromCanvas(utils.client as unknown as DubbingClient);
     // #272 批量入库在画布操作落地【之后】执行——「建 N 个角色并全部入库」这类同批
     // 指令要能收进刚落地的新角色。任一条省略 targetRef → 全量；否则按指定节点逐个。
     if (saveLibOps.length) {

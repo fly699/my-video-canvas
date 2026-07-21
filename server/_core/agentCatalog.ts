@@ -446,7 +446,7 @@ export function sanitizeOperationDetailed(
   // 节点、run_node 指定运行目标；其余动作没有目标语义，即便 LLM 乱带也无害——应用层
   // 只在需要时读取）。run_node 缺 targetRef 直接 drop（无目标的单节点运行无意义）。
   if (op === "canvas") {
-    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node", "save_library", "fetch_details", "set_voice"]);
+    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node", "save_library", "fetch_details", "set_voice", "dub_shots"]);
     const action = str(o.action);
     if (!action || !CANVAS_ACTIONS.has(action)) return { drop: `未知的画布动作「${String(o.action)}」` };
     if (action === "run_node" && !str(o.targetRef)) return { drop: "run_node 画布动作缺少 targetRef（要运行哪个节点）" };
