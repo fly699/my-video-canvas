@@ -132,6 +132,40 @@ describe("#274 布局引擎：行=镜头链 / 列=流程阶段 / 双框去重 / 
     expect(boxBottom).toBeGreaterThanOrEqual(v.position.y + 300);
   });
 
+  it("#294 无场景无镜头链但有 group 操作 → 仍走新引擎：角色左/合并右/组框不互咬", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1" },
+      { op: "create", nodeType: "video_task", tempId: "v1" },
+      { op: "create", nodeType: "video_task", tempId: "v2" },
+      { op: "create", nodeType: "video_task", tempId: "v3" },
+      { op: "create", nodeType: "video_task", tempId: "v4" },
+      { op: "create", nodeType: "merge", tempId: "m1" },
+      // 只有 角色→视频 / 视频→合并 连线（行归并刻意排除的两类）——旧判定下引擎不激活。
+      { op: "connect", sourceRef: "c1", targetRef: "v1" },
+      { op: "connect", sourceRef: "v1", targetRef: "m1" },
+      { op: "connect", sourceRef: "v2", targetRef: "m1" },
+      { op: "group", targetRefs: ["v1", "v2"], title: "上半场" },
+      { op: "group", targetRefs: ["v3", "v4"], title: "下半场" },
+    ];
+    const res = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(res.failures.length).toBe(0);
+    const nodes = useCanvasStore.getState().nodes;
+    const c = nodes.find((n) => n.data.nodeType === "character")!;
+    const m = nodes.find((n) => n.data.nodeType === "merge")!;
+    const vs = nodes.filter((n) => n.data.nodeType === "video_task");
+    // 角色在左参考列、合并在右汇聚列、视频列夹中间（不再混进 3 列网格）
+    for (const v of vs) {
+      expect(c.position.x).toBeLessThan(v.position.x);
+      expect(v.position.x).toBeLessThan(m.position.x);
+    }
+    expect(new Set(vs.map((v) => v.position.x)).size).toBe(1); // 视频同列对齐
+    // 两个组框上下不互咬（不同 group 的行之间有额外行距）
+    const groups = nodes.filter((n) => n.data.nodeType === "group").sort((a, b) => a.position.y - b.position.y);
+    expect(groups.length).toBe(2);
+    const g1Bottom = groups[0].position.y + (((groups[0].style as { height?: number }).height) ?? 0);
+    expect(groups[1].position.y).toBeGreaterThan(g1Bottom);
+  });
+
   it("引擎生效时参考列在带左、汇聚列在带右（角色→镜头→合并 整体左→右）", () => {
     const ops: AgentOperation[] = [
       { op: "create", nodeType: "character", tempId: "c1" },

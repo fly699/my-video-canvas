@@ -499,7 +499,12 @@ export function applyAgentOperations(
   const refOps = sceneless.filter((o) => REF_TYPES.has(o.nodeType as NodeType));
   const sinkOps = sceneless.filter((o) => SINK_TYPES.has(o.nodeType as NodeType));
   const looseMid = sceneless.filter((o) => !REF_TYPES.has(o.nodeType as NodeType) && !SINK_TYPES.has(o.nodeType as NodeType));
-  const engineActive = useScenes || chainEdges > 0;
+  // #294 鲁棒补口：LLM 规划里有 group 操作时也激活新引擎——否则「无 sceneGroup、镜头间
+  // 又无互连（只有 角色→视频 / 视频→合并 这类被行归并刻意排除的连线）」的规划会回落
+  // 旧 3 列扇出：角色被挤进网格、group 组框按犬牙交错的成员画框互相咬合（用户截图烂
+  // 布局的残余触发路径）。启发式成行（阶段未前进即换行）不依赖连线，group 在场即可用。
+  const hasGroupOps = ops.some((o) => o.op === "group");
+  const engineActive = useScenes || chainEdges > 0 || hasGroupOps;
   if (engineActive) {
     const refX = anchor.x + 560;
     const bandX = refX + (refOps.length > 0 ? NODE_W + H_GAP : 0);
