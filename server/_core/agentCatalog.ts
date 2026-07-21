@@ -1,6 +1,7 @@
 import type { NodeType, AgentOperation } from "../../shared/types";
 import { IMAGE_MODELS, VIDEO_MODELS } from "../../shared/modelCatalog";
 import { PROVIDER_PARAMS, SUPPORTS_NEGATIVE_PROMPT, REQUIRES_REFERENCE_IMAGE, type ParamDef } from "../../shared/videoModelParams";
+import { isValidDubbingVoice } from "../../shared/dubbingVoices";
 
 // ── Agent node catalog ────────────────────────────────────────────────────────
 // The curated set of node types the Copilot agent may create/configure, plus the
@@ -445,7 +446,7 @@ export function sanitizeOperationDetailed(
   // 节点、run_node 指定运行目标；其余动作没有目标语义，即便 LLM 乱带也无害——应用层
   // 只在需要时读取）。run_node 缺 targetRef 直接 drop（无目标的单节点运行无意义）。
   if (op === "canvas") {
-    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node", "save_library", "fetch_details"]);
+    const CANVAS_ACTIONS = new Set(["minimal_on", "minimal_off", "arrange_layout", "fit_view", "download_all", "assemble", "run_all", "run_node", "animatic", "ungroup", "focus_node", "save_library", "fetch_details", "set_voice"]);
     const action = str(o.action);
     if (!action || !CANVAS_ACTIONS.has(action)) return { drop: `未知的画布动作「${String(o.action)}」` };
     if (action === "run_node" && !str(o.targetRef)) return { drop: "run_node 画布动作缺少 targetRef（要运行哪个节点）" };
@@ -458,6 +459,20 @@ export function sanitizeOperationDetailed(
       const refs = Array.from(new Set(raw.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()))).slice(0, 20);
       if (!refs.length) return { drop: "fetch_details 画布动作缺少 targetRefs（要取全文的节点）" };
       return { op: { op: "canvas", action: "fetch_details" as AgentOperation["action"], targetRefs: refs, note: noteStr(o.note) } };
+    }
+    // #295 set_voice：锁定角色音色。targetRef 必填（角色 id/短号/tempId/角色名，客户端
+    // 解析）；voiceModel/voiceId 必须来自 shared/dubbingVoices 目录（容忍 LLM 把两字段
+    // 写进 payload），非法直接 drop 并把可选值域写进拒因——自愈重试能就地纠正。
+    if (action === "set_voice") {
+      const ref = str(o.targetRef);
+      if (!ref) return { drop: "set_voice 画布动作缺少 targetRef（要锁定音色的角色）" };
+      const pl = (o.payload && typeof o.payload === "object" ? o.payload : {}) as Record<string, unknown>;
+      const vm = str(o.voiceModel) ?? str(pl.voiceModel);
+      const vid = str(o.voiceId) ?? str(pl.voiceId);
+      if (!isValidDubbingVoice(vm, vid)) {
+        return { drop: `set_voice 的音色不合法（voiceModel=${String(vm)}, voiceId=${String(vid)}）——两者必须取自「锁定角色音色」清单中同一模型的音色` };
+      }
+      return { op: { op: "canvas", action: "set_voice" as AgentOperation["action"], targetRef: ref, voiceModel: vm, voiceId: vid, note: noteStr(o.note) } };
     }
     // targetRef 只对 assemble/run_node/ungroup/focus_node/save_library 有意义；旧五个动作
     // 维持原输出（不带该键），保证旧动作 sanitize 结果与 #266 之前逐字节一致（零回归守卫锁定）。

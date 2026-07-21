@@ -62,6 +62,73 @@ describe("applyAgentOperations scene grouping", () => {
   });
 });
 
+describe("#295 一句话锁角色音色（canvas set_voice）", () => {
+  // 注：AudioNode.tsx 的四组音色常量自 #295 起直接 import 自 shared/dubbingVoices
+  // （物理单源，漂移不可能发生），故此处不再 import AudioNode 做对照
+  // （其模块级 JSX 在 vitest 无 React 全局环境下会炸），只验证 shared 目录自身结构。
+  it("shared 音色目录结构完整（模型/音色表/校验函数/提示词清单自洽）", async () => {
+    const { DUBBING_VOICE_CATALOG, OPENAI_VOICES, ELEVENLABS_VOICES, GEMINI_VOICES, XAI_VOICES, isValidDubbingVoice, dubbingVoicePromptLines } =
+      await import("../../../shared/dubbingVoices");
+    expect(DUBBING_VOICE_CATALOG.length).toBe(10);
+    expect(OPENAI_VOICES.length).toBe(6);
+    expect(ELEVENLABS_VOICES.length).toBe(21);
+    expect(GEMINI_VOICES.length).toBe(30);
+    expect(XAI_VOICES.length).toBe(5);
+    for (const entry of DUBBING_VOICE_CATALOG) {
+      expect(entry.voices.length, `模型 ${entry.model} 音色表为空`).toBeGreaterThan(0);
+      for (const v of entry.voices) expect(isValidDubbingVoice(entry.model, v.value), `${entry.model}/${v.value} 校验不过`).toBe(true);
+    }
+    // voxcpm 克隆音色不可枚举，目录里不该有；非法组合必须拒
+    expect(DUBBING_VOICE_CATALOG.some((m) => m.model === "voxcpm-local")).toBe(false);
+    expect(isValidDubbingVoice("xai-tts-1", "Rachel")).toBe(false);
+    expect(isValidDubbingVoice("elevenlabs-v3-tts", "Rachel")).toBe(true);
+    // 提示词清单覆盖全部可锁模型 id（LLM 只能从中选）
+    const lines = dubbingVoicePromptLines();
+    for (const entry of DUBBING_VOICE_CATALOG) expect(lines, `清单缺模型 ${entry.model}`).toContain(entry.model);
+  });
+
+  it("按角色名锁音色：写入角色声音档案 + fill-only 同步脚本 castVoices", () => {
+    const setup: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1", payload: { characterKind: "person", name: "陈默" } },
+      { op: "create", nodeType: "script", tempId: "s1", payload: { castVoices: { 林小雨: { model: "openai_tts_real", voice: "nova" } } } },
+    ];
+    applyAgentOperations(setup, { x: 0, y: 0 });
+    const res = applyAgentOperations([
+      { op: "canvas", action: "set_voice", targetRef: "陈默", voiceModel: "elevenlabs-v3-tts", voiceId: "Rachel" },
+    ], { x: 0, y: 0 });
+    expect(res.failures.length).toBe(0);
+    expect(res.canvasActions).toBe(1);
+    expect(res.voiceLocks.length).toBe(1);
+    expect(res.voiceLocks[0]).toContain("陈默");
+    const st = useCanvasStore.getState();
+    const c = st.nodes.find((n) => n.data.nodeType === "character")!;
+    expect((c.data.payload as { voiceModel?: string }).voiceModel).toBe("elevenlabs-v3-tts");
+    expect((c.data.payload as { voiceId?: string }).voiceId).toBe("Rachel");
+    const s = st.nodes.find((n) => n.data.nodeType === "script")!;
+    const cast = (s.data.payload as { castVoices?: Record<string, { model: string; voice: string }> }).castVoices!;
+    expect(cast["陈默"]).toEqual({ model: "elevenlabs-v3-tts", voice: "Rachel" }); // 新增同步
+    expect(cast["林小雨"]).toEqual({ model: "openai_tts_real", voice: "nova" });   // 已有分配不覆盖
+  });
+
+  it("重复锁 = 显式覆盖（不受复用 fill-only 保护限制）；非法音色组合被拒", () => {
+    applyAgentOperations([
+      { op: "create", nodeType: "character", tempId: "c1", payload: { characterKind: "person", name: "陈默", voiceModel: "openai_tts_real", voiceId: "onyx" } },
+    ], { x: 0, y: 0 });
+    const ok = applyAgentOperations([
+      { op: "canvas", action: "set_voice", targetRef: "陈默", voiceModel: "xai-tts-1", voiceId: "eve" },
+    ], { x: 0, y: 0 });
+    expect(ok.failures.length).toBe(0);
+    const c = useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "character")!;
+    expect((c.data.payload as { voiceId?: string }).voiceId).toBe("eve"); // 覆盖成功
+    // 非法：模型与音色不匹配（Rachel 不是 xai 的音色）→ fail 且档案不变
+    const bad = applyAgentOperations([
+      { op: "canvas", action: "set_voice", targetRef: "陈默", voiceModel: "xai-tts-1", voiceId: "Rachel" },
+    ], { x: 0, y: 0 });
+    expect(bad.failures.length).toBe(1);
+    expect((useCanvasStore.getState().nodes.find((n) => n.data.nodeType === "character")!.data.payload as { voiceId?: string }).voiceId).toBe("eve");
+  });
+});
+
 describe("#274 布局引擎：行=镜头链 / 列=流程阶段 / 双框去重 / 组框成长余量", () => {
   it("同一镜头链（p→图→v，本批 connect 归并）排成一行：同 y 顶对齐，x 按流程左→右", () => {
     const ops: AgentOperation[] = [
