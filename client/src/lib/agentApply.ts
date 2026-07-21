@@ -187,6 +187,10 @@ function runCanvasAction(op: AgentOperation, resolve: (ref?: string) => string |
       st.updateNodeData(targetId, assembledPlanToMergePatch(plan));
       const voiced = plan.voiceUrls.filter(Boolean).length;
       toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐镜转场${voiced ? ` · ${voiced} 条配音对位` : ""}）——在合并节点点「合并」即可成片`, { duration: 5000 });
+      // #303 重音冲突提示（与 MergeNode 手动装配同口径）。
+      if (plan.voiceConflictNums?.length) {
+        toast.warning(`⚠ 镜 ${plan.voiceConflictNums.join("/")} 的视频提示词自带台词——若视频模型可发声（如 Grok），成片会与配音双重人声。可在合并节点段列表调低该段原声，或移除该镜配音。`, { duration: 10000 });
+      }
       return null;
     }
     case "ungroup": {

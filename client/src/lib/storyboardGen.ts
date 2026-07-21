@@ -20,6 +20,7 @@ import { connectedEffectPrompts, appendEffectPrompts } from "./effectPrompt";
 import { resolveImageParam, resolvePoyoImageSize } from "./paramDefs";
 import { estimateImageCost, costEstimateLabel } from "./costEstimate";
 import { nearestUpstreamStoryboard, nearestUpstreamPrompt, titleShotNumber } from "./inputOrder";
+import { videoPromptSpeaks } from "./voiceConflict";
 
 // 与 StoryboardNode UI 共用的模型常量（单一事实源）。
 export const SOUL_SIZES_LIST = [
@@ -282,6 +283,9 @@ export interface AssembledPlan {
   /** 段↔分镜/视频节点绑定（按镜定位与重生成入口）。 */
   sourceShots: { sb: string | null; vid: string; num?: number | string }[];
   shots: { sceneNumber: number | string | undefined; hasVoice: boolean; hasSfx: boolean; transition: string }[];
+  /** #303 重音冲突镜号：该段既有 TTS 配音、其视频提示词又自带这段台词（可发声
+   *  视频模型会直接念出）——装配后可能双重人声。调用方 toast 提示，不拦截。 */
+  voiceConflictNums?: (number | string)[];
 }
 
 /** 把装配清单映射成合并节点 payload 补丁（MergeNode.handleAssemble 与智能体引导卡共用，
@@ -404,7 +408,7 @@ export function assembleFromStoryboards(
   // #134 成片参与范围：节点「跳过参与」（payload.disabled，右键/多选条/助手均可设）——
   // 装配与运行/估价同口径：工位或其上游分镜被跳过的段不进成片。
   const isOff = (n?: { data: { payload?: unknown } }) => (n?.data.payload as { disabled?: boolean } | undefined)?.disabled === true;
-  type Entry = { num: number; url: string; transition: string | undefined; voice: string | null; voiceDur: number | null; sfx: string | null; dialogue: string | null; sbId: string | null; vidId: string; sceneNumber: number | string | undefined };
+  type Entry = { num: number; url: string; transition: string | undefined; voice: string | null; voiceDur: number | null; sfx: string | null; dialogue: string | null; sbId: string | null; vidId: string; sceneNumber: number | string | undefined; voiceConflict: boolean };
   const entries: Entry[] = [];
   for (const e of edges) {
     if (e.target !== mergeId) continue;
@@ -453,7 +457,18 @@ export function assembleFromStoryboards(
     // 镜头6/结尾数字等，titleShotNumber 与合并段序比较器同源）；标题也无镜号才
     // 按连线顺序垫底（9000+）。此前无分镜段一律 9000+ 连线序，装配等于白点。
     const tNum = titleShotNumber(vn.data.title);
-    entries.push({ num: Number.isFinite(num) && num > 0 ? num : (Number.isFinite(tNum) ? tNum : 9000 + entries.length), url, transition: sp?.transition, voice, voiceDur, sfx, dialogue: sp?.dialogue?.trim() || null, sbId: sb?.id ?? null, vidId: vn.id, sceneNumber: sp?.sceneNumber ?? (Number.isFinite(tNum) ? tNum : undefined) });
+    // #303 重音冲突：该段有 TTS 配音，且视频提示词自带这段台词（分镜流取分镜
+    // dialogue；prompt 流取 prompt 节点正向文本作对白源）——可发声视频模型会
+    // 直接念出，装配混音后双重人声。只计数供调用方提示，不改变装配行为。
+    const vidPromptText = (vn.data.payload as { prompt?: string; promptText?: string }).prompt
+      ?? (vn.data.payload as { promptText?: string }).promptText;
+    const dlgSource = sp?.dialogue
+      ?? (voiceHost && voiceHost.data.nodeType === "prompt"
+        ? ((voiceHost.data.payload ?? {}) as { positivePrompt?: string; promptText?: string }).positivePrompt
+          ?? ((voiceHost.data.payload ?? {}) as { promptText?: string }).promptText
+        : undefined);
+    const voiceConflict = !!voice && videoPromptSpeaks(vidPromptText, dlgSource);
+    entries.push({ num: Number.isFinite(num) && num > 0 ? num : (Number.isFinite(tNum) ? tNum : 9000 + entries.length), url, transition: sp?.transition, voice, voiceDur, sfx, dialogue: sp?.dialogue?.trim() || null, sbId: sb?.id ?? null, vidId: vn.id, sceneNumber: sp?.sceneNumber ?? (Number.isFinite(tNum) ? tNum : undefined), voiceConflict });
   }
   if (entries.length < 2) return { error: "需要至少 2 个已出片的上游视频节点" };
   entries.sort((a, b) => a.num - b.num);
@@ -494,5 +509,6 @@ export function assembleFromStoryboards(
     voiceDurations: entries.map((x) => x.voiceDur),
     sourceShots: entries.map((x) => ({ sb: x.sbId, vid: x.vidId, num: x.sceneNumber })),
     shots: entries.map((x) => ({ sceneNumber: x.sceneNumber, hasVoice: !!x.voice, hasSfx: !!x.sfx, transition: mapShotTransition(x.transition, seamFallback) })),
+    voiceConflictNums: entries.filter((x) => x.voiceConflict).map((x) => x.sceneNumber ?? x.num),
   };
 }
