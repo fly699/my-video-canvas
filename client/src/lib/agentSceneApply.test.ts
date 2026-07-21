@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 
 describe("applyAgentOperations scene grouping", () => {
-  it("creates a group box per scene and columns the shots", () => {
+  it("creates a group box per scene and lays scenes as stacked bands (#274)", () => {
     const ops: AgentOperation[] = [
       { op: "create", nodeType: "script", tempId: "sc" },
       { op: "create", nodeType: "storyboard", tempId: "s1a", sceneGroup: "s1" },
@@ -32,12 +32,23 @@ describe("applyAgentOperations scene grouping", () => {
       expect((g.style as { width?: number })?.width).toBeGreaterThan(0);
       expect((g.style as { height?: number })?.height).toBeGreaterThan(0);
       expect(g.zIndex).toBe(-1);
+      // #274 场景框登记成员（此前是无成员的纯背景板：拖不动、无计数、不能解组）。
+      expect((((g.data.payload as { childIds?: string[] }).childIds) ?? []).length).toBeGreaterThan(0);
     }
 
-    // Scene 1's two shots share one column (same x), distinct from scene 2's column.
+    // #274 场景=横幅带纵向堆叠：两带同 x、上下互不重叠（旧布局是横向列，越多场景越宽、
+    // 角色连线横穿——真机取证后重构）。
+    const [g1, g2] = [...groups].sort((a, b) => a.position.y - b.position.y);
+    expect(g1.position.x).toBe(g2.position.x);
+    expect(g2.position.y).toBeGreaterThan(g1.position.y + (((g1.style as { height?: number }).height) ?? 0));
+    // 分镜全部在带内同一阶段列（stage 0）
     const sb = nodes.filter((n) => n.data.nodeType === "storyboard");
-    const xs = new Set(sb.map((n) => n.position.x));
-    expect(xs.size).toBe(2); // two scene columns
+    expect(new Set(sb.map((n) => n.position.x)).size).toBe(1);
+    // 上游参考（脚本）在带左、下游汇聚（merge）在带右——参考→镜头→成片整体左→右
+    const script = nodes.find((n) => n.data.nodeType === "script")!;
+    const merge = nodes.find((n) => n.data.nodeType === "merge")!;
+    expect(script.position.x).toBeLessThan(sb[0].position.x);
+    expect(merge.position.x).toBeGreaterThan(sb[0].position.x);
   });
 
   it("leaves layout unchanged (no group boxes) when ops have no sceneGroup", () => {
@@ -48,6 +59,97 @@ describe("applyAgentOperations scene grouping", () => {
     applyAgentOperations(ops, { x: 0, y: 0 });
     const nodes = useCanvasStore.getState().nodes;
     expect(nodes.filter((n) => n.data.nodeType === "group").length).toBe(0);
+  });
+});
+
+describe("#274 布局引擎：行=镜头链 / 列=流程阶段 / 双框去重 / 组框成长余量", () => {
+  it("同一镜头链（p→图→v，本批 connect 归并）排成一行：同 y 顶对齐，x 按流程左→右", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", sceneGroup: "s1" },
+      { op: "create", nodeType: "image_gen", tempId: "l1", sceneGroup: "s1" },
+      { op: "create", nodeType: "video_task", tempId: "v1", sceneGroup: "s1" },
+      { op: "connect", sourceRef: "p1", targetRef: "l1" },
+      { op: "connect", sourceRef: "l1", targetRef: "v1" },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const nodes = useCanvasStore.getState().nodes.filter((n) => n.data.nodeType !== "group");
+    const p = nodes.find((n) => n.data.nodeType === "prompt")!;
+    const l = nodes.find((n) => n.data.nodeType === "image_gen")!;
+    const v = nodes.find((n) => n.data.nodeType === "video_task")!;
+    expect(p.position.y).toBe(l.position.y);
+    expect(l.position.y).toBe(v.position.y);
+    expect(p.position.x).toBeLessThan(l.position.x);
+    expect(l.position.x).toBeLessThan(v.position.x);
+  });
+
+  it("无连线时按「阶段未前进即换行」启发式成行（典型 p,v,p,v 输出两行两列）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", sceneGroup: "s1" },
+      { op: "create", nodeType: "video_task", tempId: "v1", sceneGroup: "s1" },
+      { op: "create", nodeType: "prompt", tempId: "p2", sceneGroup: "s1" },
+      { op: "create", nodeType: "video_task", tempId: "v2", sceneGroup: "s1" },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const nodes = useCanvasStore.getState().nodes.filter((n) => n.data.nodeType !== "group");
+    const ps = nodes.filter((n) => n.data.nodeType === "prompt").sort((a, b) => a.position.y - b.position.y);
+    const vs = nodes.filter((n) => n.data.nodeType === "video_task").sort((a, b) => a.position.y - b.position.y);
+    expect(ps[0].position.y).toBe(vs[0].position.y); // 行1：p1 v1 同行
+    expect(ps[1].position.y).toBe(vs[1].position.y); // 行2：p2 v2 同行
+    expect(ps[1].position.y).toBeGreaterThan(ps[0].position.y);
+    expect(ps[0].position.x).toBeLessThan(vs[0].position.x); // 列：提示词左、视频右
+    expect(new Set([ps[0].position.x, ps[1].position.x]).size).toBe(1); // 同列对齐
+  });
+
+  it("LLM group 成员与规划场景重合 → 不建第二个组框（双框去重），场景框改用 LLM 组名并登记成员", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1", sceneGroup: "s1" },
+      { op: "create", nodeType: "video_task", tempId: "v1", sceneGroup: "s1" },
+      { op: "connect", sourceRef: "p1", targetRef: "v1" },
+      { op: "group", targetRefs: ["p1", "v1"], title: "场景1-黎明码头" },
+    ];
+    const res = applyAgentOperations(ops, { x: 0, y: 0 });
+    expect(res.failures.length).toBe(0);
+    const groups = useCanvasStore.getState().nodes.filter((n) => n.data.nodeType === "group");
+    expect(groups.length).toBe(1); // 只有场景框，没有第二个 LLM 组框
+    expect(groups[0].data.title).toBe("场景1-黎明码头"); // LLM 组名优先
+    expect((((groups[0].data.payload as { childIds?: string[] }).childIds) ?? []).length).toBe(2);
+  });
+
+  it("非场景 group 按「生成后估高」画框（成长余量）：框底盖过空壳视频节点的估高区", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "prompt", tempId: "p1" },
+      { op: "create", nodeType: "video_task", tempId: "v1" },
+      { op: "connect", sourceRef: "p1", targetRef: "v1" },
+      { op: "group", targetRefs: ["p1", "v1"], title: "自由组" },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const st = useCanvasStore.getState();
+    const g = st.nodes.find((n) => n.data.nodeType === "group")!;
+    const v = st.nodes.find((n) => n.data.nodeType === "video_task")!;
+    expect((((g.data.payload as { childIds?: string[] }).childIds) ?? []).length).toBe(2);
+    const boxBottom = g.position.y + ((g.style as { height?: number }).height ?? 0);
+    // 视频节点 16:9 生成后估高 ≈ 340*9/16+170 ≈ 361：框底须给足余量（空壳时实际高远小于此）
+    expect(boxBottom).toBeGreaterThanOrEqual(v.position.y + 300);
+  });
+
+  it("引擎生效时参考列在带左、汇聚列在带右（角色→镜头→合并 整体左→右）", () => {
+    const ops: AgentOperation[] = [
+      { op: "create", nodeType: "character", tempId: "c1" },
+      { op: "create", nodeType: "prompt", tempId: "p1", sceneGroup: "s1" },
+      { op: "create", nodeType: "video_task", tempId: "v1", sceneGroup: "s1" },
+      { op: "create", nodeType: "merge", tempId: "m1" },
+      { op: "connect", sourceRef: "p1", targetRef: "v1" },
+      { op: "connect", sourceRef: "c1", targetRef: "v1" },
+      { op: "connect", sourceRef: "v1", targetRef: "m1" },
+    ];
+    applyAgentOperations(ops, { x: 0, y: 0 });
+    const nodes = useCanvasStore.getState().nodes;
+    const c = nodes.find((n) => n.data.nodeType === "character")!;
+    const p = nodes.find((n) => n.data.nodeType === "prompt")!;
+    const v = nodes.find((n) => n.data.nodeType === "video_task")!;
+    const m = nodes.find((n) => n.data.nodeType === "merge")!;
+    expect(c.position.x).toBeLessThan(p.position.x);
+    expect(v.position.x).toBeLessThan(m.position.x);
   });
 });
 
