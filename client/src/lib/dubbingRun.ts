@@ -18,6 +18,7 @@ import { parseDialogueLines, stripDialogueRoles, shouldCast, planCastSegments, t
 import { estimateTtsCost, costEstimateLabel } from "./costEstimate";
 import { DUBBING_VOICE_CATALOG, OPENAI_VOICES } from "../../../shared/dubbingVoices";
 import { titleShotNumber } from "./inputOrder";
+import { videoPromptSpeaks } from "./voiceConflict";
 
 /** 模型→可用音色 value 表：shared 目录优先；目录外 elevenlabs 系回退 ElevenLabs 表、
  *  其余回退 OpenAI 表——与 AudioNode.voicesForModel 同语义（那边给 UI 用带 label 的
@@ -45,6 +46,9 @@ export interface DubShotPlan {
   reuseAudioId: string | null;
   /** 本镜生效的角色音色表：角色声音档案（默认）< 上游脚本 castVoices（优先）。 */
   cast: CastMap;
+  /** #303 重音冲突：本镜下游视频节点的提示词自带这段台词（可发声视频模型会
+   *  直接念出）——叠加 TTS 后成片可能双重人声，confirm 时明确提示。 */
+  speaksConflict: boolean;
 }
 
 /** 从画布快照收集可配音的镜（纯函数，单测锁口径，与面板版 runDubBatch 对齐）：
@@ -96,6 +100,29 @@ export function collectDubShots(
     }
     return {};
   };
+  // #303 镜载体（分镜/prompt）下游视频节点的提示词全集（直连或隔 image_gen 一跳），
+  // 供重音冲突判定：视频提示词自带台词 + TTS 叠加 = 双重人声。
+  const VIDEO_TYPES = new Set(["video_task", "comfyui_video", "comfyui_workflow"]);
+  const IMG_PASS = new Set(["image_gen", "comfyui_image"]);
+  const downstreamVideoPrompts = (hostId: string): string[] => {
+    const out: string[] = [];
+    const take = (n?: DubScanNode) => {
+      if (!n || !VIDEO_TYPES.has(n.data.nodeType)) return;
+      const p = (n.data.payload ?? {}) as { prompt?: string; promptText?: string; positivePrompt?: string };
+      const vp = p.prompt ?? p.promptText ?? p.positivePrompt;
+      if (vp) out.push(vp);
+    };
+    for (const e of edges) {
+      if (e.source !== hostId) continue;
+      const t = nodes.find((m) => m.id === e.target);
+      if (!t) continue;
+      take(t);
+      if (IMG_PASS.has(t.data.nodeType)) {
+        for (const e2 of edges) { if (e2.source === t.id) take(nodes.find((m) => m.id === e2.target)); }
+      }
+    }
+    return out;
+  };
 
   type Cand = { n: DubScanNode; text: string; sceneNumber?: number | string; order: number };
   const cands: Cand[] = [];
@@ -106,9 +133,7 @@ export function collectDubShots(
     const num = Number(p.sceneNumber);
     cands.push({ n, text: (p.dialogue ?? "").trim(), sceneNumber: p.sceneNumber, order: Number.isFinite(num) && num > 0 ? num : 9000 + i });
   });
-  // ── #300 prompt 镜（排除分镜工作流）──
-  const VIDEO_TYPES = new Set(["video_task", "comfyui_video", "comfyui_workflow"]);
-  const IMG_PASS = new Set(["image_gen", "comfyui_image"]);
+  // ── #300 prompt 镜（排除分镜工作流）──（VIDEO_TYPES/IMG_PASS 复用上方 #303 定义）
   const hasDownstreamVideo = (id: string): boolean => {
     for (const e of edges) {
       if (e.source !== id) continue;
@@ -160,7 +185,8 @@ export function collectDubShots(
     const st = audioStation(c.n.id);
     if (st.done) { skippedDone++; continue; }
     if (!c.text) { skippedNoDialogue++; continue; }
-    shots.push({ sbId: c.n.id, sceneNumber: c.sceneNumber, text: c.text, reuseAudioId: st.reuseAudioId, cast: { ...charDefaults, ...upstreamScriptCast(c.n.id) } });
+    const speaksConflict = downstreamVideoPrompts(c.n.id).some((vp) => videoPromptSpeaks(vp, c.text));
+    shots.push({ sbId: c.n.id, sceneNumber: c.sceneNumber, text: c.text, reuseAudioId: st.reuseAudioId, cast: { ...charDefaults, ...upstreamScriptCast(c.n.id) }, speaksConflict });
   }
   return { shots, total: cands.length, skippedDone, skippedNoDialogue };
 }
@@ -197,7 +223,13 @@ export async function runDubbingFromCanvas(client: DubbingClient): Promise<void>
   const castShots = shots.filter((s) => shouldCast(parseDialogueLines(s.text), s.cast)).length;
   const castNote = castShots ? `；其中 ${castShots} 镜按已锁「角色音色」分角色配音` : "";
   const skipNote = `${skippedDone ? `；${skippedDone} 镜已有配音跳过` : ""}${skippedNoDialogue ? `；${skippedNoDialogue} 镜无对白跳过` : ""}`;
-  if (!window.confirm(`将为 ${shots.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${castNote}${skipNote}。继续？`)) {
+  // #303 重音冲突预警：视频提示词自带台词（可发声视频模型会直接念出）+ TTS 叠加
+  // = 装配后双重人声。只提示不拦截——用户设置第一位，且并非所有视频模型都发声。
+  const conflictShots = shots.filter((s) => s.speaksConflict);
+  const conflictNote = conflictShots.length
+    ? `\n\n⚠ 注意：镜 ${conflictShots.map((s) => s.sceneNumber ?? "?").join("/")} 的视频提示词自带台词——若视频模型可发声（如 Grok），成片会与 TTS 配音双重人声。届时可在合并节点把该段原声音量调低/静音，或删除该镜配音工位。`
+    : "";
+  if (!window.confirm(`将为 ${shots.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${castNote}${skipNote}。${conflictNote}继续？`)) {
     toast.info("已取消批量配音");
     return;
   }

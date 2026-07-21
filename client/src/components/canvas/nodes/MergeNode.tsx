@@ -395,6 +395,10 @@ export const MergeNode = memo(function MergeNode({ id, selected, data }: Props) 
     const voiced = plan.shots.filter((x) => x.hasVoice).length;
     const sfxed = plan.shots.filter((x) => x.hasSfx).length;
     toast.success(`已按镜头表装配 ${plan.inputVideoUrls.length} 段（镜号排序 · 逐切点转场${voiced ? ` · ${voiced} 条配音对位` : ""}${sfxed ? ` · ${sfxed} 条音效对位` : ""}）`, { duration: 5000 });
+    // #303 重音冲突提示：视频提示词自带台词 + TTS 配音叠加 = 可能双重人声。
+    if (plan.voiceConflictNums?.length) {
+      toast.warning(`⚠ 镜 ${plan.voiceConflictNums.join("/")} 的视频提示词自带台词——若视频模型可发声（如 Grok），成片会与配音双重人声。可在段列表把该段原声音量调低/静音，或移除该镜配音。`, { duration: 10000 });
+    }
   };
 
   const reactFlow = useReactFlow();

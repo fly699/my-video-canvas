@@ -274,6 +274,26 @@ describe("assembleFromStoryboards（装配端收集）", () => {
     expect(r.voiceDurations).toEqual([3, null]);
   });
 
+  it("#303 装配重音冲突计数：有配音且视频提示词自带台词的段进 voiceConflictNums", () => {
+    const n = [
+      N("m", "merge", {}),
+      N("sb1", "storyboard", { sceneNumber: 1, dialogue: "陈默：夜色真美，可惜没人陪我看。" }),
+      N("sb2", "storyboard", { sceneNumber: 2, dialogue: "林小雨：等等我呀，别走那么快。" }),
+      N("v1", "video_task", { resultVideoUrl: "v1.mp4", prompt: "天台，陈默说：夜色真美，可惜没人陪我看。" }),
+      N("v2", "video_task", { resultVideoUrl: "v2.mp4", prompt: "街角纯画面，无台词。" }),
+      N("a1", "audio", { url: "d1.mp3", audioCategory: "dubbing" }),
+      N("a2", "audio", { url: "d2.mp3", audioCategory: "dubbing" }),
+    ];
+    const e = [
+      { source: "sb1", target: "v1" }, { source: "sb2", target: "v2" },
+      { source: "v1", target: "m" }, { source: "v2", target: "m" },
+      { source: "sb1", target: "a1" }, { source: "sb2", target: "a2" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.voiceConflictNums).toEqual([1]); // 镜1 提示词自带台词+有配音；镜2 有配音但提示词干净
+  });
+
   it("#280 多跳回溯：分镜→image_gen 出图工位→视频 的标准管线也按镜号排序（此前一跳直查回溯断链、退化成连线顺序）", () => {
     const n = [
       N("m", "merge", {}),

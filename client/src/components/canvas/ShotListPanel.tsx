@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { X, ClipboardList, ArrowUp, ArrowDown, Loader2, Wand2, ListOrdered, Scaling, ImagePlus, Check, RotateCw, Clapperboard, Mic, Zap, Film } from "lucide-react";
 import type { StoryboardNodeData, ScriptNodeData, CharacterNodeData } from "../../../../shared/types";
 import { parseDialogueLines, stripDialogueRoles, extractRoles, shouldCast, planCastSegments, type CastMap, type CastVoice } from "../../lib/dialogueCasting";
+import { videoPromptSpeaks } from "../../lib/voiceConflict";
 import { buildStoryboardGenInput, applyStoryboardGenResult, clampDurationForProvider } from "../../lib/storyboardGen";
 import { buildAnimaticDoc, type AnimaticShot } from "../../lib/animatic";
 import { materializeTemplate } from "../../lib/agentApply";
@@ -562,7 +563,36 @@ export function ShotListPanel({ id, onClose }: { id: string; onClose: () => void
     const sumText = est ? costEstimateLabel(est) : "按量计费";
     const castShots = ready.filter((r) => shouldCast(parseDialogueLines(r.payload.dialogue!.trim()), effCast)).length;
     const castNote = castShots ? `；其中 ${castShots} 镜按「角色音色」分角色配音` : "";
-    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${castNote}${skippedNoDlg ? `；${skippedNoDlg} 个无对白跳过` : ""}。继续？`)) return;
+    // #303 重音冲突预警（与口令版 dubbingRun 同口径）：该镜下游视频节点（直连或隔
+    // image_gen 一跳）的提示词自带这段台词——可发声视频模型会直接念出，叠 TTS 双重人声。
+    const conflictNums = (() => {
+      const st = useCanvasStore.getState();
+      const VIDEO = new Set(["video_task", "comfyui_video", "comfyui_workflow"]);
+      const IMG = new Set(["image_gen", "comfyui_image"]);
+      const vpOf = (n?: { data: { nodeType: string; payload?: unknown } }) => {
+        if (!n || !VIDEO.has(n.data.nodeType)) return undefined;
+        const p = (n.data.payload ?? {}) as { prompt?: string; promptText?: string };
+        return p.prompt ?? p.promptText;
+      };
+      return ready.filter((r) => {
+        const d = r.payload.dialogue!.trim();
+        for (const e of st.edges) {
+          if (e.source !== r.id) continue;
+          const t = st.nodes.find((m) => m.id === e.target);
+          if (videoPromptSpeaks(vpOf(t), d)) return true;
+          if (t && IMG.has(t.data.nodeType)) {
+            for (const e2 of st.edges) {
+              if (e2.source === t.id && videoPromptSpeaks(vpOf(st.nodes.find((m) => m.id === e2.target)), d)) return true;
+            }
+          }
+        }
+        return false;
+      }).map((r) => r.payload.sceneNumber ?? "?");
+    })();
+    const conflictNote = conflictNums.length
+      ? `\n\n⚠ 注意：镜 ${conflictNums.join("/")} 的视频提示词自带台词——若视频模型可发声（如 Grok），成片会与 TTS 配音双重人声。届时可在合并节点把该段原声音量调低/静音，或删除该镜配音工位。`
+      : "";
+    if (!window.confirm(`将为 ${ready.length} 个分镜逐镜生成配音（共 ${totalChars} 字，预估 ${sumText}）${castNote}${skippedNoDlg ? `；${skippedNoDlg} 个无对白跳过` : ""}。${conflictNote}继续？`)) return;
     setDubBusy(true);
     const queue = [...ready];
     const worker = async () => {

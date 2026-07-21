@@ -66,6 +66,20 @@ describe("#298 collectDubShots（口令版批量配音收集器）", () => {
     expect(r.total).toBe(1);
   });
 
+  it("#303 speaksConflict：下游视频提示词自带台词的镜被标记（隔 image_gen 一跳也认）", () => {
+    const nodes = [
+      sb("s1", { sceneNumber: 1, dialogue: "陈默：夜色真美，可惜没人陪我看。" }),
+      sb("s2", { sceneNumber: 2, dialogue: "旁白一句话而已。" }),
+      { id: "ig", data: { nodeType: "image_gen", payload: {} } } as DubScanNode,
+      { id: "v1", data: { nodeType: "video_task", payload: { prompt: "天台，他低声说：夜色真美，可惜没人陪我看。推近。" } } } as DubScanNode,
+      { id: "v2", data: { nodeType: "video_task", payload: { prompt: "纯画面空镜，无台词。" } } } as DubScanNode,
+    ];
+    const edges = [e("s1", "ig"), e("ig", "v1"), e("s2", "v2")];
+    const r = collectDubShots(nodes, edges);
+    expect(r.shots.find((s) => s.sbId === "s1")?.speaksConflict).toBe(true);
+    expect(r.shots.find((s) => s.sbId === "s2")?.speaksConflict).toBe(false);
+  });
+
   it("音色表：角色档案作默认、上游脚本 castVoices 覆盖（脚本表优先与面板同序）", () => {
     const nodes = [
       chr("c1", "陈默", "elevenlabs-v3-tts", "Rachel"),
