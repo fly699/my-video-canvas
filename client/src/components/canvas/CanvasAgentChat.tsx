@@ -379,6 +379,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem("avc:canvasAgent:collapsed") === "1");
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:collapsed", collapsed ? "1" : "0"); } catch { /* quota */ } }, [collapsed]);
+
+  // #304 生成失败主动诊断：订阅画布上 status=failed 的节点。选择器返回【字符串签名】
+  // （zustand 用 Object.is 比较，字符串天然稳定）——返回对象数组会每次新引用、渲染风暴。
+  // 指纹 = id+error：同一失败只提醒一次（防骚扰）；修复后以【不同原因】再失败会重新亮。
+  const failSig = useCanvasStore((s) => s.nodes
+    .filter((n) => (n.data.payload as { status?: string } | undefined)?.status === "failed")
+    .map((n) => `${n.id}${(n.data.title || n.data.nodeType).slice(0, 40)}${String((n.data.payload as { error?: unknown }).error ?? "").slice(0, 160)}`)
+    .join(""));
+  const failedNodes = useMemo(() =>
+    failSig ? failSig.split("").map((row) => { const [id, title, error] = row.split(""); return { id, title, error }; }) : [],
+  [failSig]);
+  const [failDismissed, setFailDismissed] = useState<Set<string>>(new Set());
+  const failKey = (f: { id: string; error: string }) => `${f.id} ${f.error}`;
+  const activeFails = failedNodes.filter((f) => !failDismissed.has(failKey(f)));
   // #293 空画布引导「画布助手 · 一句话快速成片」入口：收到事件展开助手窗并聚焦输入框
   //（EmptyCanvasGuide 与助手窗无组件层级关系，走自定义事件，与 canvas:fit-view 同机制）。
   useEffect(() => {
@@ -1243,6 +1257,38 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             <span style={{ color: "var(--c-t4)" }}>先框选节点=只改选中项；建/连/改自动落地不花钱，运行生成仍需在节点上点运行。</span>
           </div>
         )}
+        {/* #304 失败主动诊断建议卡：画布出现生成失败节点时自动亮起——一键让助手按
+            error 根因修复（走正常规划-落地-可撤销流程），或忽略本批。 */}
+        {activeFails.length > 0 && (
+          <div className="nodrag" style={{ margin: "2px 0 4px", padding: "9px 11px", borderRadius: 11, fontSize: 11.5, lineHeight: 1.55,
+            background: "oklch(0.55 0.18 25 / 0.10)", border: "1px solid oklch(0.62 0.18 25 / 0.45)", color: "oklch(0.80 0.10 25)" }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>⚠ 检测到 {activeFails.length} 个节点生成失败</div>
+            <div
+              title={activeFails.map((f) => `${f.title}：${f.error || "未知原因"}`).join("\n")}
+              style={{ opacity: 0.9, cursor: "help", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {activeFails.slice(0, 3).map((f) => f.title).join("、")}{activeFails.length > 3 ? ` 等 ${activeFails.length} 个` : ""}（悬停看失败原因）
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setFailDismissed((p) => new Set([...Array.from(p), ...activeFails.map(failKey)]));
+                  void send("修复画布上所有失败的节点（按各节点 error 字段的根因做最小化修复；环境类问题修不了就说明原因，禁止删除重建节点）");
+                }}
+                style={{ padding: "4px 12px", fontSize: 11.5, fontWeight: 700, borderRadius: 8, cursor: busy ? "wait" : "pointer",
+                  background: "oklch(0.55 0.18 25 / 0.25)", border: "1px solid oklch(0.65 0.18 25 / 0.6)", color: "oklch(0.85 0.10 25)" }}>
+                {busy ? "处理中…" : "一键诊断修复"}
+              </button>
+              <button
+                onClick={() => setFailDismissed((p) => new Set([...Array.from(p), ...activeFails.map(failKey)]))}
+                style={{ padding: "4px 10px", fontSize: 11.5, borderRadius: 8, cursor: "pointer",
+                  background: "transparent", border: "1px solid var(--c-bd2)", color: "var(--c-t3)" }}>
+                忽略
+              </button>
+            </div>
+          </div>
+        )}
         {turns.map((t, i) => (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: t.role === "user" ? "flex-end" : "flex-start", gap: 3 }}>
             <div style={{ maxWidth: "88%", padding: "8px 11px", borderRadius: 12, fontSize: 12.5, lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word",
@@ -1465,6 +1511,17 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         {busy
           ? <Loader2 size={canvasMode === "creative" ? 14 : 17} className="animate-spin" style={{ color: "white", position: "relative", zIndex: 1 }} />
           : <Sparkles size={canvasMode === "creative" ? 14 : 18} style={{ color: "white", position: "relative", zIndex: 1, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />}
+        {/* #304 失败徽标：收起态也能看到「有节点失败待诊断」——展开即见建议卡 */}
+        {activeFails.length > 0 && (
+          <span
+            title={`${activeFails.length} 个节点生成失败——点击展开助手查看诊断建议`}
+            style={{ position: "absolute", top: -3, right: -3, minWidth: 16, height: 16, borderRadius: 8, zIndex: 2,
+              background: "oklch(0.60 0.22 25)", color: "#fff", fontSize: 9.5, fontWeight: 700, lineHeight: 1,
+              display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
+              boxShadow: "0 0 0 2px oklch(0.20 0 0 / 0.55)" }}>
+            {activeFails.length}
+          </span>
+        )}
       </div>
       {ballMenu && (
         <div
