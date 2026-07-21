@@ -370,7 +370,6 @@ export function applyAgentOperations(
   // 16:9 → 预览行 ≈461（旧 660 太稀疏）；9:16 → ≈874（旧 660 反而会压叠，竖版自动放大）；
   // 角色 → ≈890（旧 1050），呼吸空隙仍有 100px 且能看清连线。
   const rowHFor = (o: AgentOperation) => estHeight(o) + V_GAP;
-  const SCENE_COL_W = NODE_W + PAD * 2 + 120; // 场景框宽 420 + 框间 120（步进另加 PAD）
   const FAN_COL_W = NODE_W + H_GAP;           // 非场景 3 列扇出列距 = 540
   const createOps = ops.filter((o) => o.op === "create");
   const sceneKeys: string[] = [];
@@ -380,22 +379,158 @@ export function applyAgentOperations(
   }
   const useScenes = sceneKeys.length > 0;
   const posByOp = new Map<AgentOperation, { x: number; y: number }>();
-  const sceneBoxes: { x: number; y: number; width: number; height: number; title: string }[] = [];
-  if (useScenes) {
+  const sceneBoxes: { x: number; y: number; width: number; height: number; title: string; sceneKey?: string }[] = [];
+
+  // ── #274 布局引擎重构（8 镜 4 场景注入真机取证后的针对性修复）──────────────
+  // 旧布局四宗罪（实测数据）：①场景=单列 420×2692 瘦高柱，「行」的概念不存在；
+  // ②无 sceneGroup 时 3 列扇出按「创建序 % 3」分列，列序实测出「图|视频|提示词」，
+  // 两个角色还被挤进网格头两格；③角色/merge 一律进最右尾列——角色是上游却在最右，
+  // 角色→镜头连线均长 2086px、最长 3135px，逆向横穿全部场景（用户截图的蜘蛛网）；
+  // ④LLM group 按成员当时的空壳尺寸贴框且相邻场景成员在网格里犬牙交错，组框互相
+  // 咬合（实测组重叠 3~4 对）。
+  // 新引擎（纯确定性，零 LLM 参与）：
+  //  · 列 = 流程阶段（提示词/分镜 → 图 → 视频 → 音频/其它），左→右与连线方向一致；
+  //  · 行 = 镜头链——用【本批 connect】把 p→图→v 归并成一行（无连线时按「阶段未
+  //    前进即换行」启发式，典型 LLM 输出 p,图,v,p,图,v… 无连线也能对齐成行）；
+  //    行内顶对齐，行高 = 该行最高节点的生成后估高 + V_GAP；
+  //  · 场景 = 横幅带，纵向堆叠（场景1..N 从上往下，符合剧本阅读方向）；
+  //  · 未入场景的上游参考（角色/脚本/便签/素材）放带区【左侧】参考列，下游汇聚
+  //    （merge/剪辑/字幕/音频）放带区【右侧】汇聚列——参考→镜头→成片整体左→右；
+  //  · 无 sceneGroup 但镜头链可辨（本批 create 间有连线）→ 同一引擎的「虚拟带」
+  //    （不画场景框）；既无场景也无链（松散小批）→ 维持旧 3 列扇出，零回归。
+  const STAGE_OF = (t?: NodeType): number => {
+    if (t === "prompt" || t === "storyboard" || t === "script" || t === "character") return 0;
+    if (t === "image_gen" || t === "comfyui_image" || t === "image_edit" || t === "pose_control" || t === "asset") return 1;
+    if (t === "video_task" || t === "comfyui_video" || t === "comfyui_workflow" || t === "avatar" || t === "lip_sync") return 2;
+    return 3; // audio / merge / 其它后段
+  };
+  const REF_TYPES = new Set<NodeType>(["character", "script", "note", "asset"]);
+  const SINK_TYPES = new Set<NodeType>(["merge", "clip", "subtitle", "subtitle_motion", "overlay", "smart_cut", "post_process", "audio", "voice_clone"]);
+  const SCENE_H_GAP = 140;  // 场景带内列间距（比全局 H_GAP 略窄，带宽可控）
+  const BAND_GAP = 140;     // 场景带之间的垂直间距（框不相接、连线可辨）
+  const GROUP_ROW_GAP = 80; // 相邻行分属不同 LLM group 时的额外行距（组框 36+44 的头部不相咬）
+
+  // 本批 create 间的连线图（tempId 级）：行归并与「镜头链可辨」判定都用它。
+  // 参考/汇聚类不入图——角色连 8 个镜头会把 8 行并成 1 行。
+  const opByTempId = new Map<string, AgentOperation>();
+  for (const o of createOps) if (o.tempId) opByTempId.set(o.tempId, o);
+  const adj = new Map<AgentOperation, Set<AgentOperation>>();
+  let chainEdges = 0;
+  for (const o of ops) {
+    if (o.op !== "connect" || !o.sourceRef || !o.targetRef) continue;
+    const a = opByTempId.get(String(o.sourceRef)), b = opByTempId.get(String(o.targetRef));
+    if (!a || !b) continue;
+    if (REF_TYPES.has(a.nodeType as NodeType) || SINK_TYPES.has(a.nodeType as NodeType)) continue;
+    if (REF_TYPES.has(b.nodeType as NodeType) || SINK_TYPES.has(b.nodeType as NodeType)) continue;
+    if (!adj.has(a)) adj.set(a, new Set());
+    if (!adj.has(b)) adj.set(b, new Set());
+    adj.get(a)!.add(b); adj.get(b)!.add(a);
+    chainEdges++;
+  }
+  // 每个 create 归属的 LLM group（仅用于行间距拉开，防组框相咬）。
+  const groupKeyOfOp = new Map<AgentOperation, number>();
+  ops.forEach((g, gi) => {
+    if (g.op !== "group") return;
+    for (const r of g.targetRefs ?? []) {
+      const o = opByTempId.get(String(r));
+      if (o && !groupKeyOfOp.has(o)) groupKeyOfOp.set(o, gi);
+    }
+  });
+  // 把一组 create 归并成「行」：连通分量 = 一行（一个镜头链）；松散节点按启发式跟行。
+  const buildRows = (list: AgentOperation[]): AgentOperation[][] => {
+    const rowOf = new Map<AgentOperation, AgentOperation[]>();
+    const rows: AgentOperation[][] = [];
+    const inList = new Set(list);
+    const isLinked = (o: AgentOperation) => { const l = adj.get(o); return !!l && Array.from(l).some((x) => inList.has(x)); };
+    for (const o of list) {
+      if (rowOf.has(o)) continue;
+      if (isLinked(o)) {
+        const comp: AgentOperation[] = [];
+        const queue = [o]; const seen = new Set<AgentOperation>([o]);
+        while (queue.length) {
+          const cur = queue.shift()!;
+          comp.push(cur);
+          for (const nx of Array.from(adj.get(cur) ?? [])) if (inList.has(nx) && !seen.has(nx)) { seen.add(nx); queue.push(nx); }
+        }
+        comp.sort((a, b) => list.indexOf(a) - list.indexOf(b));
+        for (const m of comp) rowOf.set(m, comp);
+        rows.push(comp);
+      } else {
+        const last = rows[rows.length - 1];
+        const lastLoose = !!last && last.every((m) => !isLinked(m));
+        if (lastLoose && STAGE_OF(o.nodeType as NodeType) > STAGE_OF(last[last.length - 1].nodeType as NodeType)) {
+          last.push(o); rowOf.set(o, last);
+        } else {
+          const row = [o]; rowOf.set(o, row); rows.push(row);
+        }
+      }
+    }
+    return rows;
+  };
+  // 场景带/虚拟带的行列落位；返回带尺寸。行内顶对齐；同列多节点纵向子堆叠。
+  const layoutBand = (members: AgentOperation[], bandX: number, bandY: number, withHeader: boolean) => {
+    const rows = buildRows(members);
+    const stagesUsed = Array.from(new Set(members.map((o) => STAGE_OF(o.nodeType as NodeType)))).sort((a, b) => a - b);
+    const colOf = (s: number) => Math.max(0, stagesUsed.indexOf(s));
+    let yy = bandY + (withHeader ? HEADER : 0);
+    let prevGroupKey: number | undefined;
+    let first = true;
+    for (const row of rows) {
+      const gk = groupKeyOfOp.get(row[0]);
+      if (!first && prevGroupKey !== gk) yy += GROUP_ROW_GAP;
+      prevGroupKey = gk; first = false;
+      const usedInCol = new Map<number, number>();
+      let rowH = 0;
+      for (const o of row) {
+        const col = colOf(STAGE_OF(o.nodeType as NodeType));
+        const stackY = usedInCol.get(col) ?? 0;
+        posByOp.set(o, { x: bandX + PAD + col * (NODE_W + SCENE_H_GAP), y: yy + stackY });
+        const consumed = stackY + rowHFor(o);
+        usedInCol.set(col, consumed);
+        rowH = Math.max(rowH, consumed);
+      }
+      yy += rowH;
+    }
+    const width = PAD * 2 + Math.max(1, stagesUsed.length) * NODE_W + Math.max(0, stagesUsed.length - 1) * SCENE_H_GAP;
+    return { width, height: yy - bandY };
+  };
+
+  const sceneless = createOps.filter((o) => !o.sceneGroup?.trim());
+  const refOps = sceneless.filter((o) => REF_TYPES.has(o.nodeType as NodeType));
+  const sinkOps = sceneless.filter((o) => SINK_TYPES.has(o.nodeType as NodeType));
+  const looseMid = sceneless.filter((o) => !REF_TYPES.has(o.nodeType as NodeType) && !SINK_TYPES.has(o.nodeType as NodeType));
+  const engineActive = useScenes || chainEdges > 0;
+  if (engineActive) {
+    const refX = anchor.x + 560;
+    const bandX = refX + (refOps.length > 0 ? NODE_W + H_GAP : 0);
+    let bandY = anchor.y;
+    let maxBandW = 0;
     sceneKeys.forEach((key, sIdx) => {
       const sceneOps = createOps.filter((o) => o.sceneGroup?.trim() === key);
-      const baseX = anchor.x + 560 + sIdx * (SCENE_COL_W + PAD);
-      // 逐节点累计行高（角色行更高），场景框高度随之取累计值。
-      let yy = anchor.y + HEADER;
-      for (const o of sceneOps) { posByOp.set(o, { x: baseX + PAD, y: yy }); yy += rowHFor(o); }
-      sceneBoxes.push({ x: baseX, y: anchor.y, width: NODE_W + PAD * 2, height: yy - anchor.y, title: `场景${sIdx + 1}` });
+      const r = layoutBand(sceneOps, bandX, bandY, true);
+      maxBandW = Math.max(maxBandW, r.width);
+      sceneBoxes.push({ x: bandX, y: bandY, width: r.width, height: r.height, title: `场景${sIdx + 1}`, sceneKey: key });
+      bandY += r.height + BAND_GAP;
     });
-    // Scene-less create ops (e.g. shared script / merge) go in a trailing column.
-    const tailX = anchor.x + 560 + sceneKeys.length * (SCENE_COL_W + PAD);
-    let tailY = anchor.y + HEADER;
-    for (const o of createOps) {
-      if (!o.sceneGroup?.trim()) { posByOp.set(o, { x: tailX, y: tailY }); tailY += rowHFor(o); }
+    if (looseMid.length > 0) {
+      // 无场景归属的镜头链/散件：接在场景带下方的「虚拟带」（不画场景框）。
+      const r = layoutBand(looseMid, bandX, bandY, sceneKeys.length === 0);
+      maxBandW = Math.max(maxBandW, r.width);
+      bandY += r.height + BAND_GAP;
     }
+    // 参考列（角色/脚本/便签/素材）：带区左侧、垂直居中于带区总高——角色通常连所有
+    // 场景的镜头，居中让「到最远带」的连线距离减半（顶部对齐时到底部带的边最长）。
+    const bandsBottom = bandY - BAND_GAP; // 最后一带底缘
+    const centered = (colOps: AgentOperation[]) => {
+      const colH = colOps.reduce((s, o) => s + rowHFor(o), 0);
+      return Math.max(anchor.y + HEADER, anchor.y + HEADER + ((bandsBottom - anchor.y - HEADER) - colH) / 2);
+    };
+    let refY = centered(refOps);
+    for (const o of refOps) { posByOp.set(o, { x: refX, y: refY }); refY += rowHFor(o); }
+    // 汇聚列（merge/剪辑/字幕/音频）：带区右侧、同样垂直居中——参考→镜头→成片整体左→右。
+    const sinkX = bandX + maxBandW + H_GAP;
+    let sinkY = centered(sinkOps);
+    for (const o of sinkOps) { posByOp.set(o, { x: sinkX, y: sinkY }); sinkY += rowHFor(o); }
   } else if (createOps.length > 0) {
     // #256 非场景扇出也改为预排：仍是 3 列网格，但行高按该行节点的最大预留取值
     //（含角色的行整体加高），角色生成后长大的卡体不再压到下一行。
@@ -462,6 +597,15 @@ export function applyAgentOperations(
   // (store.onConnect dedupes by source+target and silently no-ops) is not counted
   // as a freshly established connection — keeps `res.connected` truthful.
   const edgeKeys = new Set(store.edges.map((e) => `${e.source}${EDGE_SEP}${e.target}`));
+  // #274 组框修复三件套的登记表：
+  // opNodeId：create 操作 → 落地节点 id（场景框登记成员 childIds 用）；
+  // estById：落地节点 id → 生成后估高（group 框「成长余量」用——空壳节点出图后长高，
+  //          按当时实际尺寸贴合的框必然被撑破）；
+  // pendingSceneTitle：LLM group 操作的成员与某规划场景完全重合时，不再另建组框
+  //（否则同位双框），把 LLM 起的组名记给该场景框。
+  const opNodeId = new Map<AgentOperation, string>();
+  const estById = new Map<string, number>();
+  const pendingSceneTitle = new Map<string, string>();
   // #285 已有角色确定性复用（用户实报：加新分镜时明明画布有该角色，助手还是重新建
   // 角色重新定妆花钱）。LLM 层面不可靠——大画布摘要截断时 character 行第 2 优先被丢、
   // 框选编辑模式角色可能根本不在摘要里，模型「看不到」就会再 create 一个同名角色。
@@ -578,6 +722,8 @@ export function applyAgentOperations(
           const node = store.addNode(op.nodeType as NodeType, pos);
           res.touchedIds.push(node.id);
           res.createdIds.push(node.id);
+          opNodeId.set(op, node.id);
+          estById.set(node.id, estHeight(op));
           if (op.tempId) idMap.set(op.tempId, node.id);
           liveIds.add(node.id);
           typeById.set(node.id, op.nodeType as NodeType);
@@ -777,11 +923,49 @@ export function applyAgentOperations(
           //（sanitize 只做形状校验，「引用了不存在的节点」只有这里知道）。
           const ids = Array.from(new Set((op.targetRefs ?? []).map((r) => resolve(r)).filter((id): id is string => !!id && liveIds.has(id))));
           if (ids.length < 2) { fail(index, op, `编组需要至少 2 个存在的节点（解析到 ${ids.length} 个）`); return; }
-          const gid = store.groupSelected(ids, op.title || undefined);
-          if (!gid) { fail(index, op, "编组失败（画布拒绝了该分组）"); return; }
-          res.touchedIds.push(...ids);
-          op.status = "applied";
-          res.canvasActions++;
+          // #274 双框去重：成员整体落在某个规划场景（sceneGroup）里时，布局层稍后会为该
+          // 场景画横幅框——再建一个几乎同位的组框就是用户截图里的「框中框」。此处不建框，
+          // 把 LLM 起的组名记给该场景框（落框时用），操作仍记 applied。
+          let matchedScene: string | null = null;
+          for (const key of sceneKeys) {
+            const memberIds = createOps.filter((o2) => o2.sceneGroup?.trim() === key).map((o2) => opNodeId.get(o2)).filter(Boolean) as string[];
+            if (memberIds.length >= 2 && ids.every((id) => memberIds.includes(id))) { matchedScene = key; break; }
+          }
+          if (matchedScene) {
+            if (op.title?.trim()) pendingSceneTitle.set(matchedScene, op.title.trim());
+            res.touchedIds.push(...ids);
+            op.status = "applied";
+            res.canvasActions++;
+            return;
+          }
+          // #274 组框成长余量：本批新建的生成类节点此刻还是空壳（很矮），生成出图后卡体
+          // 长高，按「当时实际尺寸」贴合的框（store.groupSelected 的语义，适合手动编组）
+          // 必然被撑破、成员溢出框底——改为按落位时的「生成后估高」取 max 自算矩形画框。
+          {
+            const st2 = useCanvasStore.getState();
+            let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+            for (const id of ids) {
+              const n = st2.nodes.find((nn) => nn.id === id);
+              if (!n || n.data.nodeType === "group") continue;
+              const stW = (n.style as { width?: number } | undefined)?.width;
+              const stH = (n.style as { height?: number } | undefined)?.height;
+              const w = (typeof n.width === "number" ? n.width : undefined) ?? (typeof stW === "number" ? stW : NODE_W);
+              const hActual = (typeof n.height === "number" ? n.height : undefined) ?? (typeof stH === "number" ? stH : 0);
+              const h = Math.max(hActual, estById.get(id) ?? 0, 120);
+              x1 = Math.min(x1, n.position.x); y1 = Math.min(y1, n.position.y);
+              x2 = Math.max(x2, n.position.x + w); y2 = Math.max(y2, n.position.y + h);
+            }
+            if (x1 === Infinity) { fail(index, op, "编组失败（成员不存在）"); return; }
+            const GPAD = 36, GHEADER = 44; // 与手动 groupSelected 同视觉规格
+            const gid = store.addGroupBox(
+              { x: x1 - GPAD, y: y1 - GPAD - GHEADER, width: x2 - x1 + GPAD * 2, height: y2 - y1 + GPAD * 2 + GHEADER },
+              op.title || "群组", ids,
+            );
+            if (!gid) { fail(index, op, "编组失败（画布拒绝了该分组）"); return; }
+            res.touchedIds.push(...ids);
+            op.status = "applied";
+            res.canvasActions++;
+          }
         } else if (op.op === "duplicate") {
           // #267 复制节点：store.duplicateNode 无返回值——用「调用前后 id 集合差」拿到
           // 副本 id（副本剥离产物/任务状态由 store 统一负责，绝不复制出假完成态）。
@@ -865,8 +1049,15 @@ export function applyAgentOperations(
         }
       }
     }
-    // Wrap each planned scene's shots in a 「场景」group container (behind nodes).
-    for (const box of sceneBoxes) store.addGroupBox(box, box.title);
+    // Wrap each planned scene's shots in a 「场景」group container (behind nodes)。
+    // #274：登记成员 childIds（拖动跟随/成员计数/解组语义与手动编组一致——此前场景框
+    // 是无成员登记的纯背景板）；组名优先用 LLM group 操作起的名（双框去重记下的）。
+    for (const box of sceneBoxes) {
+      const memberIds = box.sceneKey
+        ? createOps.filter((o2) => o2.sceneGroup?.trim() === box.sceneKey).map((o2) => opNodeId.get(o2)).filter((id): id is string => !!id)
+        : [];
+      store.addGroupBox(box, (box.sceneKey ? pendingSceneTitle.get(box.sceneKey) : undefined) || box.title, memberIds);
+    }
   });
   res.touchedIds = Array.from(new Set(res.touchedIds));
   res.createdIds = Array.from(new Set(res.createdIds));

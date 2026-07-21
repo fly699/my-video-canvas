@@ -171,7 +171,9 @@ interface CanvasStore {
   addNode: (type: NodeType, position: { x: number; y: number }) => CanvasNode;
   /** Add a sized `group` "scene" container box behind other nodes (zIndex -1).
    *  Used by the agent apply layer to wrap a scene's shots. */
-  addGroupBox: (rect: { x: number; y: number; width: number; height: number }, title: string) => void;
+  // #274：childIds 可选登记成员（拖动跟随/成员计数/解组语义与手动编组一致）；返回组节点
+  // id（无 projectId 时 null）。既有调用方不传第三参、忽略返回值，零破坏。
+  addGroupBox: (rect: { x: number; y: number; width: number; height: number }, title: string, childIds?: string[]) => string | null;
   batchAddSceneNodes: (
     scenes: Array<{ description?: string; promptText?: string; negativePrompt?: string; cameraMovement?: string; duration?: number; lens?: string; colorGrade?: string; shotType?: string; lighting?: string; dialogue?: string; sfx?: string; transition?: string; beatRef?: string }>,
     sourceNodeId: string,
@@ -518,9 +520,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     return newNode;
   },
 
-  addGroupBox: (rect, title) => {
+  addGroupBox: (rect, title, childIds) => {
     const projectId = get().projectId;
-    if (!projectId) return;
+    if (!projectId) return null;
     const uid = get().currentUserId;
     const node: CanvasNode = {
       id: nanoid(),
@@ -531,7 +533,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       data: {
         nodeType: "group",
         title,
-        payload: { ...getDefaultPayload("group"), ...(uid != null ? { createdBy: uid } : {}) } as NodeData,
+        payload: {
+          ...getDefaultPayload("group"),
+          // #274 成员登记：带 childIds 的组框具备与手动编组一致的拖动跟随/计数/解组语义。
+          ...(childIds && childIds.length ? { childIds: [...childIds] } : {}),
+          ...(uid != null ? { createdBy: uid } : {}),
+        } as NodeData,
         projectId,
       },
       style: { width: rect.width, height: rect.height },
@@ -541,6 +548,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       nodes: [...state.nodes, node],
       isDirty: true,
     }));
+    return node.id;
   },
 
   batchAddSceneNodes: (scenes, sourceNodeId, sourcePosition, targetType = "storyboard", aspectRatio) => {
