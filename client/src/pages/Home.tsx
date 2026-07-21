@@ -905,6 +905,13 @@ export default function Home() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {[
+                  // #293 置顶旗舰：画布助手一句话快速成片。
+                  {
+                    icon: Wand2, color: "oklch(0.70 0.20 310)",
+                    title: "画布助手 · 一句话快速成片",
+                    desc: "对助手说「做一个雨夜侦探短片，6 镜头，竖屏」——自动写脚本、拆分镜、角色定妆、逐镜建节点连线；生成后「按镜头表装配」自动合成成片，「运行全部」批量生成，「做个动态样片」零成本预览；📎 参考图定风格/作首帧/锁脸，@角色 / 技能，随时撤销；建/连/改不花钱",
+                    badge: "HOT",
+                  },
                   {
                     icon: Layers, color: "oklch(0.68 0.22 285)",
                     title: "节点式工作流",
@@ -1059,12 +1066,6 @@ export default function Home() {
                     icon: Zap, color: "oklch(0.72 0.18 60)",
                     title: "画布效率操作",
                     desc: "全局运行状态条点击直达失败节点；Ctrl+C/V 复制整条镜头链（含连线）；一键整理自动排版 + 网格吸附；吸附窗变更自动弹出",
-                    badge: "NEW",
-                  },
-                  {
-                    icon: Bot, color: "oklch(0.70 0.18 250)",
-                    title: "画布助手 · 对话改画布",
-                    desc: "浮层里一句话让 AI 直接在画布建/连/改节点，支持 @角色引用、/ 唤起技能、一键撤销本次改动；每次进画布默认打开，对话上下文落库跨设备不丢",
                     badge: "NEW",
                   },
                   {

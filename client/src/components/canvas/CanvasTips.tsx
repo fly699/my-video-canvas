@@ -13,6 +13,9 @@ interface Tip { id: string; icon: ReactNode; title: string; body: string; studio
 // #108 优先贴士：每次进入画布都会依次提示（无视「关闭全部贴士」的历史状态），
 // 直到用户对这一条点「不再显示这条」。用于强曝光新快捷功能。
 const PRIORITY_TIPS: Tip[] = [
+  // #293 头牌强曝光：一句话快速成片是本应用招牌，优先于快捷键类贴士轮播。
+  { id: "agent-film", icon: <Sparkles size={15} />, title: "一句话快速成片", body: "对右下角画布助手说「做一个雨夜侦探短片，6 镜头，竖屏」——自动写脚本、拆分镜、建节点连线；生成后说「按镜头表装配」直接出成片。建/连/改画布不花钱。" },
+  { id: "agent-ref", icon: <ImagePlus size={15} />, title: "助手也吃参考图", body: "助手窗点「📎 参考」附图（可粘贴/拖拽）：AI 据图定风格构图，还能把图直接用作视频首帧或角色锁脸；说「将此图加入角色库并命名」即可入库。" },
   { id: "altq", creativeOnly: true, icon: <Maximize2 size={15} />, title: "极简显示 Alt+Q", body: "按 Alt+Q：所有节点只留预览框（无边框、极窄阴影），画布秒变看片墙；再按恢复标准显示。" },
   { id: "altw", icon: <BookOpen size={15} />, title: "速览 Alt+W", body: "按 Alt+W 临时展开全部节点的参考图与顶部提示词窗，一眼速览整张画布的素材与文案；再按或 5 秒后自动恢复。" },
 ];
