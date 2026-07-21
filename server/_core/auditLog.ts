@@ -141,7 +141,9 @@ export type AuditAction =
   | "superagent_comfy_build"
   | "superagent_code_task"
   | "superagent_workflow_memory_delete"
-  | "superagent_workflow_memory_clear";
+  | "superagent_workflow_memory_clear"
+  // #302 管理后台「测试暂存」自检：真实上传测试文件 + 公网回读探测的结果留痕。
+  | "staging_selftest";
 
 export interface AuditOpts {
   ctx?: TrpcContext;
