@@ -30,6 +30,7 @@ import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption, useResolvedDefaultImageOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { countCharacterCoverage } from "../../../lib/characterCoverage";
+import { resolveCharacterVoice, voiceShortLabel, voiceFullLabel } from "../../../lib/characterVoice";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
 import { PosePresetPicker } from "../PosePresetPicker";
@@ -218,6 +219,22 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       );
       return [r.total, r.withRef];
     }),
+  );
+
+  // #297 音色徽标：遍历所有锁定途径——①声音档案（助手 set_voice / 镜头表配音回写 /
+  // 角色库带入都落这里）②脚本节点 castVoices（配音面板只写脚本、不回写档案，不扫这层
+  // 该途径锁的音色在角色卡上就是隐形的）。纯函数 resolveCharacterVoice 单测覆盖；
+  // useShallow：返回对象字段全是原始值，浅比较即可避免每次新引用触发重渲染。
+  const voiceInfo = useCanvasStore(
+    useShallow((s) =>
+      kind === "person"
+        ? resolveCharacterVoice(
+            (payload.name ?? "").trim(),
+            payload,
+            s.nodes.map((n) => ({ nodeType: n.data.nodeType, title: n.data.title, payload: n.data.payload as Record<string, unknown> })),
+          )
+        : null,
+    ),
   );
 
   const [consistencyOpen, setConsistencyOpen] = useState(false);
@@ -755,6 +772,30 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
           })()}
         >
           视角 {Math.min(3, (payload.referenceImageUrl?.trim() ? 1 : 0) + extraViews.length)}/3{((payload.referenceImageUrl?.trim() ? 1 : 0) + extraViews.length) > 3 ? "+" : ""}
+        </span>
+      )}
+      {/* #297 音色徽标：档案锁（紫底）可点击解除；脚本级分配（琥珀底）提示来源与升级方法。
+          未锁不渲染（避免噪声）。仅人物显示——场景不说话。 */}
+      {kind === "person" && voiceInfo && (
+        <span
+          data-testid="char-voice-chip"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (voiceInfo.source !== "profile") return; // 脚本级分配去脚本「配音」面板改，此处只提示
+            if (window.confirm(`解除「${displayName || "该角色"}」的音色锁定（${voiceFullLabel(voiceInfo.model, voiceInfo.voice)}）？\n注意：已写入各脚本配音表的分配不会被清除。`)) {
+              updateNodeData(id, { voiceModel: undefined, voiceId: undefined });
+            }
+          }}
+          title={voiceInfo.source === "profile"
+            ? `声音档案已锁定：${voiceFullLabel(voiceInfo.model, voiceInfo.voice)}\n（来源可能是：助手一句话锁定 / 镜头表批量配音回写 / 角色库带入。配音取值：各脚本配音表优先、此档案兜底。）\n点击可解除锁定；改锁直接对助手说「把${displayName || "TA"}的音色锁成…」`
+            : `脚本「${voiceInfo.scriptTitle || "未命名"}」配音表已分配：${voiceFullLabel(voiceInfo.model, voiceInfo.voice)}\n（仅对该脚本生效，尚未写入角色声音档案。想升级为角色级锁定：对助手说「把${displayName || "TA"}的音色锁成…」，或在镜头表批量配音里确认一次。）`}
+          style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 9.5, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap",
+            background: voiceInfo.source === "profile" ? accentA(0.45) : "oklch(0.6 0.14 70 / 0.35)",
+            border: `1px solid ${voiceInfo.source === "profile" ? accentA(0.7) : "oklch(0.7 0.14 70 / 0.6)"}`,
+            color: "#fff", cursor: voiceInfo.source === "profile" ? "pointer" : "help" }}
+        >
+          🎙 {voiceShortLabel(voiceInfo.model, voiceInfo.voice)}
         </span>
       )}
     </div>
