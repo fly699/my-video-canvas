@@ -16,6 +16,10 @@ export function MediaImage({ src, onError, ...rest }: MediaImageProps) {
   return (
     <img
       src={src}
+      // #325 性能默认值：离屏不加载（lazy）、解码不阻塞主线程（async）。放在
+      // {...rest} 之前——调用方显式传入同名属性时以调用方为准，行为可逐处覆盖。
+      loading="lazy"
+      decoding="async"
       onError={(e) => { retry?.(e); onError?.(e); }}
       {...rest}
     />

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { graphContentVersion } from "@/lib/nodeGraphCache";
 import { Handle, Position } from "@xyflow/react";
 import { BaseNode } from "../BaseNode";
 import { useWorkflowRunState } from "../../../contexts/WorkflowRunContext";
@@ -210,7 +211,14 @@ export const ComfyuiWorkflowNode = memo(function ComfyuiWorkflowNode({ id, selec
   // Reactively detect an upstream image feeding this node (via any incoming edge).
   const upstreamImageUrl = useCanvasStore((s) => detectUpstreamImageUrl(id, s.edges, s.nodes));
   const edgesForSources = useCanvasStore((s) => s.edges);
-  const nodesForSources = useCanvasStore((s) => s.nodes);
+  // #325 性能：原来直接订阅 s.nodes——拖拽每帧产出新数组引用，本组件（千行级）每帧
+  // 整体重渲。下游所有派生（listUpstream*/detectUpstreamPrompt/角色注入等）只读节点
+  // data，与位置无关 → 改订阅「内容版本号」（增删/顺序/任一 data 变化才 +1），版本不变
+  // 时沿用旧数组引用，useMemo 依赖全部命中缓存；数据一变立即取新数组重算，结果与
+  // 直订阅逐字段一致。
+  const graphVer = useCanvasStore((s) => graphContentVersion(s.nodes));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- graphVer 就是 nodes 数据面的依赖代理
+  const nodesForSources = useMemo(() => useCanvasStore.getState().nodes, [graphVer]);
   const upstreamSources = useMemo(() => listUpstreamImageSources(id, edgesForSources, nodesForSources), [id, edgesForSources, nodesForSources]);
   const upstreamAudioSources = useMemo(() => listUpstreamAudioSources(id, edgesForSources, nodesForSources), [id, edgesForSources, nodesForSources]);
   const payload = data.payload;
