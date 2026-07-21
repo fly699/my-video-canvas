@@ -353,6 +353,9 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
   // 同一套指示体系）。status 属 CLONE_RUNTIME_FIELDS：复制剥离、协作广播过滤。
   const handlePortrait = async () => {
     if (portraitBusy) return;
+    // #316 防双扣费互斥：自动定妆/「运行全部」正在给本节点生图（status=processing 即锁）时，
+    // 手动按钮不再叠加提交第二次付费生成。
+    if (payload.status === "processing") { toast.info("该节点正在生成中（自动定妆/运行全部），请等它完成后再操作"); return; }
     const isScene = (payload.characterKind ?? "person") === "scene";
     const imgLabel = isScene ? "场景图" : "定妆照";
     const prompt = buildCharacterImagePrompt(payload);

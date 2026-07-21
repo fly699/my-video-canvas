@@ -27,6 +27,7 @@ import {
   Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser, Columns2, Link2,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
+import { parseRecoverableTask, stripRecoverableMarker } from "../../lib/recoverableError";
 import { sourceAspectRatio, imageNaturalRatio, nearestAspect } from "../../lib/imageAspect";
 import { downloadMedia } from "../../lib/download";
 import { NODE_ICONS } from "../../lib/nodeConfig";
@@ -900,6 +901,31 @@ export const BaseNode = memo(function BaseNode({
   // Entry animation
   const [entered, setEntered] = useState(false);
   const [errExpanded, setErrExpanded] = useState(false); // #R4-6 失败横幅点击展开完整错误
+  // #315 结果找回：失败消息含 RECOVERABLE 标记（任务已提交但等待超时）时，红条上给
+  // 「重新检测」按钮——免费单查平台任务状态，完成即取回结果写回节点（不重新扣费）。
+  const recoverable = genError ? parseRecoverableTask(genError) : null;
+  const genErrorShown = genError ? stripRecoverableMarker(genError) : null;
+  const recheckMut = trpc.imageGen.recheck.useMutation();
+  const onRecheck = async () => {
+    if (!recoverable || recheckMut.isPending) return;
+    try {
+      const r = await recheckMut.mutateAsync({ provider: recoverable.provider, taskId: recoverable.taskId });
+      if (r.done && r.url) {
+        // 按节点类型写回产物字段（角色/场景=参考图；分镜/图像=imageUrl），并清失败态。
+        const field = nodeType === "character" ? "referenceImageUrl" : "imageUrl";
+        const patch: Record<string, unknown> = { [field]: r.url, status: undefined, errorMessage: undefined };
+        if (nodeType === "character") patch.referenceStorageKey = undefined;
+        useCanvasStore.getState().updateNodeData(id, patch, true);
+        toast.success("已找回平台侧生成结果（未重新扣费）");
+      } else if (r.status === "failed") {
+        toast.error("平台侧任务最终失败：" + (r.error ?? "未知原因"));
+      } else {
+        toast.info(`平台侧仍在生成中（状态：${r.status}）——稍后再点一次「重新检测」`);
+      }
+    } catch (e) {
+      toast.error("重新检测失败：" + (e instanceof Error ? e.message : String(e)));
+    }
+  };
   useEffect(() => { const t = setTimeout(() => setEntered(true), 20); return () => clearTimeout(t); }, []);
 
   // 仅在"单击节点后 3 秒内"显示标题栏操作按钮；编辑名称进行中保持显示。
@@ -1921,10 +1947,10 @@ export const BaseNode = memo(function BaseNode({
           Like the progress bar, rendered outside the collapsing body so a failed
           generation is visible even when the node is collapsed (the detailed error
           lives inside the body). */}
-      {!genBusy && !nodeRunning && genError && (
+      {!genBusy && !nodeRunning && genErrorShown && (
         <div
           className="nodrag"
-          role="button" tabIndex={0} aria-label={`生成失败：${genError}`}
+          role="button" tabIndex={0} aria-label={`生成失败：${genErrorShown}`}
           onClick={(e) => { e.stopPropagation(); setErrExpanded((v) => !v); }}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setErrExpanded((v) => !v); } }}
           title={errExpanded ? "点击收起" : "点击展开完整错误"}
@@ -1934,12 +1960,25 @@ export const BaseNode = memo(function BaseNode({
           <span style={errExpanded
             ? { fontSize: 9.5, fontWeight: 600, color: "oklch(0.62 0.20 25)", flex: 1, minWidth: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.55 }
             : { fontSize: 9.5, fontWeight: 600, color: "oklch(0.62 0.20 25)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {genError}
+            {genErrorShown}
           </span>
+          {/* #315 结果找回：任务已提交但等待超时（RECOVERABLE 标记）→ 免费单查平台状态，
+              完成即取回结果写回节点——不必重掏钱重新生成。收起/展开态都常驻可点。 */}
+          {recoverable && (
+            <button
+              className="nodrag" data-testid="recheck-task-btn"
+              onClick={(e) => { e.stopPropagation(); void onRecheck(); }}
+              disabled={recheckMut.isPending}
+              title="平台侧任务可能已完成——免费查询一次并取回结果（不重新扣费）"
+              style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid oklch(0.72 0.15 155 / 0.55)", background: "oklch(0.72 0.15 155 / 0.12)", color: "oklch(0.72 0.15 155)", cursor: recheckMut.isPending ? "default" : "pointer", opacity: recheckMut.isPending ? 0.6 : 1 }}
+            >
+              {recheckMut.isPending ? "检测中…" : "重新检测"}
+            </button>
+          )}
           {errExpanded ? (
             <button
               className="nodrag"
-              onClick={(e) => { e.stopPropagation(); try { void navigator.clipboard?.writeText(genError); toast.success("已复制错误信息", { duration: 1200 }); } catch { /* ignore */ } }}
+              onClick={(e) => { e.stopPropagation(); try { void navigator.clipboard?.writeText(genErrorShown); toast.success("已复制错误信息", { duration: 1200 }); } catch { /* ignore */ } }}
               title="复制完整错误"
               style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid oklch(0.62 0.20 25 / 0.4)", background: "transparent", color: "oklch(0.62 0.20 25)", cursor: "pointer" }}
             >
