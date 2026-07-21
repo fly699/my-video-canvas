@@ -223,6 +223,21 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     return QP_DEFAULT;
   });
   const [showQuick, setShowQuick] = useState(false);
+  // 快捷设置「点外部自动收起」：pointerdown 捕获相位监听整页，命中以下任一则不收——
+  // ①面板自身(data-qs-panel)、②「快速设置」切换按钮(data-qs-toggle，否则监听先关、按钮
+  // onClick 再取反=永远打不开)、③MiniSelect 的 portal 下拉菜单(data-miniselect-menu，
+  // 菜单挂在 body 上、DOM 不在面板内，朴素判定会「点下拉选项=点外部」把面板连着菜单一起
+  // 误关——这正是当初没做外部点击关闭的坑)。发送即收(#254)的既有行为保持不变。
+  useEffect(() => {
+    if (!showQuick) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("[data-qs-panel], [data-qs-toggle], [data-miniselect-menu]")) return;
+      setShowQuick(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [showQuick]);
   const setQP = (patch: Partial<QuickPrefs>) => setQuickPrefs((p) => ({ ...p, ...patch }));
   // #242 快捷设置预设：把当前整套快捷设置存成多套命名预设（localStorage），一键调取/重命名/覆盖/删除。
   type QpPreset = { id: string; name: string; prefs: QuickPrefs };
@@ -1042,7 +1057,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <BookOpen size={13} style={{ color: accent }} /><span>模板</span>
         <MiniSelect value={template} placeholder="空模板" maxWidth={180} accent={accent} accentSoft={accentSoft}
           title="给规划设定风格/人设；空模板=无人设" groups={templateGroups} onChange={setTemplate} />
-        <button onClick={() => setShowQuick((v) => !v)} title="快速设置：画面比例 / 风格 / 时长 / 生图先行 / 配乐字幕——注入助手规划"
+        <button data-qs-toggle onClick={() => setShowQuick((v) => !v)} title="快速设置：画面比例 / 风格 / 时长 / 生图先行 / 配乐字幕——注入助手规划"
           style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, fontSize: 11, cursor: "pointer",
             border: `1px solid ${showQuick || qpActiveCount ? accent : "var(--c-bd2)"}`, background: showQuick || qpActiveCount ? accentSoft : "var(--c-surface)", color: showQuick || qpActiveCount ? accent : "var(--c-t3)" }}>
           <SlidersHorizontal size={11} /> 快速设置{qpActiveCount > 0 ? ` · ${qpActiveCount}` : ""}
@@ -1062,7 +1077,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         );
         const iconBtn: React.CSSProperties = { padding: "0 3px", fontSize: 10, lineHeight: 1, background: "transparent", border: "none", color: "var(--c-t4)", cursor: "pointer" };
         return (
-          <div className="nowheel" style={{ padding: "8px 12px 10px", borderBottom: "1px solid var(--c-bd2)", display: "flex", flexDirection: "column", gap: 8, maxHeight: "46vh", overflowY: "auto" }}>
+          <div data-qs-panel className="nowheel" style={{ padding: "8px 12px 10px", borderBottom: "1px solid var(--c-bd2)", display: "flex", flexDirection: "column", gap: 8, maxHeight: "46vh", overflowY: "auto" }}>
             {/* ── 预设条：整套设置的保存 / 一键调取 / 重命名 / 覆盖 / 删除 ── */}
             <div data-testid="qp-preset-bar" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="把当前整套快捷设置存成命名预设，随时一键调取（存在本浏览器）">预设</span>
