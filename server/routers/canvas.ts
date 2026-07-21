@@ -61,7 +61,7 @@ import { extractTextContent, extractReasoning } from "../_core/llm";
 import { invokeLLMWithKie } from "../_core/llmWithKie";
 import { isClaudeBridgeEnabled } from "../_core/claudeBridge";
 import { mergeAiBindings, parseAiBindings, nodeClassMap } from "../_core/workflowAiAnalyze";
-import { generateImage } from "../_core/imageGeneration";
+import { generateImage, recheckPoyoImageTask } from "../_core/imageGeneration";
 import { buildImageEditInstruction, IMAGE_EDIT_MODELS, DEFAULT_IMAGE_EDIT_MODEL } from "../../shared/imageEdit";
 import { sliceGridImage } from "../_core/imageGrid";
 import { extractStoryboardFrames } from "../_core/videoStoryboard";
@@ -1361,6 +1361,13 @@ export const aiChatRouter = router({
 // ── Image Generation ──────────────────────────────────────────────────────────
 
 export const imageGenRouter = router({
+  // #315 结果找回：客户端超时放弃后平台侧任务可能已完成——凭失败消息里的 RECOVERABLE
+  // 标记免费单查一次状态，完成即经与正常轮询同一条转存链路取回（不重新提交、零新扣费）。
+  // taskId 是平台侧不透明串、只出现在本人节点的错误消息里；查询零扣费且无持久映射可校验
+  // 归属，故仅登录门槛（与 generate 的平台 key 同源）。
+  recheck: protectedProcedure
+    .input(z.object({ provider: z.literal("poyo"), taskId: z.string().min(4).max(128) }))
+    .mutation(async ({ input }) => recheckPoyoImageTask(input.taskId)),
   generate: protectedProcedure
     .input(
       z.object({

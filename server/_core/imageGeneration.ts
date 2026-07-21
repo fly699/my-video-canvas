@@ -231,47 +231,7 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
     };
     const d = statusData.data;
 
-    if (d.status === "finished") {
-      // Look for any file with image MIME type or image-extension URL; older
-      // matching by index can miss multi-output responses (e.g. Soul Standard
-      // batches). Falls back to first file on no-match so we don't regress.
-      const isImageLike = (f: { file_type?: string; file_url?: string }): boolean => {
-        const ft = (f.file_type ?? "").toLowerCase();
-        const url = f.file_url ?? "";
-        return ft.includes("image") || /\.(png|jpe?g|webp|gif|bmp)(?:$|\?)/i.test(url);
-      };
-      const fileUrl = d.files?.find(isImageLike)?.file_url ?? d.files?.[0]?.file_url;
-      if (!fileUrl) {
-        // Credits spent upstream; [CHARGED] prefix lets the frontend warn the
-        // user instead of letting them click "generate" again and re-pay.
-        throw new Error("[CHARGED] Poyo 图像生成完成但响应未含 file URL（积分已扣，请勿重试）");
-      }
-
-      // Re-host to Manus S3 so the URL doesn't die after Poyo's 24h CDN TTL.
-      // Admin can disable via the StoragePanel persistImage toggle (saves S3
-      // quota at the cost of upstream URL expiry).
-      if (await isImagePersistenceEnabled()) {
-        try {
-          const imgRes = await fetch(fileUrl);
-          if (!imgRes.ok) {
-            console.warn(`[poyo-image] persist skipped: upstream fetch ${imgRes.status} ${imgRes.statusText}; returning upstream URL (expires in 24h)`);
-          } else {
-            const buf = Buffer.from(await imgRes.arrayBuffer());
-            const mimeType = imgRes.headers.get("content-type") ?? "image/png";
-            const { url } = await storagePut(`generated/${Date.now()}.png`, buf, mimeType);
-            // Keep the original Poyo CDN URL as a short-lived public fallback.
-            return { url, sourceUrl: fileUrl, sourceAt: Date.now() };
-          }
-        } catch (err) {
-          // Audit log: which step broke. Without this the admin sees "开关打开
-          // 了但没存" with no clue whether it's a Forge config issue, network
-          // issue, or S3 quota issue.
-          const msg = err instanceof Error ? err.message : String(err);
-          console.warn(`[poyo-image] persist FAILED, falling back to upstream URL (expires in 24h): ${msg.slice(0, 300)}`);
-        }
-      }
-      return { url: fileUrl };
-    }
+    if (d.status === "finished") return finishPoyoImage(d);
 
     if (d.status === "failed") {
       throw new Error(`Poyo image generation failed: ${d.error_message ?? "unknown error"}`);
@@ -280,8 +240,75 @@ async function generateImagePoyo(options: GenerateImageOptions): Promise<Generat
 
   // 超时时任务已在平台侧提交、可能仍在生成且完成后会扣费——[CHARGED?] 前缀是
   // 服务端「可能已扣费」标记（VideoTaskNode 同一约定：CHARGED=确已扣，CHARGED?=不确定），
-  // 提醒用户别立即重试造成重复扣费。
-  throw new Error("[CHARGED?] Poyo 图像生成超时（等待已超 5 分钟）：任务可能仍在平台侧运行、完成后照常扣费，请稍候片刻再重试或换用其他模型");
+  // 提醒用户别立即重试造成重复扣费。#315：尾部附 RECOVERABLE 结构化标记（provider+taskId），
+  // 前端失败红条据此显示「重新检测」——平台侧任务后续完成时可免费取回结果，不必重掏钱重生成。
+  throw new Error(`[CHARGED?] Poyo 图像生成超时（等待已超 5 分钟）：任务可能仍在平台侧运行、完成后照常扣费——可稍候在节点失败提示上点「重新检测」免费找回结果，或换用其他模型 [RECOVERABLE:poyo:${taskId}]`);
+}
+
+/** Poyo 任务响应体 data 段（generate 轮询与 recheck 找回共用的最小形态）。 */
+type PoyoImageTaskData = { status: string; files?: Array<{ file_url: string; file_type: string }>; error_message?: string };
+
+/** #315 Poyo「finished」任务 → 取图 + 按开关转存（原轮询内联逻辑抽出，与结果找回共用同一条链路）。 */
+async function finishPoyoImage(d: PoyoImageTaskData): Promise<GenerateImageResponse> {
+  // Look for any file with image MIME type or image-extension URL; older
+  // matching by index can miss multi-output responses (e.g. Soul Standard
+  // batches). Falls back to first file on no-match so we don't regress.
+  const isImageLike = (f: { file_type?: string; file_url?: string }): boolean => {
+    const ft = (f.file_type ?? "").toLowerCase();
+    const url = f.file_url ?? "";
+    return ft.includes("image") || /\.(png|jpe?g|webp|gif|bmp)(?:$|\?)/i.test(url);
+  };
+  const fileUrl = d.files?.find(isImageLike)?.file_url ?? d.files?.[0]?.file_url;
+  if (!fileUrl) {
+    // Credits spent upstream; [CHARGED] prefix lets the frontend warn the
+    // user instead of letting them click "generate" again and re-pay.
+    throw new Error("[CHARGED] Poyo 图像生成完成但响应未含 file URL（积分已扣，请勿重试）");
+  }
+
+  // Re-host to Manus S3 so the URL doesn't die after Poyo's 24h CDN TTL.
+  // Admin can disable via the StoragePanel persistImage toggle (saves S3
+  // quota at the cost of upstream URL expiry).
+  if (await isImagePersistenceEnabled()) {
+    try {
+      const imgRes = await fetch(fileUrl);
+      if (!imgRes.ok) {
+        console.warn(`[poyo-image] persist skipped: upstream fetch ${imgRes.status} ${imgRes.statusText}; returning upstream URL (expires in 24h)`);
+      } else {
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        const mimeType = imgRes.headers.get("content-type") ?? "image/png";
+        const { url } = await storagePut(`generated/${Date.now()}.png`, buf, mimeType);
+        // Keep the original Poyo CDN URL as a short-lived public fallback.
+        return { url, sourceUrl: fileUrl, sourceAt: Date.now() };
+      }
+    } catch (err) {
+      // Audit log: which step broke. Without this the admin sees "开关打开
+      // 了但没存" with no clue whether it's a Forge config issue, network
+      // issue, or S3 quota issue.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[poyo-image] persist FAILED, falling back to upstream URL (expires in 24h): ${msg.slice(0, 300)}`);
+    }
+  }
+  return { url: fileUrl };
+}
+
+/** #315 结果找回：单次查询 Poyo 图像任务状态（不重新提交、零新扣费）。
+ *  finished → 走与正常轮询【同一条】取图/转存链路返回 url；仍在生成/失败返回状态给调用方。 */
+export async function recheckPoyoImageTask(taskId: string): Promise<{ done: boolean; url?: string; sourceUrl?: string; status: string; error?: string }> {
+  if (!ENV.poyoApiKey) throw new Error("POYO_API_KEY is not configured");
+  if (!/^[A-Za-z0-9_-]{4,128}$/.test(taskId)) throw new Error("非法的任务 id");
+  const statusRes = await fetch(`${POYO_BASE}/api/generate/status/${taskId}`, {
+    headers: { Authorization: `Bearer ${ENV.poyoApiKey}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!statusRes.ok) throw new Error(`Poyo 状态查询失败 (${statusRes.status})`);
+  const statusData = (await statusRes.json()) as { code: number; data: PoyoImageTaskData };
+  const d = statusData.data;
+  if (d?.status === "finished") {
+    const r = await finishPoyoImage(d);
+    return { done: true, url: r.url, sourceUrl: r.sourceUrl, status: "finished" };
+  }
+  if (d?.status === "failed") return { done: false, status: "failed", error: d.error_message ?? "unknown error" };
+  return { done: false, status: d?.status ?? "unknown" };
 }
 
 async function generateImageForge(options: GenerateImageOptions): Promise<GenerateImageResponse> {

@@ -709,6 +709,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     let ok = 0;
     for (const t of targets) {
       const aspect = characterImageAspect(t.p);
+      // #316 防双扣费互斥：开工前复核节点【此刻】状态——已有图（并行路径先完成）或
+      // status==="processing"（「运行全部」/手动按钮正在生成）都跳过，不再提交第二次
+      // 付费生成。检查与置锁在同一同步块内（中间无 await），单页签内原子性足够。
+      const cur = useCanvasStore.getState().nodes.find((n) => n.id === t.id)?.data.payload as CharacterNodeData | undefined;
+      if (!cur || cur.referenceImageUrl?.trim() || cur.status === "processing") { if (cur?.referenceImageUrl?.trim()) ok++; continue; }
       useCanvasStore.getState().updateNodeData(t.id, { status: "processing", errorMessage: undefined } as Partial<CharacterNodeData>, true);
       try {
         const gen = await utils.client.imageGen.generate.mutate({

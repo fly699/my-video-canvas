@@ -1178,6 +1178,11 @@ export function useWorkflowRunner() {
           const imgLabel = isScene ? "场景图" : "定妆照";
           const prompt = buildCharacterImagePrompt(cp);
           const aspect = characterImageAspect(cp);
+          // #316 防双扣费互斥：另一条 fill-only 路径（自动定妆/手动按钮）已把该节点置为
+          // processing → 本次跳过，不提交第二次付费生成（检查与置锁同步执行，无竞窗）。
+          if ((useCanvasStore.getState().nodes.find((n2) => n2.id === nodeId)?.data.payload as CharacterNodeData | undefined)?.status === "processing") {
+            return "skip";
+          }
           // 运行态写 payload.status——BaseNode 常驻进度条可见（#271 同一套指示体系）。
           useCanvasStore.getState().updateNodeData(nodeId, { status: "processing", errorMessage: undefined }, true);
           let url = "";
