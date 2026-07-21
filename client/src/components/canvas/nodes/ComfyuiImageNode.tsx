@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { effectiveCharactersCached } from "@/lib/nodeGraphCache";
 import { Handle, Position } from "@xyflow/react";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
@@ -98,9 +99,9 @@ export const ComfyuiImageNode = memo(function ComfyuiImageNode({ id, selected, d
   // 「最终提示词」= 角色注入后的正向词（payload.prompt 已含上游自动填充结果）。
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.prompt ?? "";
-    return mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), effectiveCharacters(id, base, s.edges, s.nodes), 2000);
+    return mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), effectiveCharactersCached(id, base, s.edges, s.nodes), 2000);
   });
-  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
+  const hasCharInject = useCanvasStore((s) => effectiveCharactersCached(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.prompt ?? "");
   const docks = useNodeDocks(id, { hasRef: true, /* 常开：空态悬停也能看到「上传/素材库」参考图入口 */ hasPrompt: !!finalPromptDisplay.trim() }, { prompt: finalPromptDisplay, ref: `${payload.referenceImageUrl ?? ""}|${charSceneItems.map((i) => i.id).join(",")}` });

@@ -2179,6 +2179,15 @@ select:-webkit-autofill:focus {
 [data-perf="lite"] .react-flow__edge-path { animation: none !important; }
 [data-perf="lite"] .react-flow__background { opacity: 0.35; }
 
+/* ── #324 拖拽/视口平移进行中（<html data-dragging>，Canvas 在 dragStart/moveStart 挂、
+   dragStop/moveEnd/卸载时摘）：交互帧临时套用与 lite 同款的节点视觉降级——阴影/过渡/
+   边动画/节点内 backdrop-filter 全停，松手瞬间恢复原样。只影响手势进行中的那几百毫秒，
+   静止画面与所有功能不受影响；lite 档本来就常关这些，等于无感。 */
+[data-dragging] .react-flow__node, [data-dragging] .react-flow__node * { transition-duration: 0s !important; }
+[data-dragging] .react-flow__node { box-shadow: none !important; }
+[data-dragging] .react-flow__node * { backdrop-filter: none !important; }
+[data-dragging] .react-flow__edge-path { animation: none !important; }
+
 /* ── #100 创意模式：绿色「已入库」指示点轻量化——空心细环 + 直径缩小（10px 实心+光晕 → 7px 空心）。
    全站 30+ 处内联绿点共享 title="已存储到 MinIO·长期有效"，属性选择器统一覆写；
    工作室/专业模式保持原实心点不变。 */

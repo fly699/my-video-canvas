@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { upstreamPromptCached, effectiveCharactersCached } from "@/lib/nodeGraphCache";
 import { createPortal } from "react-dom";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { TRPCClientError } from "@trpc/client";
@@ -153,10 +154,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // 无按钮：悬停标题栏 1 秒临时展开，点击吸附窗钉住持久展开。
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.promptText ?? "";
-    const chars = effectiveCharacters(id, base, s.edges, s.nodes);
+    const chars = effectiveCharactersCached(id, base, s.edges, s.nodes);
     return mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), chars, 2000);
   });
-  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.promptText ?? "", s.edges, s.nodes).length > 0);
+  const hasCharInject = useCanvasStore((s) => effectiveCharactersCached(id, payload.promptText ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图 + 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.promptText ?? "");
   const docks = useNodeDocks(id, { hasRef: true, /* 常开：空态悬停也能看到「上传/素材库」参考图入口 */ hasPrompt: !!finalPromptDisplay.trim() }, { prompt: finalPromptDisplay, ref: `${payload.referenceImageUrl ?? ""}|${charSceneItems.map((i) => i.id).join(",")}` });
@@ -178,8 +179,8 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   // 此前 prompt→storyboard 连接虽被矩阵允许但分镜不消费——连了白连（审计补齐）。
   // 注意：selector 必须返回原始值（string|undefined）——返回对象会每次新引用，
   // 触发 zustand getSnapshot 无限循环（与 VideoTaskNode 的既有写法保持一致）。
-  const upPromptPos = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
-  const upPromptNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
+  const upPromptPos = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).positive);
+  const upPromptNeg = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).negative);
   useEffect(() => {
     const patch: Partial<StoryboardNodeData> = {};
     if (upPromptPos && !payload.promptText?.trim()) patch.promptText = upPromptPos;

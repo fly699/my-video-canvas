@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { upstreamPromptCached } from "@/lib/nodeGraphCache";
 import { useCreativeAdvanced } from "../../../hooks/useCreativeAdvanced";
 import { BaseNode } from "../BaseNode";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
@@ -61,8 +62,8 @@ export const PromptNode = memo(function PromptNode({ id, selected, data }: Props
   // 分镜 / 角色 / AI对话") but were previously dead (nothing filled this node). Primitive
   // selector results → only re-renders when the upstream text actually changes;
   // fill-only-when-blank so the user's own edits are never overwritten.
-  const upstreamPos = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
-  const upstreamNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
+  const upstreamPos = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).positive);
+  const upstreamNeg = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).negative);
   useEffect(() => {
     const patch: Record<string, string> = {};
     if (upstreamPos && !payload.positivePrompt?.trim()) patch.positivePrompt = upstreamPos;

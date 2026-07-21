@@ -457,7 +457,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 边界节点反复挂载/卸载 + 图片重解码。节点少时代价 > 收益——手机真实反馈「流畅模式反而更慢」
   // 正是这个反噬。阈值 30：小画布 lite 只保留 CSS/3D 降级，大画布才叠加裁剪。
   const perfNodeCount = useCanvasStore((s) => s.nodes.length);
-  const perfCullOffscreen = perfLite && perfNodeCount > 30;
+  // #324 裁剪扩围：>30 节点时 auto/lite 档都裁剪视口外节点（原先仅 lite 档）。
+  // quality 档尊重「永不降档」契约维持全量渲染；≤30 节点不裁剪（#94：少节点反噬）。
+  const perfCullOffscreen = perfNodeCount > 30 && perfMode !== "quality";
   const [showPromptLib, setShowPromptLib] = usePersistentState<boolean>(
     "ui:panel:promptlib:v1", false, { validate: validateBool, crossTab: false },
   );
@@ -1518,7 +1520,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 助手放置一批节点后用户拖动摆位，再按 Ctrl+Z 时 past 栈顶就是「放置前」快照，
   // 整批 AI 节点一撤全没（用户实报 bug）。现在 Ctrl+Z 先逐步撤拖动、再撤放置。
   const dragHistSnapRef = useRef<{ nodes: CanvasNode[]; edges: CanvasEdge[] } | null>(null);
+  // #324 兜底：离开画布页时清掉拖拽信号（拖拽中途路由跳转不会触发 onNodeDragStop）。
+  useEffect(() => () => document.documentElement.removeAttribute("data-dragging"), []);
   const handleNodeDragStart = useCallback((_: React.MouseEvent, node: CanvasNode) => {
+    // #324 拖拽进行中信号：CSS 据此临时关闭节点阴影/过渡/边动画（松手即恢复），
+    // 把交互帧最贵的合成成本压到零。属性在 onNodeDragStop 与组件卸载时移除。
+    document.documentElement.setAttribute("data-dragging", "1");
     const stNow = useCanvasStore.getState();
     dragHistSnapRef.current = { nodes: stNow.nodes, edges: stNow.edges };
     // 「拖拽不展开」：把被拖动(含随之移动的整个选区)的节点标记为手势选中——不展开配置区，
@@ -3035,6 +3042,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
             onNodeDragStart={handleNodeDragStart as unknown as Parameters<typeof ReactFlow>[0]["onNodeDragStart"]}
             onNodeDrag={handleNodeDrag as unknown as Parameters<typeof ReactFlow>[0]["onNodeDrag"]}
             onNodeDragStop={(_, node, draggedNodes) => {
+              document.documentElement.removeAttribute("data-dragging"); // #324 恢复视觉
               // #271 拖动确有位移 → 把拖前快照入一步历史（纯点击/零位移不入，防历史噪音）。
               {
                 const snap = dragHistSnapRef.current;
@@ -3104,7 +3112,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
               emitCollabEvent("edge:delete", { id: e.id });
             })}
             onInit={() => { reactFlowReadyRef.current = true; applyInitialViewport(); }}
-            onMoveEnd={(_, vp) => { setViewport(vp); if (viewportRestoredRef.current) markDirty(); }}
+            onMoveStart={() => { document.documentElement.setAttribute("data-dragging", "1"); }}
+            onMoveEnd={(_, vp) => { document.documentElement.removeAttribute("data-dragging"); setViewport(vp); if (viewportRestoredRef.current) markDirty(); }}
             onDrop={handleAssetDrop}
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes("application/x-asset-list") || e.dataTransfer.types.includes("application/x-node-type")) {

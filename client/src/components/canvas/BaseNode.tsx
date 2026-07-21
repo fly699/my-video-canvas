@@ -37,7 +37,7 @@ import { openNodeCompare } from "./CompareLightbox";
 import { detectUpstreamImages, listUpstreamVideoSources } from "../../lib/comfyWorkflowParams";
 import { hasPassableOutput, directPassDownstream } from "../../lib/canvasPassthrough";
 import { handleStyle } from "../../lib/handleStyle";
-import { agentBadge } from "../../lib/agentOwnership";
+import { nodeById, anyMultiSelected, hasDualTargetInputs, hasOutgoingEdge, ownerAgentBadgeKey } from "../../lib/nodeGraphCache";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, useResolvedDefaultImageOption, type ModelPickerOption } from "./ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../lib/costEstimate";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../lib/comfyLocalRoute";
@@ -217,24 +217,14 @@ export const BaseNode = memo(function BaseNode({
   );
   // Detect ambiguous dual-target connection: when both `input` (left) and `top` handles
   // receive edges, the workflow runner only uses one — warn the user.
-  const dualTargetConflict = useCanvasStore((s) => {
-    if (!showHandles) return false;
-    let hasInput = false, hasTop = false;
-    for (const e of s.edges) {
-      if (e.target !== id) continue;
-      if (e.targetHandle === "input") hasInput = true;
-      else if (e.targetHandle === "top") hasTop = true;
-      if (hasInput && hasTop) return true;
-    }
-    return false;
-  });
+  const dualTargetConflict = useCanvasStore((s) => showHandles && hasDualTargetInputs(s.edges, id));
 
   // "直传" availability: this node has an output AND at least one outgoing edge,
   // so its current result can be pushed to downstream inputs without a run.
   const canDirectPass = useCanvasStore((s) => {
-    const node = s.nodes.find((n) => n.id === id);
+    const node = nodeById(s.nodes, id);
     if (!node || !hasPassableOutput(node.data.nodeType, (node.data.payload ?? {}) as Record<string, unknown>)) return false;
-    return s.edges.some((e) => e.source === id);
+    return hasOutgoingEdge(s.edges, id);
   });
   const handleDirectPass = useCallback(() => {
     const { updated, skipped } = directPassDownstream(id);
@@ -248,18 +238,18 @@ export const BaseNode = memo(function BaseNode({
   // Generation status/progress read straight from the payload, so a persistent
   // progress bar can render even when the node's config is collapsed (the per-node
   // progress bars live inside the collapsing body and vanish when deselected).
-  const genStatus = useCanvasStore((s) => (s.nodes.find((n) => n.id === id)?.data.payload as { status?: string } | undefined)?.status);
+  const genStatus = useCanvasStore((s) => (nodeById(s.nodes, id)?.data.payload as { status?: string } | undefined)?.status);
   const genProgress = useCanvasStore((s) => {
-    const p = (s.nodes.find((n) => n.id === id)?.data.payload as { progress?: number } | undefined)?.progress;
+    const p = (nodeById(s.nodes, id)?.data.payload as { progress?: number } | undefined)?.progress;
     return typeof p === "number" ? p : null;
   });
   // ComfyUI server queue depth while this node is waiting to start sampling.
   const genQueue = useCanvasStore((s) => {
-    const q = (s.nodes.find((n) => n.id === id)?.data.payload as { queueRemaining?: number } | undefined)?.queueRemaining;
+    const q = (nodeById(s.nodes, id)?.data.payload as { queueRemaining?: number } | undefined)?.queueRemaining;
     return typeof q === "number" && q > 0 ? q : null;
   });
   const genError = useCanvasStore((s) => {
-    const pl = s.nodes.find((n) => n.id === id)?.data.payload as { status?: string; errorMessage?: string } | undefined;
+    const pl = nodeById(s.nodes, id)?.data.payload as { status?: string; errorMessage?: string } | undefined;
     return pl?.status === "failed" ? (pl.errorMessage || "生成失败") : null;
   });
   // Subtitle/burning nodes report busy via their own verbs ("transcribing"/
@@ -273,32 +263,32 @@ export const BaseNode = memo(function BaseNode({
     if (!genBusy && livePreview) useComfyPreviewStore.getState().clearPreview(id);
   }, [genBusy, livePreview, id]);
   const pinned = useCanvasStore((s) => {
-    const node = s.nodes.find((n) => n.id === id);
+    const node = nodeById(s.nodes, id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.pinned);
   });
   // ◆6 锁定：payload.locked。锁定节点不可拖/不可删(在 Canvas displayNodes 注入 draggable/deletable=false)。
   // 「跳过执行」：payload.disabled（右键切换）。运行器/估价同口径跳过；此处只管徽标。
   const runDisabled = useCanvasStore((s) => {
-    const node = s.nodes.find((n) => n.id === id);
+    const node = nodeById(s.nodes, id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.disabled);
   });
   const locked = useCanvasStore((s) => {
-    const node = s.nodes.find((n) => n.id === id);
+    const node = nodeById(s.nodes, id);
     return Boolean((node?.data.payload as Record<string, unknown> | undefined)?.locked);
   });
   // 注意：多选时上游 CustomNode 已把 selected prop 压成 false（所有节点统一「框选不展开」），
   // 这里的 selected 即「单选展开」语义；选中描边用 store 真实选中态（storeSelected），
   // 框选高亮不丢。
-  const storeSelected = useCanvasStore((s) => !!s.nodes.find((n) => n.id === id)?.selected);
+  const storeSelected = useCanvasStore((s) => !!nodeById(s.nodes, id)?.selected);
   // ★3：是否多选（≥2 选中）。短路到 2 即返回布尔，避免每 BaseNode 全量 filter 的 O(n²)；
   // 只在跨越「1↔多」阈值时才触发 re-render。多选时非固定节点不再各自弹命令栏。
-  const multiSelected = useCanvasStore((s) => { let c = 0; for (const n of s.nodes) { if (n.selected) { c++; if (c >= 2) return true; } } return false; });
+  const multiSelected = useCanvasStore((s) => anyMultiSelected(s.nodes));
   // expandSelected 在下方 boxSelecting 之后计算（需叠加「拖拽/框选不展开」守卫）。
   // Creator id (stamped into the payload at creation) → a per-collaborator color
   // dot in the title bar, matching the cursor / "在线协作者" colors. Only shown
   // for OTHER collaborators' nodes (your own stay undotted — no solo noise).
   const createdBy = useCanvasStore((s) => {
-    const p = s.nodes.find((n) => n.id === id)?.data.payload as { createdBy?: number } | undefined;
+    const p = nodeById(s.nodes, id)?.data.payload as { createdBy?: number } | undefined;
     return typeof p?.createdBy === "number" ? p.createdBy : null;
   });
   const currentUserId = useCanvasStore((s) => s.currentUserId);
@@ -308,11 +298,8 @@ export const BaseNode = memo(function BaseNode({
   // Owner-agent badge (multi-agent canvases): "A{n}" pill in the agent's color when
   // this node was generated by an agent that still exists. Stable string → no churn.
   const ownerBadgeKey = useCanvasStore((s) => {
-    const p = s.nodes.find((n) => n.id === id)?.data.payload as { ownerAgentId?: unknown } | undefined;
-    const oid = typeof p?.ownerAgentId === "string" ? p.ownerAgentId : null;
-    if (!oid || !s.nodes.some((n) => n.id === oid && n.data.nodeType === "agent")) return null;
-    const b = agentBadge(oid, s.nodes);
-    return `${b.color}|${b.index}`;
+    const p = nodeById(s.nodes, id)?.data.payload as { ownerAgentId?: unknown } | undefined;
+    return ownerAgentBadgeKey(s.nodes, p?.ownerAgentId);
   });
   const ownerBadge = ownerBadgeKey ? { color: ownerBadgeKey.split("|")[0], index: Number(ownerBadgeKey.split("|")[1]) } : null;
   const deleteNodeMutation = trpc.nodes.delete.useMutation();
@@ -369,7 +356,7 @@ export const BaseNode = memo(function BaseNode({
   // type must be mapped or the node shows only "重新生成". `outputUrl` is ambiguous —
   // it's an image for image_edit but a video for clip/merge/subtitle/overlay/…，故按类型分流。
   const resultVideoUrl = useCanvasStore((s) => {
-    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+    const p = nodeById(s.nodes, id)?.data.payload as Record<string, unknown> | undefined;
     if (!p) return "";
     const first = (v: unknown): string => (typeof v === "string" && v ? v.split("\n")[0].trim() : "");
     switch (nodeType) {
@@ -394,7 +381,7 @@ export const BaseNode = memo(function BaseNode({
     }
   });
   const resultImageUrl = useCanvasStore((s) => {
-    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+    const p = nodeById(s.nodes, id)?.data.payload as Record<string, unknown> | undefined;
     if (!p) return "";
     const str = (v: unknown): string => (typeof v === "string" ? v : "");
     switch (nodeType) {
@@ -416,7 +403,7 @@ export const BaseNode = memo(function BaseNode({
   });
   // All result images of this node (image_gen batch → imageUrls) for lightbox ←/→ paging.
   const heroImageList = useCanvasStore((s) => {
-    const p = s.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
+    const p = nodeById(s.nodes, id)?.data.payload as Record<string, unknown> | undefined;
     const arr = Array.isArray(p?.imageUrls) ? (p!.imageUrls as unknown[]).filter((u): u is string => typeof u === "string") : [];
     return arr.join("\n");
   });
@@ -793,11 +780,11 @@ export const BaseNode = memo(function BaseNode({
   // manual resize (which writes style.height) lifts the cap so the user can
   // temporarily enlarge it.
   const nodeStyleWidth = useCanvasStore((s) => {
-    const w = s.nodes.find((n) => n.id === id)?.style?.width;
+    const w = nodeById(s.nodes, id)?.style?.width;
     return typeof w === "number" ? w : null;
   });
   const nodeStyleHeight = useCanvasStore((s) => {
-    const h = s.nodes.find((n) => n.id === id)?.style?.height;
+    const h = nodeById(s.nodes, id)?.style?.height;
     return typeof h === "number" ? h : null;
   });
   const manuallyResized = nodeStyleHeight != null && nodeStyleHeight > 0;
