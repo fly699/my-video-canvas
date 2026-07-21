@@ -29,6 +29,7 @@ import type { AgentOperation, CharacterNodeData } from "../../../../shared/types
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
 import { countDiffFromDefaults } from "@/lib/quickPrefsCount";
+import { formatStreamPreview } from "@/lib/streamPreviewFormat";
 
 /** 浮动「画布助手」：对话式让 AI（如本机 Claude）边聊边直接改画布。复用智能体节点同一套引擎
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
@@ -128,10 +129,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [busy, setBusy] = useState(false);
   // #136 规划进度可见：服务端阶段（分析模板库/模型规划中…）+ 本地每秒计时，替代干等。
   const [planStage, setPlanStage] = useState("");
-  // #306 流式回显：轮询捎回的「生成中文本」（仅本机桥接模型 + 开关开时非空）。预览框自动滚到底。
+  // #306 流式回显：轮询捎回的「生成中文本」（仅本机桥接/Poyo 模型 + 开关开时非空）。预览框自动滚到底。
   const [planPartial, setPlanPartial] = useState("");
   const partialRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { const el = partialRef.current; if (el) el.scrollTop = el.scrollHeight; }, [planPartial]);
+  // #312 实时排版：规划轮的未闭合 JSON 抽成「💬 回复草稿 + 编号操作清单」；普通文本原样。
+  // useMemo + 轮询节奏（1~2.5s 一次）→ 正则开销可忽略，纯展示层不碰数据流。
+  const prettyPartial = useMemo(() => formatStreamPreview(planPartial), [planPartial]);
+  useEffect(() => { const el = partialRef.current; if (el) el.scrollTop = el.scrollHeight; }, [prettyPartial]);
   const [planSec, setPlanSec] = useState(0);
   useEffect(() => {
     if (!busy) return;
@@ -1374,9 +1378,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             实时滚动——大计划不再干等黑盒。规划轮是 JSON 草稿观感（属预期，标注「原始输出」），
             快问快答轮就是答案本身。最终仍以完成后的正式回复为准（与预览逐字同源）。 */}
         {busy && planPartial && (
-          <div ref={partialRef} data-testid="stream-echo-preview" style={{ fontSize: 11, lineHeight: 1.5, color: "var(--c-t3)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 130, overflowY: "auto", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", borderRadius: 8, padding: "6px 9px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-            <span style={{ color: "var(--c-t4)", fontSize: 10 }}>生成中（模型原始输出实时回显）：{"\n"}</span>
-            {planPartial}
+          <div ref={partialRef} data-testid="stream-echo-preview" style={{ fontSize: 12, lineHeight: 1.65, color: "var(--c-t2)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 240, overflowY: "auto", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", borderRadius: 8, padding: "7px 10px" }}>
+            <span style={{ color: "var(--c-t4)", fontSize: 10.5 }}>生成中 · 实时草稿（最终以完成后的回复为准）{"\n"}</span>
+            {prettyPartial}
           </div>
         )}
       </div>
