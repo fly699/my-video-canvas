@@ -137,6 +137,30 @@ export function buildClaudeStreamJsonInput(prompt: string, images: ResolvedImage
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
 }
 
+/** #306 增量喂食器：把 claude `--output-format stream-json --include-partial-messages` 的
+ *  stdout 原始 chunk 按行切分，凡 `stream_event / content_block_delta` 的 text 增量即回调。
+ *  真机实测（2026-07）：delta 事件约每 300-400ms 一条、平均 ~19 字符，且全部 delta 拼接与
+ *  末尾 result 行【逐字一致】——所以增量只用于「回显预览」，最终结果仍以 result 行为准，
+ *  两者不会分叉。纯函数工厂（跨 chunk 半行自动缓冲；非 JSON 行/其他事件忽略）。 */
+export function makeStreamJsonDeltaFeeder(onDelta: (text: string) => void): (chunk: string) => void {
+  let buf = "";
+  return (chunk: string) => {
+    buf += chunk;
+    let i: number;
+    while ((i = buf.indexOf("\n")) !== -1) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (!line) continue;
+      try {
+        const o = JSON.parse(line) as { type?: string; event?: { type?: string; delta?: { text?: string } } };
+        if (o.type === "stream_event" && o.event?.type === "content_block_delta" && typeof o.event.delta?.text === "string" && o.event.delta.text) {
+          onDelta(o.event.delta.text);
+        }
+      } catch { /* 半行拼接失败/非 JSON 行：忽略（result 行兜底保证最终正确） */ }
+    }
+  };
+}
+
 /** 解析 Claude stream-json 输出：取最后一条 `type:"result"` 行的 result 文本与错误标志。纯函数。 */
 export function parseClaudeStreamJsonResult(stdout: string): { text: string; isError: boolean } {
   const lines = (stdout ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);

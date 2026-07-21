@@ -84,6 +84,11 @@ export type InvokeParams = {
   customApiKey?: string;
   /** 自定义模型的底层模型名覆盖（前端录入）；缺省回退 env 覆盖，再回退默认。 */
   customModel?: string;
+  /** #306 桥接流式回显通道（可选）：仅当模型是本机桥接（claude-local* 等）且桥接启用时，
+   *  以 stream_channel 字段随请求体送到桥接回环端点——端点把 claude 子进程的增量文本经
+   *  进程内 bridgeStreamBus 发布给该通道的订阅者（agent 任务累进 job.partial）。
+   *  非桥接模型忽略此字段（绝不会发给云端网关，防未知字段拖垮请求）。 */
+  bridgeStreamChannel?: string;
 };
 
 export type ToolCall = {
@@ -586,6 +591,12 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   if (normalizedResponseFormat) {
     payload.response_format = normalizedResponseFormat;
+  }
+
+  // #306 流式回显通道：只对「路由到本机桥接回环」的请求附带（与 resolveApiUrl 的桥接分流
+  // 同口径判定），云端网关永远收不到这个非标字段。
+  if (params.bridgeStreamChannel && isBridgeModel(resolvedModel) && isClaudeBridgeEnabled()) {
+    payload.stream_channel = params.bridgeStreamChannel;
   }
 
   const url = resolveApiUrl(resolvedModel);

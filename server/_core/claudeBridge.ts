@@ -13,7 +13,8 @@ import { join } from "node:path";
 import { resolveClaudeSpawn, resolveClaudeBin } from "./superAgent/claudeProcess";
 import { isGptLocalModel, codexModelArg, runCodexText } from "./codexBridge";
 import { isGrokLocalModel, grokModelArg, runGrokText } from "./grokBridge";
-import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, buildClaudeStreamJsonInput, parseClaudeStreamJsonResult } from "./bridgeAttachments";
+import { collectImageUrls, collectFileUrls, resolveImages, docTextFromFileUrls, buildClaudeStreamJsonInput, parseClaudeStreamJsonResult, makeStreamJsonDeltaFeeder } from "./bridgeAttachments";
+import { isValidStreamChannel, publishBridgeDelta } from "./bridgeStreamBus";
 import { getBridgeMcpConfig } from "./bridgeMcp";
 import { storagePut } from "../storage";
 import {
@@ -206,10 +207,12 @@ export function resolveBridgeAgenticArgs(workspaceDir?: string | null): string[]
   });
 }
 
-/** 起一次 claude 子进程、把 stdin 写进去、收集 stdout/stderr，用 parse 解析结果。内部复用。 */
+/** 起一次 claude 子进程、把 stdin 写进去、收集 stdout/stderr，用 parse 解析结果。内部复用。
+ *  onStdout（#306 可选）：stdout 每个原始 chunk 的旁路回调（流式回显用），不影响末尾整体解析。 */
 function spawnClaudeCollect(
   extraArgs: string[], stdin: string, timeoutMs: number,
   parse: (out: string, err: string) => { text: string; isError: boolean },
+  onStdout?: (chunk: string) => void,
 ): Promise<{ text: string; isError: boolean }> {
   const { cmd, args, shell } = resolveClaudeSpawn(resolveClaudeBin(), extraArgs);
   return new Promise((resolve) => {
@@ -237,7 +240,7 @@ function spawnClaudeCollect(
       // 不再让上层 fetch 一直挂到自建 300s abort（这才是「桥接超时形同虚设」的根因）。
       fallbackTimer = setTimeout(finish, 5000);
     }, timeoutMs);
-    child.stdout?.on("data", (d) => { out += String(d); });
+    child.stdout?.on("data", (d) => { const s = String(d); out += s; if (onStdout) { try { onStdout(s); } catch { /* 旁路回调异常不影响收集 */ } } });
     child.stderr?.on("data", (d) => { err += String(d); });
     try { child.stdin?.write(stdin); child.stdin?.end(); } catch { /* stdin 不可用 */ }
     child.on("error", (e) => { spawnErr = e instanceof Error ? e.message : String(e); finish(); });
@@ -248,7 +251,11 @@ function spawnClaudeCollect(
 /** 跑一次无头 claude 拿回复。model 为 null 时不传 --model（订阅默认）；env 继承 CLAUDE_CODE_OAUTH_TOKEN。
  *  纯文本走 `--output-format json`（快）；检测到图片附件时改走 `--input-format stream-json`
  *  内联 base64 图片块（真机实测可用，无需给工具、不落磁盘）；文档一律解析成文本追加进提示词。 */
-export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null; workspaceDir?: string | null }): Promise<{ text: string; isError: boolean }> {
+export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: number; model?: string | null; workspaceDir?: string | null;
+  /** #306 流式回显（可选）：给出时子进程改用 stream-json + --include-partial-messages 输出，
+   *  生成中的文本增量实时回调；最终结果仍取末尾 result 行（真机实测与 delta 拼接逐字一致）。
+   *  不给 = 参数与解析路径与原来【逐字一致】（默认非流式，零回归）。 */
+  onDelta?: (text: string) => void }): Promise<{ text: string; isError: boolean }> {
   let prompt = messagesToPrompt(opts.messages);
   const docText = await docTextFromFileUrls(collectFileUrls(opts.messages));
   if (docText) prompt = [prompt, docText].filter(Boolean).join("\n\n");
@@ -259,16 +266,30 @@ export async function runClaudeText(opts: { messages: OAMessage[]; timeoutMs: nu
   // 技能/MCP 增强（默认空数组 = 纯文本，行为不变）。两条路径都带上。
   const agentic = resolveBridgeAgenticArgs(opts.workspaceDir);
 
+  // #306 流式回显：请求方给了 onDelta 才建喂食器；否则 undefined，两条路径参数/行为与原来一致。
+  const feeder = opts.onDelta ? makeStreamJsonDeltaFeeder(opts.onDelta) : undefined;
+  const partialArgs = feeder ? ["--include-partial-messages"] : [];
+
   if (images.length) {
     // 图片路径：stream-json 输入必须配 stream-json 输出（CLI 强制），末尾 result 行取答案。
     const input = buildClaudeStreamJsonInput(prompt, images);
-    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", ...modelArgs, ...agentic];
+    const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", ...partialArgs, ...modelArgs, ...agentic];
     const r = await spawnClaudeCollect(args, input, opts.timeoutMs, (out, err) => {
       const parsed = parseClaudeStreamJsonResult(out);
       if ((!parsed.text || parsed.isError) && err.trim()) return { text: parsed.text || err.trim().slice(-800), isError: true };
       return parsed;
-    });
+    }, feeder);
     return r;
+  }
+
+  if (feeder) {
+    // #306 纯文本 + 流式回显：改走 stream-json 输出拿逐块 delta（-p 下 CLI 强制配 --verbose）。
+    // 最终结果取末尾 result 行——与 delta 拼接逐字一致（真机 B2 实验实证），不会与回显分叉。
+    return spawnClaudeCollect(["-p", "--output-format", "stream-json", "--verbose", ...partialArgs, ...modelArgs, ...agentic], prompt, opts.timeoutMs, (out, err) => {
+      const parsed = parseClaudeStreamJsonResult(out);
+      if ((!parsed.text || parsed.isError) && err.trim()) return { text: parsed.text || err.trim().slice(-800), isError: true };
+      return parsed;
+    }, feeder);
   }
 
   // 纯文本（或仅文档）路径：沿用原来的单条 JSON 输出，快且稳。
@@ -318,11 +339,17 @@ export function registerClaudeBridge(app: Express): void {
       }
       let text = "", isError = false;
       try {
+        // #306 流式回显旁路：请求体带合法 stream_channel（同进程的 agent 任务在 submitChat
+        // 里生成并已订阅总线）时，把 claude 子进程的增量文本发布过去；HTTP 响应本身不变
+        // （仍收完整体返回），未带该字段的请求与原来逐字一致。仅 Claude 分支支持
+        // （codex/grok CLI 无等价逐块输出，静默忽略即可，不报错）。
+        const streamCh = isValidStreamChannel(req.body?.stream_channel) ? (req.body.stream_channel as string) : null;
         const r = grok
           ? await runGrokText({ messages, timeoutMs: bridgeMs, model: grokModelArg(req.body?.model) })
           : gpt
           ? await runCodexText({ messages, timeoutMs: bridgeMs, model: codexModelArg(req.body?.model) })
-          : await runClaudeText({ messages, timeoutMs: bridgeMs, model: bridgeModelArg(req.body?.model), workspaceDir: wsDir });
+          : await runClaudeText({ messages, timeoutMs: bridgeMs, model: bridgeModelArg(req.body?.model), workspaceDir: wsDir,
+              onDelta: streamCh ? (d) => publishBridgeDelta(streamCh, d) : undefined });
         text = r.text; isError = r.isError;
         if (wsDir && !isError) {
           // 收集生成文件：白名单/限额/防软链都在 collectWorkspaceFiles 内强制。

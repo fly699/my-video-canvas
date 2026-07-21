@@ -16,8 +16,9 @@ export async function runAgentChatJob(
   client: Client,
   input: ChatInput,
   signal?: AbortSignal,
-  /** #136 每次轮询到 running 时回调服务端阶段（分析模板库/模型规划中…）与已耗时，供 UI 实时显示。 */
-  onProgress?: (p: { stage?: string; elapsedMs?: number }) => void,
+  /** #136 每次轮询到 running 时回调服务端阶段（分析模板库/模型规划中…）与已耗时，供 UI 实时显示。
+   *  #306 partial：流式回显增量文本（仅本机桥接模型+开关开时有值），供进行中气泡实时预览。 */
+  onProgress?: (p: { stage?: string; elapsedMs?: number; partial?: string }) => void,
 ): Promise<AgentChatResult> {
   const { jobId } = await client.agent.submitChat.mutate(input);
   return pollAgentChatJob(client, jobId, signal, onProgress);
@@ -29,7 +30,7 @@ export async function pollAgentChatJob(
   client: Client,
   jobId: string,
   signal?: AbortSignal,
-  onProgress?: (p: { stage?: string; elapsedMs?: number }) => void,
+  onProgress?: (p: { stage?: string; elapsedMs?: number; partial?: string }) => void,
 ): Promise<AgentChatResult> {
   // 可中断等待：abort 时立即唤醒，而不是睡满整个轮询间隔（否则点「取消」最多要干等 2.5s 才有反馈）。
   const wait = (ms: number) => new Promise<void>((res) => {
@@ -52,8 +53,8 @@ export async function pollAgentChatJob(
       st = await client.agent.chatStatus.query({ jobId });
     } catch { continue; } // 网络抖动/服务重启中：下一轮再试
     if (st.state === "running") {
-      const run = st as { stage?: string; elapsedMs?: number };
-      onProgress?.({ stage: run.stage, elapsedMs: run.elapsedMs });
+      const run = st as { stage?: string; elapsedMs?: number; partial?: string };
+      onProgress?.({ stage: run.stage, elapsedMs: run.elapsedMs, partial: run.partial });
       continue;
     }
     if (st.state === "missing") {
