@@ -28,3 +28,18 @@ export const NODE_CATEGORIES: NodeCategory[] = [
 export function categoryOf(type: NodeType): string {
   return NODE_CATEGORIES.find((c) => c.types.includes(type))?.id ?? "util";
 }
+
+/**
+ * #93 主流程快捷区：成片生产的主干管线，按创作顺序排列，置顶展示在
+ * NodePicker「全部节点」分组之前。这里只是快捷入口——每个类型仍出现在
+ * 上面所属分类里（与「最近使用」同理，允许重复出现）。
+ */
+export const MAIN_FLOW_TYPES: NodeType[] = [
+  "script",      // 剧本
+  "storyboard",  // 分镜
+  "character",   // 角色
+  "image_gen",   // 生图
+  "video_task",  // 生视频
+  "audio",       // 配音
+  "merge",       // 合并成片
+];
