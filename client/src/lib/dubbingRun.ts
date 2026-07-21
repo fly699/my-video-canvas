@@ -17,6 +17,7 @@ import { useCanvasStore } from "../hooks/useCanvasStore";
 import { parseDialogueLines, stripDialogueRoles, shouldCast, planCastSegments, type CastMap } from "./dialogueCasting";
 import { estimateTtsCost, costEstimateLabel } from "./costEstimate";
 import { DUBBING_VOICE_CATALOG, OPENAI_VOICES } from "../../../shared/dubbingVoices";
+import { titleShotNumber } from "./inputOrder";
 
 /** 模型→可用音色 value 表：shared 目录优先；目录外 elevenlabs 系回退 ElevenLabs 表、
  *  其余回退 OpenAI 表——与 AudioNode.voicesForModel 同语义（那边给 UI 用带 label 的
@@ -32,7 +33,7 @@ function voiceValuesFor(model: string): string[] {
 }
 
 /** 最小结构化形状（便于测试直造，不拖 React Flow 类型）。 */
-export interface DubScanNode { id: string; position?: { x: number; y: number }; data: { nodeType: string; payload?: unknown } }
+export interface DubScanNode { id: string; position?: { x: number; y: number }; data: { nodeType: string; title?: string; payload?: unknown } }
 export interface DubScanEdge { source: string; target: string }
 
 export interface DubShotPlan {
@@ -49,7 +50,15 @@ export interface DubShotPlan {
 /** 从画布快照收集可配音的镜（纯函数，单测锁口径，与面板版 runDubBatch 对齐）：
  *  - 全画布非 disabled 分镜，按 sceneNumber 升序（无镜号排最后保持相对顺序）；
  *  - 下游已出声的配音工位（audio 非 sfx/music 且有 url）→ 跳过（防重复扣费）；
- *  - 无对白 → 跳过；空工位记下 id 供复用。 */
+ *  - 无对白 → 跳过；空工位记下 id 供复用。
+ *  #300 排除分镜工作流（script→prompt→video，无 storyboard）也要能配音：
+ *  - prompt 节点（非 disabled、正向文本含「角色名：台词」格式的显式对白行、
+ *    且有下游视频节点）同样当镜收集——对白 = 仅角色行（纯旁白行与画面描述
+ *    无法区分，刻意不收，诚实限制）；镜号取 prompt/下游视频标题镜号
+ *   （titleShotNumber，与装配段序同源）；工位挂 prompt 下游（装配对位
+ *    storyboardGen 无分镜段回溯 nearestUpstreamPrompt 与此配对）。
+ *  - 分镜路径行为逐字节不变；两路互不排斥（分镜链的 prompt 通常无角色对白行，
+ *    含对白即视为镜载体）。 */
 export function collectDubShots(
   nodes: DubScanNode[],
   edges: DubScanEdge[],
@@ -65,21 +74,11 @@ export function collectDubShots(
     const p = (n.data.payload ?? {}) as CharPayload;
     if (p.name && p.voiceModel && p.voiceId) charDefaults[p.name] = { model: p.voiceModel, voice: p.voiceId };
   }
-  const sbs = nodes
-    .filter((n) => n.data.nodeType === "storyboard" && !(n.data.payload as SbPayload | undefined)?.disabled)
-    .map((n, i) => {
-      const p = (n.data.payload ?? {}) as SbPayload;
-      const num = Number(p.sceneNumber);
-      return { n, p, order: Number.isFinite(num) && num > 0 ? num : 9000 + i };
-    })
-    .sort((a, b) => a.order - b.order);
-  const shots: DubShotPlan[] = [];
-  let skippedDone = 0, skippedNoDialogue = 0;
-  for (const { n, p } of sbs) {
-    // 下游配音工位状态（排除 sfx/music——音效/配乐工位同样挂在分镜下游，不抢占）
+  // 通用子例程：镜载体（分镜或 prompt）的下游配音工位状态与上游脚本 castVoices。
+  const audioStation = (hostId: string): { done: boolean; reuseAudioId: string | null } => {
     let done = false; let reuseAudioId: string | null = null;
     for (const e of edges) {
-      if (e.source !== n.id) continue;
+      if (e.source !== hostId) continue;
       const t = nodes.find((m) => m.id === e.target);
       if (t?.data.nodeType !== "audio") continue;
       const ap = (t.data.payload ?? {}) as AudioPayload;
@@ -87,19 +86,83 @@ export function collectDubShots(
       if (ap.url) { done = true; break; }
       reuseAudioId = t.id;
     }
-    if (done) { skippedDone++; continue; }
-    const text = (p.dialogue ?? "").trim();
-    if (!text) { skippedNoDialogue++; continue; }
-    // 上游脚本 castVoices 覆盖角色档案（与面板 effCast 的「档案 < 面板分配」同序）
-    let scriptCast: CastMap = {};
+    return { done, reuseAudioId };
+  };
+  const upstreamScriptCast = (hostId: string): CastMap => {
     for (const e of edges) {
-      if (e.target !== n.id) continue;
+      if (e.target !== hostId) continue;
       const s = nodes.find((m) => m.id === e.source);
-      if (s?.data.nodeType === "script") { scriptCast = ((s.data.payload ?? {}) as ScriptPayload).castVoices ?? {}; break; }
+      if (s?.data.nodeType === "script") return ((s.data.payload ?? {}) as ScriptPayload).castVoices ?? {};
     }
-    shots.push({ sbId: n.id, sceneNumber: p.sceneNumber, text, reuseAudioId, cast: { ...charDefaults, ...scriptCast } });
+    return {};
+  };
+
+  type Cand = { n: DubScanNode; text: string; sceneNumber?: number | string; order: number };
+  const cands: Cand[] = [];
+  // ── 分镜镜（原路径，行为不变）──
+  const sbs = nodes.filter((n) => n.data.nodeType === "storyboard" && !(n.data.payload as SbPayload | undefined)?.disabled);
+  sbs.forEach((n, i) => {
+    const p = (n.data.payload ?? {}) as SbPayload;
+    const num = Number(p.sceneNumber);
+    cands.push({ n, text: (p.dialogue ?? "").trim(), sceneNumber: p.sceneNumber, order: Number.isFinite(num) && num > 0 ? num : 9000 + i });
+  });
+  // ── #300 prompt 镜（排除分镜工作流）──
+  const VIDEO_TYPES = new Set(["video_task", "comfyui_video", "comfyui_workflow"]);
+  const IMG_PASS = new Set(["image_gen", "comfyui_image"]);
+  const hasDownstreamVideo = (id: string): boolean => {
+    for (const e of edges) {
+      if (e.source !== id) continue;
+      const t = nodes.find((m) => m.id === e.target);
+      if (!t) continue;
+      if (VIDEO_TYPES.has(t.data.nodeType)) return true;
+      // imageFirst 链：prompt→image_gen→video，多跳一层
+      if (IMG_PASS.has(t.data.nodeType) && edges.some((e2) => e2.source === t.id && VIDEO_TYPES.has(nodes.find((m) => m.id === e2.target)?.data.nodeType ?? ""))) return true;
+    }
+    return false;
+  };
+  const prompts = nodes.filter((n) => n.data.nodeType === "prompt" && !(n.data.payload as { disabled?: boolean } | undefined)?.disabled);
+  prompts.forEach((n, i) => {
+    const pp = (n.data.payload ?? {}) as { positivePrompt?: string; promptText?: string };
+    const full = (pp.positivePrompt ?? pp.promptText ?? "").trim();
+    if (!full) return;
+    // 只认「角色名：台词」格式的显式对白行（旁白/画面描述无法区分，不收）
+    const roleLines = parseDialogueLines(full).filter((s) => s.role != null);
+    if (!roleLines.length) return;
+    if (!hasDownstreamVideo(n.id)) return; // 不喂视频的独立 prompt 不当镜（防误配）
+    // 镜号：prompt 标题 → 下游视频标题（直连或隔 image_gen 一跳，imageFirst 链）→ 垫底
+    //（与装配段序 titleShotNumber 同源）
+    let num = titleShotNumber(n.data.title);
+    if (!Number.isFinite(num)) {
+      const vids: DubScanNode[] = [];
+      for (const e of edges) {
+        if (e.source !== n.id) continue;
+        const t = nodes.find((m) => m.id === e.target);
+        if (!t) continue;
+        if (VIDEO_TYPES.has(t.data.nodeType)) vids.push(t);
+        else if (IMG_PASS.has(t.data.nodeType)) {
+          for (const e2 of edges) {
+            if (e2.source !== t.id) continue;
+            const t2 = nodes.find((m) => m.id === e2.target);
+            if (t2 && VIDEO_TYPES.has(t2.data.nodeType)) vids.push(t2);
+          }
+        }
+      }
+      for (const v of vids) { const tn = titleShotNumber(v.data.title); if (Number.isFinite(tn)) { num = tn; break; } }
+    }
+    const text = roleLines.map((s) => `${s.role}：${s.text}`).join("\n");
+    cands.push({ n, text, sceneNumber: Number.isFinite(num) ? num : undefined, order: Number.isFinite(num) ? num : 9500 + i });
+  });
+
+  cands.sort((a, b) => a.order - b.order);
+  const shots: DubShotPlan[] = [];
+  let skippedDone = 0, skippedNoDialogue = 0;
+  for (const c of cands) {
+    const st = audioStation(c.n.id);
+    if (st.done) { skippedDone++; continue; }
+    if (!c.text) { skippedNoDialogue++; continue; }
+    shots.push({ sbId: c.n.id, sceneNumber: c.sceneNumber, text: c.text, reuseAudioId: st.reuseAudioId, cast: { ...charDefaults, ...upstreamScriptCast(c.n.id) } });
   }
-  return { shots, total: sbs.length, skippedDone, skippedNoDialogue };
+  return { shots, total: cands.length, skippedDone, skippedNoDialogue };
 }
 
 /** audioGen 管线的最小客户端接口（tRPC utils.client 形状），注入以便单测替身。 */
@@ -118,8 +181,8 @@ export async function runDubbingFromCanvas(client: DubbingClient): Promise<void>
   const { shots, total, skippedDone, skippedNoDialogue } = collectDubShots(store.nodes, store.edges);
   if (!shots.length) {
     toast.error(total === 0
-      ? "画布上没有分镜节点——批量配音按分镜逐镜生成，请先规划分镜（或手动加音频节点单独配音）"
-      : `没有可配音的镜：${skippedDone ? `${skippedDone} 镜已有配音；` : ""}${skippedNoDialogue ? `${skippedNoDialogue} 镜无「对白/旁白」（在分镜或镜头表里填写）` : ""}`);
+      ? "画布上没有可配音的镜——分镜节点填「对白/旁白」，或（排除分镜工作流）在提示词节点里写「角色名：台词」格式的对白行"
+      : `没有可配音的镜：${skippedDone ? `${skippedDone} 镜已有配音；` : ""}${skippedNoDialogue ? `${skippedNoDialogue} 镜无对白（分镜填 dialogue；提示词节点写「角色名：台词」行）` : ""}`);
     return;
   }
   // 默认模型/音色沿用镜头表面板的同一 localStorage 键——用户在面板里选过什么，

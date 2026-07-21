@@ -83,6 +83,37 @@ export function titleShotNumber(title?: string | null): number {
   return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
 }
 
+/** #300 最近上游 prompt 节点（多跳 BFS，与 nearestUpstreamStoryboard 同构）：
+ *  排除分镜工作流的镜载体是 prompt（script→prompt→[image_gen]→video），配音工位
+ *  挂在 prompt 下游——装配对位无分镜段时按此回溯。穿透集不含 prompt/storyboard
+ *  本身（遇到即返回/截断），也不含 merge 等汇聚节点（防跨镜误认）。 */
+export function nearestUpstreamPrompt(
+  nodeId: string,
+  edges: { source: string; target: string }[],
+  byId: Map<string, ShotNode>,
+  maxDepth = 4,
+): ShotNode | undefined {
+  const PASS = new Set(["image_gen", "comfyui_image", "comfyui_workflow"]);
+  let frontier = [nodeId];
+  const visited = new Set([nodeId]);
+  for (let d = 0; d < maxDepth; d++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const e of edges) {
+        if (e.target !== id || visited.has(e.source)) continue;
+        visited.add(e.source);
+        const src = byId.get(e.source);
+        if (!src) continue;
+        if (src.data?.nodeType === "prompt") return src;
+        if (PASS.has(src.data?.nodeType ?? "")) next.push(e.source);
+      }
+    }
+    frontier = next;
+    if (frontier.length === 0) break;
+  }
+  return undefined;
+}
+
 /** 最近上游分镜的镜号；无分镜/无有效镜号 → Infinity（排序时殿后）。 */
 export function upstreamSceneNumber(
   nodeId: string,

@@ -250,6 +250,30 @@ describe("assembleFromStoryboards（装配端收集）", () => {
     expect(r.sfxUrls).toEqual([null, null]);                // 无音效节点
   });
 
+  it("#300 无分镜段的配音对位：回溯最近上游 prompt 节点的下游音频（排除分镜工作流）", () => {
+    const n = [
+      N("m", "merge", {}),
+      N("p1", "prompt", { positivePrompt: "陈默：夜色真美。" }, "镜头 1"),
+      N("p2", "prompt", { positivePrompt: "街角空镜" }, "镜头 2"),
+      N("ig", "image_gen", {}),
+      N("v1", "video_task", { resultVideoUrl: "v1.mp4" }, "镜头 1 视频"),
+      N("v2", "video_task", { resultVideoUrl: "v2.mp4" }, "镜头 2 视频"),
+      N("a1", "audio", { url: "dub1.mp3", audioCategory: "dubbing", duration: 3 }),
+      N("bgm", "audio", { url: "bgm.mp3", audioCategory: "music" }), // music 不作对位
+    ];
+    const e = [
+      { source: "p1", target: "ig" }, { source: "ig", target: "v1" }, // imageFirst 隔一跳也要回溯到
+      { source: "p2", target: "v2" },
+      { source: "v2", target: "m" }, { source: "v1", target: "m" },
+      { source: "p1", target: "a1" }, { source: "p1", target: "bgm" },
+    ];
+    const r = assembleFromStoryboards("m", n, e);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.inputVideoUrls).toEqual(["v1.mp4", "v2.mp4"]); // 标题镜号排序
+    expect(r.voiceUrls).toEqual(["dub1.mp3", null]);        // prompt 下游配音对位进段 1
+    expect(r.voiceDurations).toEqual([3, null]);
+  });
+
   it("#280 多跳回溯：分镜→image_gen 出图工位→视频 的标准管线也按镜号排序（此前一跳直查回溯断链、退化成连线顺序）", () => {
     const n = [
       N("m", "merge", {}),
