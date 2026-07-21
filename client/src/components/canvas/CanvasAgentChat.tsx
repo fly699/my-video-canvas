@@ -135,7 +135,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // #312 实时排版：规划轮的未闭合 JSON 抽成「💬 回复草稿 + 编号操作清单」；普通文本原样。
   // useMemo + 轮询节奏（1~2.5s 一次）→ 正则开销可忽略，纯展示层不碰数据流。
   const prettyPartial = useMemo(() => formatStreamPreview(planPartial), [planPartial]);
-  useEffect(() => { const el = partialRef.current; if (el) el.scrollTop = el.scrollHeight; }, [prettyPartial]);
+  // 预览框自身滚到底；外层消息区若本就贴近底部（±300px 内）也跟随滚底——增量更新不在
+  // turns/busy 依赖里，此前长历史时新长出的预览会伸到可视区外只露一条缝（用户实报）。
+  // 用户主动上翻读历史时（距底 >300px）不打扰。
+  useEffect(() => {
+    const el = partialRef.current; if (el) el.scrollTop = el.scrollHeight;
+    const sc = scrollRef.current;
+    if (sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 300) sc.scrollTop = sc.scrollHeight;
+  }, [prettyPartial]);
   const [planSec, setPlanSec] = useState(0);
   useEffect(() => {
     if (!busy) return;
@@ -707,13 +714,18 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const label = (n: number, s: number) => [n - s > 0 ? `${n - s} 个角色定妆照` : "", s > 0 ? `${s} 个场景图` : ""].filter(Boolean).join("与");
     toast.info(`正在生成 ${label(targets.length, nScene)}…`, { duration: 3500 });
     let ok = 0;
-    for (const t of targets) {
+    // #320 并发 2 工作池（原全串行，用户实报太慢）：与批量配音同档——多角色提速近半，
+    // 又不给上游/额度冲峰。#316 的 processing 互斥锁按【每个节点】检查+置锁同步执行，
+    // 与「运行全部」/手动路径并行时依然不双扣费；单个失败不影响其余（各自 catch）。
+    const CONC = 2;
+    let nextIdx = 0;
+    const runOne = async (t: (typeof targets)[number]) => {
       const aspect = characterImageAspect(t.p);
       // #316 防双扣费互斥：开工前复核节点【此刻】状态——已有图（并行路径先完成）或
       // status==="processing"（「运行全部」/手动按钮正在生成）都跳过，不再提交第二次
       // 付费生成。检查与置锁在同一同步块内（中间无 await），单页签内原子性足够。
       const cur = useCanvasStore.getState().nodes.find((n) => n.id === t.id)?.data.payload as CharacterNodeData | undefined;
-      if (!cur || cur.referenceImageUrl?.trim() || cur.status === "processing") { if (cur?.referenceImageUrl?.trim()) ok++; continue; }
+      if (!cur || cur.referenceImageUrl?.trim() || cur.status === "processing") { if (cur?.referenceImageUrl?.trim()) ok++; return; }
       useCanvasStore.getState().updateNodeData(t.id, { status: "processing", errorMessage: undefined } as Partial<CharacterNodeData>, true);
       try {
         const gen = await utils.client.imageGen.generate.mutate({
@@ -746,7 +758,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           else useCanvasStore.getState().updateNodeData(t.id, { status: "failed", errorMessage: `自动生成失败：${err instanceof Error ? err.message : String(err)}` } as Partial<CharacterNodeData>, true);
         }
       }
-    }
+    };
+    const worker = async () => { for (;;) { const i = nextIdx++; if (i >= targets.length) return; await runOne(targets[i]); } };
+    await Promise.all(Array.from({ length: Math.min(CONC, targets.length) }, worker));
     if (ok > 0) toast.success(`已生成 ${ok} 张主参考图（角色定妆照/场景图已写入节点）`);
     else toast.error("定妆照/场景图自动生成未成功（可在节点上点「一键定妆照/场景图」重试）");
   };
@@ -1082,7 +1096,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   }
 
   // 取消进行中的规划：中止轮询等待（后台任务仍会跑完，结果被丢弃）。
-  const cancelSend = () => { abortRef.current?.abort(); };
+  const cancelSend = () => {
+    abortRef.current?.abort();
+    // #318 取消贯穿到底：同时作废服务端任务（删 pending 登记 + 结果完成后丢弃 + 删持久行）。
+    // 此前只中止轮询，后台任务跑完仍被 #251 断线续跑捞回自动落地——「取消了却多出一套分镜」。
+    void utils.client.agent.cancelChat.mutate({ projectId }).catch(() => { /* 网络失败不阻断本地取消 */ });
+  };
 
   const templateGroups = [
     { options: [{ value: BLANK_TEMPLATE_ID, label: BLANK_TEMPLATE_LABEL, title: "不设任何人设/风格" }] },
@@ -1110,6 +1129,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             if (!turns.length) { toast.info("当前已是新对话（暂无历史可清空）"); return; }
             if (!window.confirm("清空当前画布助手对话，开始新对话？")) return;
             setTurns([]); persistTurns([]);
+            // #318 新对话 = 明确放弃进行中/未取走的规划任务（无任务时服务端 no-op）——
+            // 防「之前取消过的任务」在下次进画布时被断线续跑捞回落地。
+            void utils.client.agent.cancelChat.mutate({ projectId }).catch(() => { /* no-op */ });
             toast.success("已开始新对话");
           }}
           title="新对话（清空当前画布助手对话，开启一段全新对话）" disabled={busy}
@@ -1390,7 +1412,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             实时滚动——大计划不再干等黑盒。规划轮是 JSON 草稿观感（属预期，标注「原始输出」），
             快问快答轮就是答案本身。最终仍以完成后的正式回复为准（与预览逐字同源）。 */}
         {busy && planPartial && (
-          <div ref={partialRef} data-testid="stream-echo-preview" style={{ fontSize: 12, lineHeight: 1.65, color: "var(--c-t2)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 240, overflowY: "auto", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", borderRadius: 8, padding: "7px 10px" }}>
+          <div ref={partialRef} data-testid="stream-echo-preview" style={{ fontSize: 12, lineHeight: 1.65, color: "var(--c-t2)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 240, overflowY: "auto", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", borderRadius: 8, padding: "7px 10px",
+            // flexShrink:0 是「被压成一条缝」的正解：本框自身可滚（min-content≈0），在消息
+            // flex 列里内容一多就被 flex 收缩挤没（用户实报「越改越矮」）。禁止收缩后由
+            // maxHeight+内部滚动控高，长历史下依然完整可见。
+            flexShrink: 0 }}>
             <span style={{ color: "var(--c-t4)", fontSize: 10.5 }}>生成中 · 实时草稿（最终以完成后的回复为准）{"\n"}</span>
             {prettyPartial}
           </div>
@@ -1474,21 +1500,22 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       </div>
 
       {/* input */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 10px 10px", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, padding: "8px 8px 10px", flexShrink: 0 }}>
         <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx" style={{ display: "none" }}
           onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); if (fileInputRef.current) fileInputRef.current.value = ""; }} />
-        {/* #92 参考上传入口显性化：纯图标 📎 几乎没人注意到能传参考图——改带文字药丸，
-            已附文件时描边点亮 + 显示数量。 */}
+        {/* #92 参考上传入口显性化：带文字药丸 + 已附文件时描边点亮显数量。
+            #305 麦克风入驻后输入条变挤（用户实报「输入框太窄」）——面板宽 <430px 时
+            「参考」收成纯图标（title 仍有全说明，附件数照显），把宽度还给输入框。 */}
         <button onClick={() => fileInputRef.current?.click()} disabled={busy} title="附参考图 / 文档（据图规划画面·风格·角色；也可直接粘贴或拖拽图片到输入框）"
-          style={{ display: "inline-flex", height: 38, padding: "0 10px", gap: 5, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${staged.length ? accent : "var(--c-bd2)"}`, background: staged.length ? accentSoft : "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: busy ? "not-allowed" : "pointer", flexShrink: 0, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>
-          <Paperclip size={15} />参考{staged.length > 0 ? ` ×${staged.length}` : ""}
+          style={{ display: "inline-flex", height: 36, padding: size.w < 430 ? "0 8px" : "0 10px", gap: 5, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${staged.length ? accent : "var(--c-bd2)"}`, background: staged.length ? accentSoft : "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: busy ? "not-allowed" : "pointer", flexShrink: 0, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>
+          <Paperclip size={15} />{size.w < 430 ? (staged.length > 0 ? `×${staged.length}` : "") : `参考${staged.length > 0 ? ` ×${staged.length}` : ""}`}
         </button>
         {/* #305 语音口令：点击开始/停止，识别文本填入输入框（追加），用户确认后再发送。
             不支持的环境（无 Web Speech 且无 MediaRecorder）不渲染，布局零影响。 */}
         {voice.supported && (
           <button onClick={voice.toggle} disabled={voice.busy}
             title={voice.recording ? "停止语音输入" : voice.busy ? "识别中…" : "语音输入（说出画布指令，识别结果填入输入框，确认后发送）"}
-            style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${voice.recording ? "#e5484d" : "var(--c-bd2)"}`, background: voice.recording ? "color-mix(in oklch, #e5484d 18%, transparent)" : "var(--c-surface)", color: voice.recording ? "#e5484d" : "var(--c-t3)", cursor: voice.busy ? "default" : "pointer", flexShrink: 0 }}>
+            style={{ display: "inline-flex", width: 32, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${voice.recording ? "#e5484d" : "var(--c-bd2)"}`, background: voice.recording ? "color-mix(in oklch, #e5484d 18%, transparent)" : "var(--c-surface)", color: voice.recording ? "#e5484d" : "var(--c-t3)", cursor: voice.busy ? "default" : "pointer", flexShrink: 0 }}>
             {voice.busy ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} className={voice.recording ? "animate-pulse" : undefined} />}
           </button>
         )}
