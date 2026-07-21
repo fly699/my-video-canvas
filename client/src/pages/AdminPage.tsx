@@ -835,6 +835,9 @@ function StoragePanel() {
   // silent Forge config / S3 issue. Result is shown inline with the
   // failing pipeline stage so the fix is obvious.
   const testMut = trpc.admin.storage.test.useMutation();
+  // #302 「测试暂存」：真实走一遍暂存上传链路（1x1 PNG → 公网回读探测），把
+  // 顶栏绿灯的「配置有效」（通道已选 + Key 已配）升级为「实测可用」。
+  const stagingTestMut = trpc.admin.storage.testStaging.useMutation();
 
   // 级别门控（用页内 LevelGate 包裹实现）：存储设置/连通性测试=管理员(L3+)；
   // 配置「导出/导入」（跨部署迁移、批量覆盖）=超管(L4)。
@@ -1119,7 +1122,7 @@ function StoragePanel() {
                     状态：{status}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center", flexWrap: "wrap" }}>
                   {([["off", "关闭"], ["poyo", "Poyo"], ["kie", "Kie"]] as const).map(([v, label]) => (
                     <button key={v} onClick={() => pick(v)} disabled={setMut.isPending}
                       style={{
@@ -1131,7 +1134,34 @@ function StoragePanel() {
                       {label}
                     </button>
                   ))}
+                  {/* #302 实测按钮：通道生效时才可点（off/缺 Key 时后端也会如实报「未生效」）。 */}
+                  <button
+                    onClick={() => stagingTestMut.mutate()}
+                    disabled={stagingTestMut.isPending || active === "off"}
+                    title={active === "off" ? "先选择通道并配置对应 API Key" : "真实上传一个 1x1 测试图走完整暂存链路，并公网回读验证"}
+                    style={{
+                      padding: "6px 14px", fontSize: 12.5, fontWeight: 600, borderRadius: 8,
+                      cursor: stagingTestMut.isPending ? "wait" : active === "off" ? "not-allowed" : "pointer",
+                      background: "oklch(0.55 0.14 150 / 0.18)", border: "1px solid oklch(0.62 0.16 150 / 0.5)",
+                      color: active === "off" ? "var(--c-t4)" : "oklch(0.78 0.14 150)", opacity: active === "off" ? 0.6 : 1,
+                    }}>
+                    {stagingTestMut.isPending ? "测试中…" : "测试暂存"}
+                  </button>
                 </div>
+                {/* #302 测试结果行：成功=绿（附公网 URL 可点开亲验），失败=红（附具体原因分级：
+                    未生效 / 上传失败 / 上传成功但公网回读失败）。 */}
+                {(stagingTestMut.data || stagingTestMut.error) && (
+                  <div style={{ width: "100%", fontSize: 11.5, lineHeight: 1.6, padding: "8px 10px", borderRadius: 8, wordBreak: "break-all",
+                    background: stagingTestMut.data?.ok ? "oklch(0.55 0.14 150 / 0.12)" : "oklch(0.55 0.18 25 / 0.12)",
+                    border: `1px solid ${stagingTestMut.data?.ok ? "oklch(0.62 0.16 150 / 0.4)" : "oklch(0.62 0.18 25 / 0.4)"}`,
+                    color: stagingTestMut.data?.ok ? "oklch(0.78 0.14 150)" : "oklch(0.78 0.14 25)" }}>
+                    {stagingTestMut.error
+                      ? `❌ 测试请求失败：${stagingTestMut.error.message}`
+                      : stagingTestMut.data?.ok
+                        ? <>✅ 实测可用（{stagingTestMut.data.provider === "kie" ? "Kie" : "Poyo"} · {stagingTestMut.data.message}）　<a href={stagingTestMut.data.url ?? "#"} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>查看测试文件</a></>
+                        : <>❌ {stagingTestMut.data?.message}{stagingTestMut.data?.url ? <>　<a href={stagingTestMut.data.url} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>测试文件链接</a></> : null}</>}
+                  </div>
+                )}
               </div>
             );
           })()}

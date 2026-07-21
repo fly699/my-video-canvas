@@ -855,6 +855,47 @@ export const adminRouter = router({
         return { success: true };
       }),
 
+    // #302 「测试暂存」：真实走一遍暂存上传链路（与 resolveToAbsoluteUrl 的
+    // additive staging 同一实现——uploadStreamToPoyo / uploadStreamToKie），把
+    //「配置有效」（通道已选 + Key 已配）升级为「实测可用」：上传 1x1 PNG 测试
+    // 文件 → 拿到公网 URL → 服务端回读探测该 URL 确认真的公网可达。
+    // 结果不抛异常（前端要展示失败原因），统一返回结构化结论。
+    testStaging: managerProc.mutation(async ({ ctx }) => {
+      const t0 = Date.now();
+      const { getActiveStagingProvider } = await import("../_core/storageConfig");
+      const provider = await getActiveStagingProvider();
+      if (provider === "off") {
+        return { ok: false as const, provider, url: null, ms: 0, probe: "skipped" as string, message: "暂存通道未生效：未选择通道，或所选通道缺对应 API Key（Key 守卫回落关闭）" };
+      }
+      // 1x1 透明 PNG（68 字节）——最小真实文件，几乎零流量零存储成本。
+      const buf = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+      const fileName = `staging-selftest-${Date.now()}.png`;
+      try {
+        const url = provider === "poyo"
+          ? await (await import("../_core/poyoUpload")).uploadStreamToPoyo(buf, fileName, "image/png")
+          : await (await import("../_core/kieUpload")).uploadStreamToKie(buf, fileName, "image/png");
+        const upMs = Date.now() - t0;
+        // 回读探测：上游 AI 平台拉参考图与此同构（服务端出网 GET）。失败≠上传失败，
+        // 但意味着上游多半也读不到——如实分级报告。
+        let probe = "ok";
+        try {
+          const r = await fetch(url, { method: "GET", signal: AbortSignal.timeout(10_000) });
+          if (!r.ok) probe = `http ${r.status}`;
+        } catch {
+          probe = "unreachable";
+        }
+        const ms = Date.now() - t0;
+        writeAuditLog({ ctx, action: "staging_selftest", detail: { provider, ok: probe === "ok", probe, ms } });
+        return probe === "ok"
+          ? { ok: true as const, provider, url, ms, probe, message: `上传 ${upMs}ms + 回读探测通过，共 ${ms}ms` }
+          : { ok: false as const, provider, url, ms, probe, message: `上传成功但公网回读失败（${probe}）——上游 AI 可能同样读不到，请检查该平台文件服务状态` };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        writeAuditLog({ ctx, action: "staging_selftest", detail: { provider, ok: false, error: msg.slice(0, 300) } });
+        return { ok: false as const, provider, url: null, ms: Date.now() - t0, probe: "upload_failed", message: `上传失败：${msg.slice(0, 200)}（常见原因：API Key 失效/欠费/网络出不去）` };
+      }
+    }),
+
     // Active health check — uploads a tiny test object to Manus S3 and
     // returns the result. Lets the admin verify that storagePut actually
     // works rather than guessing from "the URL still looks like upstream"
