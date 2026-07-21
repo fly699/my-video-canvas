@@ -28,6 +28,7 @@ import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
+import { countDiffFromDefaults } from "@/lib/quickPrefsCount";
 
 /** 浮动「画布助手」：对话式让 AI（如本机 Claude）边聊边直接改画布。复用智能体节点同一套引擎
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
@@ -309,9 +310,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setQuickPrefs({ ...QP_DEFAULT, ...p.prefs });
     toast.success(`已调取预设「${p.name}」`);
   };
-  const qpActiveCount = (quickPrefs.aspect ? 1 : 0) + (quickPrefs.style ? 1 : 0) + (quickPrefs.durationSec ? 1 : 0) + (quickPrefs.imageFirst ? 1 : 0) + (quickPrefs.addMusic ? 1 : 0) + (quickPrefs.addSubtitle ? 1 : 0)
-    + (quickPrefs.imageModel ? 1 : 0) + (quickPrefs.videoProvider ? 1 : 0) + (quickPrefs.genNodes.length ? 1 : 0) + (quickPrefs.workflowTemplateIds.length ? 1 : 0)
-    + (quickPrefs.noStoryboard ? 1 : 0) + (quickPrefs.dialogueLang ? 1 : 0) + (quickPrefs.promptLang ? 1 : 0) + (quickPrefs.coalesceShots ? 1 : 0) + (quickPrefs.fastChat ? 1 : 0) + (quickPrefs.autoQc ? 1 : 0) + (quickPrefs.useModelSkills ? 1 : 0) + (quickPrefs.interactive ? 1 : 0) + (quickPrefs.autoPortrait ? 1 : 0) + (quickPrefs.anchorCompress ? 1 : 0) + (quickPrefs.leanPrompt ? 1 : 0) + (quickPrefs.selfCheck ? 1 : 0);
+  // 徽标 = 与出厂默认不同的改动数（0 = 全默认不显示）。泛型按键集合统计，新增设置字段
+  // 自动纳入——旧手写枚举「默认真值也算 + 漏数新字段」的双重失真见 quickPrefsCount.ts 注释。
+  const qpActiveCount = countDiffFromDefaults(QP_DEFAULT as unknown as Record<string, unknown>, quickPrefs as unknown as Record<string, unknown>);
   // 「ComfyUI模板」的二级选择：模板库中已存在的工作流模板（只有 comfyui_workflow 型模板
   // 带 workflowJson，可被 comfyui_workflow 节点引用）。选中 = 只允许助手用这些模板。
   const workflowTemplates = (templatesQuery.data ?? []).filter((t) => t.nodeType === "comfyui_workflow");
