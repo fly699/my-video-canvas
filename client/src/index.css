@@ -2056,6 +2056,13 @@ button:active:not(:disabled) {
 :root[data-canvas-mode="creative"] .wm-loop-btn svg,
 :root[data-canvas-mode="creative"] .wm-vctrl svg { width: 11px; height: 11px; }
 :root[data-canvas-mode="creative"] .wm-loop-btn { top: 6px; left: 6px; }
+/* 循环开启态高亮必须盖过上面的创意皮肤底色——通用规则 .wm-loop-btn[data-on="true"]
+   特异性 (0,2,0) 低于 :root[data-canvas-mode] .wm-loop-btn 的 (0,3,0)，创意模式下
+   点了循环按钮毫无视觉变化（用户实报）。此处以同级特异性 + 后置声明取胜。 */
+:root[data-canvas-mode="creative"] .wm-loop-btn[data-on="true"] {
+  opacity: 1;
+  background: oklch(0.68 0.20 285 / 0.85);
+}
 :root[data-canvas-mode="creative"] .wm-vctrl-row { top: 6px; left: 32px; gap: 3px; }
 :root[data-canvas-mode="creative"] .wm-fs-btn { width: 24px; height: 24px; top: 6px; right: 6px; border: none; background: rgba(0, 0, 0, 0.30); }
 :root[data-canvas-mode="creative"] .wm-fs-btn svg { width: 12px; height: 12px; }
