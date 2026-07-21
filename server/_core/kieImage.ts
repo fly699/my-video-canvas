@@ -299,11 +299,7 @@ async function generateImageKieOnce(options: GenerateImageOptions): Promise<Gene
   const taskId = submitData.data.taskId;
 
   // ── Poll per-endpoint record URL until success/failed ──
-  const recordUrl = endpoint === "flux-kontext"
-    ? `${KIE_BASE_URL}/api/v1/flux/kontext/record-info?taskId=`
-    : endpoint === "gpt4o"
-    ? `${KIE_BASE_URL}/api/v1/gpt4o-image/record-info?taskId=`
-    : `${KIE_BASE_URL}/api/v1/jobs/recordInfo?taskId=`;
+  const recordUrl = kieImageRecordUrl(endpoint);
   for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     const statusRes = await fetch(`${recordUrl}${encodeURIComponent(taskId)}`, {
@@ -314,40 +310,85 @@ async function generateImageKieOnce(options: GenerateImageOptions): Promise<Gene
       if (statusRes.status === 429 || statusRes.status >= 500) continue; // transient
       throw new Error(`kie 状态查询失败 (${statusRes.status})`);
     }
-    const body = (await statusRes.json()) as {
-      code?: number;
-      data?: Record<string, unknown> & {
-        successFlag?: number; errorMessage?: string;
-        // record-info 轮询响应统一把结果放在 data.response（回调才是 data.info，勿混用）：
-        //   flux-kontext → response.resultImageUrl（单数驼峰）
-        //   gpt4o        → response.result_urls（数组蛇形）
-        //   jobs         → 字段不统一（successFlag/state、result_urls/resultUrls/…），
-        //                  复用视频的 parseKieJobStatus 多形态解析（GPT Image 2 等新模型
-        //                  实测返回 state="success"，旧解析只认 successFlag=1 → 误报超时）
-        response?: { resultImageUrl?: string; result_urls?: string[]; resultUrls?: string[] | string };
-      };
-    };
-    const d = body.data;
-    if (!d) continue;
-    if (endpoint === "flux-kontext" || endpoint === "gpt4o") {
-      if (d.successFlag === 1) {
-        const urls = endpoint === "flux-kontext"
-          ? (d.response?.resultImageUrl ? [d.response.resultImageUrl] : [])
-          : (d.response?.result_urls ?? []);
-        if (!urls.length) throw new Error("[CHARGED] kie 图像生成完成但未返回 URL（积分可能已扣，请勿重试）");
-        return persistKieImages(urls);
-      }
-      if (d.successFlag === 2 || d.successFlag === 3) {
-        throw new Error(`kie 图像生成失败：${d.errorMessage ?? "未知错误"}`);
-      }
-      continue;
+    const body = (await statusRes.json()) as KieImageRecordBody;
+    // #317 状态判读抽为纯函数 parseKieImageRecord（轮询与「重新检测」找回共用同一判读，零口径漂移）。
+    const st = parseKieImageRecord(endpoint, options.model, taskId, body);
+    if (st.kind === "finished") {
+      if (!st.urls.length) throw new Error("[CHARGED] kie 图像生成完成但未返回 URL（积分可能已扣，请勿重试）");
+      return persistKieImages(st.urls);
     }
-    // jobs 端点：多形态解析（与视频共用）。
-    const st = parseKieJobStatus(d, options.model, taskId);
-    if (st.status === "finished") return persistKieImages(st.resultVideoUrls ?? []);
-    if (st.status === "failed") throw new Error(`kie 图像生成失败：${st.errorMessage ?? "未知错误"}`);
+    if (st.kind === "failed") throw new Error(`kie 图像生成失败：${st.error ?? "未知错误"}`);
   }
-  throw new Error("kie 图像生成超时");
+  // #315/#317 超时不丢线索：任务已在平台侧提交、可能仍在生成——附 RECOVERABLE 标记
+  // （provider+端点+taskId），前端失败红条据此显示「重新检测」免费找回结果。
+  throw new Error(`kie 图像生成超时：任务可能仍在平台侧运行、完成后照常扣费——可稍候在节点失败提示上点「重新检测」免费找回结果 [RECOVERABLE:kie:${endpoint}:${taskId}]`);
+}
+
+/** kie 图像三端点的 record-info 查询 URL 前缀（轮询与找回共用）。 */
+export function kieImageRecordUrl(endpoint: string): string {
+  return endpoint === "flux-kontext"
+    ? `${KIE_BASE_URL}/api/v1/flux/kontext/record-info?taskId=`
+    : endpoint === "gpt4o"
+    ? `${KIE_BASE_URL}/api/v1/gpt4o-image/record-info?taskId=`
+    : `${KIE_BASE_URL}/api/v1/jobs/recordInfo?taskId=`;
+}
+
+/** record-info 轮询响应统一把结果放在 data.response（回调才是 data.info，勿混用）：
+ *    flux-kontext → response.resultImageUrl（单数驼峰）
+ *    gpt4o        → response.result_urls（数组蛇形）
+ *    jobs         → 字段不统一（successFlag/state、result_urls/resultUrls/…），
+ *                   复用视频的 parseKieJobStatus 多形态解析（GPT Image 2 等新模型
+ *                   实测返回 state="success"，旧解析只认 successFlag=1 → 误报超时）。 */
+export type KieImageRecordBody = {
+  code?: number;
+  data?: Record<string, unknown> & {
+    successFlag?: number; errorMessage?: string;
+    response?: { resultImageUrl?: string; result_urls?: string[]; resultUrls?: string[] | string };
+  };
+};
+
+/** #317 kie 图像任务状态判读（纯函数）：pending / finished(urls) / failed(error)。 */
+export function parseKieImageRecord(
+  endpoint: string, model: string | undefined, taskId: string, body: KieImageRecordBody,
+): { kind: "pending" } | { kind: "finished"; urls: string[] } | { kind: "failed"; error?: string } {
+  const d = body.data;
+  if (!d) return { kind: "pending" };
+  if (endpoint === "flux-kontext" || endpoint === "gpt4o") {
+    if (d.successFlag === 1) {
+      const urls = endpoint === "flux-kontext"
+        ? (d.response?.resultImageUrl ? [d.response.resultImageUrl] : [])
+        : (d.response?.result_urls ?? []);
+      return { kind: "finished", urls };
+    }
+    if (d.successFlag === 2 || d.successFlag === 3) return { kind: "failed", error: d.errorMessage };
+    return { kind: "pending" };
+  }
+  // jobs 端点：多形态解析（与视频共用）。
+  const st = parseKieJobStatus(d, model ?? "", taskId);
+  if (st.status === "finished") return { kind: "finished", urls: st.resultVideoUrls ?? [] };
+  if (st.status === "failed") return { kind: "failed", error: st.errorMessage };
+  return { kind: "pending" };
+}
+
+/** #317 结果找回：单次查询 kie 图像任务状态（不重新提交、零新扣费）。密钥由调用方按
+ *  generate 同款三级链路（临时>分配>公用 + 白名单门控）解析后传入。finished → 走与
+ *  正常轮询同一条 persistKieImages 转存链路。 */
+export async function recheckKieImageTask(opts: { taskId: string; endpoint: "flux-kontext" | "gpt4o" | "jobs"; apiKey: string; model?: string }): Promise<{ done: boolean; url?: string; urls?: string[]; status: string; error?: string }> {
+  if (!/^[A-Za-z0-9_-]{4,128}$/.test(opts.taskId)) throw new Error("非法的任务 id");
+  const res = await fetch(`${kieImageRecordUrl(opts.endpoint)}${encodeURIComponent(opts.taskId)}`, {
+    headers: { Authorization: `Bearer ${opts.apiKey}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`kie 状态查询失败 (${res.status})`);
+  const body = (await res.json()) as KieImageRecordBody;
+  const st = parseKieImageRecord(opts.endpoint, opts.model, opts.taskId, body);
+  if (st.kind === "finished") {
+    if (!st.urls.length) return { done: false, status: "failed", error: "生成完成但未返回 URL（积分可能已扣）" };
+    const r = await persistKieImages(st.urls);
+    return { done: true, url: r.url, urls: r.urls, status: "finished" };
+  }
+  if (st.kind === "failed") return { done: false, status: "failed", error: st.error ?? "未知错误" };
+  return { done: false, status: "generating" };
 }
 
 // 把 kie 生成结果转存到我方存储，避免链接失效。

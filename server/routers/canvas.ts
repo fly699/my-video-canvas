@@ -87,7 +87,7 @@ import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
 import { resolveKieKey } from "../_core/kie";
-import { isKieImageModel, kieImageSupportsNegative } from "../_core/kieImage";
+import { isKieImageModel, kieImageSupportsNegative, recheckKieImageTask } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo, detectOmnihumanSubjects } from "../_core/kieVideo";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
@@ -1361,13 +1361,26 @@ export const aiChatRouter = router({
 // ── Image Generation ──────────────────────────────────────────────────────────
 
 export const imageGenRouter = router({
-  // #315 结果找回：客户端超时放弃后平台侧任务可能已完成——凭失败消息里的 RECOVERABLE
+  // #315/#317 结果找回：客户端超时放弃后平台侧任务可能已完成——凭失败消息里的 RECOVERABLE
   // 标记免费单查一次状态，完成即经与正常轮询同一条转存链路取回（不重新提交、零新扣费）。
   // taskId 是平台侧不透明串、只出现在本人节点的错误消息里；查询零扣费且无持久映射可校验
-  // 归属，故仅登录门槛（与 generate 的平台 key 同源）。
+  // 归属，故 poyo 仅登录门槛（与 generate 的平台 key 同源）；kie 走 generate 同款
+  // resolveKieKey 三级解析（临时>分配>公用）+ 各级权限门控——绝不让无权限用户借公用 key 查询。
   recheck: protectedProcedure
-    .input(z.object({ provider: z.literal("poyo"), taskId: z.string().min(4).max(128) }))
-    .mutation(async ({ input }) => recheckPoyoImageTask(input.taskId)),
+    .input(z.object({
+      provider: z.enum(["poyo", "kie"]),
+      taskId: z.string().min(4).max(128),
+      /** kie 图像的 record 端点形态（RECOVERABLE 标记第三段；缺省按统一 jobs 端点）。 */
+      endpoint: z.enum(["flux-kontext", "gpt4o", "jobs"]).optional(),
+      kieTempKey: z.string().max(256).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.provider === "kie") {
+        const { key } = await resolveKieKey(ctx, input.kieTempKey ?? null);
+        return recheckKieImageTask({ taskId: input.taskId, endpoint: input.endpoint ?? "jobs", apiKey: key });
+      }
+      return recheckPoyoImageTask(input.taskId);
+    }),
   generate: protectedProcedure
     .input(
       z.object({
