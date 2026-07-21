@@ -4,6 +4,8 @@ import { isCustomLLMModel, invokeCustomLLM, CUSTOM_LLM_MODELS } from "./customLl
 import { isSelfHostedLlmModel, selfHostedChatUrl, resolveSelfHostedEndpoint } from "./selfHostedLlm";
 import { Agent as UndiciAgent } from "undici";
 import { rewriteBridgeSelfUrl, isClaudeBridgeEnabled, bridgeLocalUrl, claudeBridgeKey, isBridgeModel } from "./claudeBridge";
+import { makeChatSseFeeder } from "./sseStream";
+import { publishBridgeDelta } from "./bridgeStreamBus";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -84,11 +86,13 @@ export type InvokeParams = {
   customApiKey?: string;
   /** 自定义模型的底层模型名覆盖（前端录入）；缺省回退 env 覆盖，再回退默认。 */
   customModel?: string;
-  /** #306 桥接流式回显通道（可选）：仅当模型是本机桥接（claude-local* 等）且桥接启用时，
-   *  以 stream_channel 字段随请求体送到桥接回环端点——端点把 claude 子进程的增量文本经
-   *  进程内 bridgeStreamBus 发布给该通道的订阅者（agent 任务累进 job.partial）。
-   *  非桥接模型忽略此字段（绝不会发给云端网关，防未知字段拖垮请求）。 */
-  bridgeStreamChannel?: string;
+  /** #306/#309a 流式回显通道（可选）。两条腿消费，其余路由忽略：
+   *  - 本机桥接（claude-local* 等，桥接启用时）：以 stream_channel 字段随请求体送到桥接
+   *    回环端点，端点把 claude 子进程的增量文本经进程内 bridgeStreamBus 发布；
+   *  - Poyo 路由（GPT-* / Poyo Claude，官方 SSE 契约）：请求带 stream:true 走 SSE，增量
+   *    在本进程解析后发布到同一总线；任何异常自动回退非流式重试（结果零风险）。
+   *  kie / 自定义 / Forge 等其余路由完全忽略此字段（绝不外发非标字段）。 */
+  streamChannel?: string;
 };
 
 export type ToolCall = {
@@ -249,6 +253,16 @@ const routesToPoyo = (model?: string) => isGptModel(model) || (!!model && POYO_M
 
 // Self-hosted model detection lives in selfHostedLlm.ts (shared with whitelist gating).
 const isSelfHostedModel = isSelfHostedLlmModel;
+
+/** #309a 该模型本次会不会真的路由到 Poyo 网关——与 resolveApiUrl 的分流顺序【逐条同口径】
+ *  （桥接 → 自建 → Poyo）。用于流式门控：只有确定打到 Poyo 的请求才尝试 stream:true。 */
+export function isPoyoRoutedModel(model?: string): boolean {
+  const m = resolveModelId(model ?? DEFAULT_MODEL);
+  if (isKieLLMModel(m) || isCustomLLMModel(m)) return false;
+  if (isBridgeModel(m) && isClaudeBridgeEnabled()) return false;
+  if (resolveSelfHostedEndpoint(m)) return false;
+  return !!ENV.poyoApiKey && routesToPoyo(m);
+}
 
 // LLM fetch 专用 undici Agent（按超时值缓存复用）：把 headers/bodyTimeout 抬到与 per-attempt
 // 超时一致（+5s 裕量），否则 undici 默认 300s headersTimeout 会先于 AbortSignal 掐断长生成。
@@ -494,6 +508,36 @@ export function friendlyLLMError(status: number, statusText: string, body: strin
   return `LLM invoke failed: ${status} ${statusText} – ${detail}`;
 }
 
+/** #309a 消费一个 Poyo chat.completions 的 SSE 流式响应 → InvokeResult。
+ *  返回 null = 「这不是可用的流式响应」（非 200 / 非 event-stream / 正文为空），调用方
+ *  应回退非流式重试。增量正文逐段回调 onDelta（供流式回显总线）。导出供合约测试。 */
+export async function consumeChatSseResponse(
+  resp: Response, model: string, onDelta: (text: string) => void,
+): Promise<InvokeResult | null> {
+  const ctype = resp.headers.get("content-type") ?? "";
+  if (!resp.ok || !/text\/event-stream/i.test(ctype) || !resp.body) {
+    try { await resp.body?.cancel(); } catch { /* 已关闭 */ }
+    return null;
+  }
+  const { feed, acc } = makeChatSseFeeder(onDelta);
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) feed(decoder.decode(value, { stream: true }));
+    if (done) break;
+  }
+  feed(decoder.decode()); // flush 末尾多字节字符
+  if (!acc.text) return null; // 流里没拿到正文（形态出入/空回复）→ 回退非流式，不赌
+  return {
+    id: acc.id ?? `poyo-sse-${Date.now()}`,
+    created: Math.floor(Date.now() / 1000),
+    model: acc.model ?? model,
+    choices: [{ index: 0, message: { role: "assistant", content: acc.text }, finish_reason: acc.finishReason ?? "stop" }],
+    ...(acc.usage ? { usage: acc.usage } : {}),
+  };
+}
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   const {
     messages,
@@ -595,8 +639,8 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   // #306 流式回显通道：只对「路由到本机桥接回环」的请求附带（与 resolveApiUrl 的桥接分流
   // 同口径判定），云端网关永远收不到这个非标字段。
-  if (params.bridgeStreamChannel && isBridgeModel(resolvedModel) && isClaudeBridgeEnabled()) {
-    payload.stream_channel = params.bridgeStreamChannel;
+  if (params.streamChannel && isBridgeModel(resolvedModel) && isClaudeBridgeEnabled()) {
+    payload.stream_channel = params.streamChannel;
   }
 
   const url = resolveApiUrl(resolvedModel);
@@ -611,6 +655,27 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     ? (Number.isFinite(Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS)) && Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS) >= 30_000
         ? Number(process.env.LLM_SELF_HOSTED_TIMEOUT_MS) : 300_000)
     : 120_000;
+
+  // ── #309a Poyo 官方 SSE 流式尝试（docs/poyo-llm-api.md：`stream:true` → SSE）────────
+  // 仅当调用方给了流式通道、且本请求确定路由到 Poyo 网关时才试一次。自愈原则：任何异常
+  // （非 200 / 非 event-stream / 正文为空 / 网络错误）→ 静默落回下方原有非流式路径重试，
+  // 最坏代价是多一次请求，最终结果与非流式完全同源——绝不让流式尝试影响可靠性。
+  // 本机无 Poyo key 无法打真网关，本分支按官方文档合约实现 + 本地 SSE 回放服务器真机验证；
+  // 上线后首次使用若网关行为与文档有出入，自动回退保证功能不坏（回显不出现而已）。
+  if (params.streamChannel && isPoyoRoutedModel(resolvedModel)) {
+    try {
+      const ch = params.streamChannel;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: authHeader },
+        body: JSON.stringify({ ...payload, stream: true }),
+        signal: AbortSignal.timeout(perAttemptTimeoutMs),
+        ...( { dispatcher: llmDispatcher(perAttemptTimeoutMs) } as RequestInit ),
+      });
+      const out = await consumeChatSseResponse(resp, resolvedModel, (d) => publishBridgeDelta(ch, d));
+      if (out) return out;
+    } catch { /* 流式尝试失败 → 落回非流式（不计入重试次数） */ }
+  }
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= LLM_MAX_RETRIES; attempt++) {
