@@ -21,6 +21,14 @@ describe("#315 parseRecoverableTask / stripRecoverableMarker", () => {
   it("非法 taskId（怪字符/过短）不解析——防把用户可编辑文本当指令", () => {
     expect(parseRecoverableTask("x [RECOVERABLE:poyo:a b c]")).toBeNull();
     expect(parseRecoverableTask("x [RECOVERABLE:poyo:ab]")).toBeNull();
-    expect(parseRecoverableTask("x [RECOVERABLE:kie:task123]")).toBeNull(); // 批1 仅 poyo
+    expect(parseRecoverableTask("x [RECOVERABLE:other:task123]")).toBeNull(); // 未知 provider 拒绝
+  });
+
+  it("#317 kie 标记：带端点三段式解析；不带端点两段式（服务端回退 jobs）；strip 同样剥净", () => {
+    const kie3 = "kie 图像生成超时：…… [RECOVERABLE:kie:gpt4o:task_kie_888]";
+    expect(parseRecoverableTask(kie3)).toEqual({ provider: "kie", endpoint: "gpt4o", taskId: "task_kie_888" });
+    expect(stripRecoverableMarker(kie3)).not.toContain("RECOVERABLE");
+    expect(parseRecoverableTask("x [RECOVERABLE:kie:task_kie_999]")).toEqual({ provider: "kie", taskId: "task_kie_999" });
+    expect(parseRecoverableTask("x [RECOVERABLE:kie:flux-kontext:t_1234]")).toEqual({ provider: "kie", endpoint: "flux-kontext", taskId: "t_1234" });
   });
 });

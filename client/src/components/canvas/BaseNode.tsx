@@ -909,7 +909,12 @@ export const BaseNode = memo(function BaseNode({
   const onRecheck = async () => {
     if (!recoverable || recheckMut.isPending) return;
     try {
-      const r = await recheckMut.mutateAsync({ provider: recoverable.provider, taskId: recoverable.taskId });
+      const endpoint = recoverable.endpoint === "flux-kontext" || recoverable.endpoint === "gpt4o" || recoverable.endpoint === "jobs" ? recoverable.endpoint : undefined;
+      const r = await recheckMut.mutateAsync({
+        provider: recoverable.provider, taskId: recoverable.taskId, endpoint,
+        // kie 三级 key：临时 key 与其它 kie 调用同源（localStorage），服务端按 临时>分配>公用 解析+门控。
+        ...(recoverable.provider === "kie" ? { kieTempKey: localStorage.getItem("kie:tempKey") || undefined } : {}),
+      });
       if (r.done && r.url) {
         // 按节点类型写回产物字段（角色/场景=参考图；分镜/图像=imageUrl），并清失败态。
         const field = nodeType === "character" ? "referenceImageUrl" : "imageUrl";
