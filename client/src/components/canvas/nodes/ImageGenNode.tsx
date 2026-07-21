@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { upstreamPromptCached, effectiveCharactersCached } from "@/lib/nodeGraphCache";
 import { Handle, Position } from "@xyflow/react";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { BaseNode } from "../BaseNode";
@@ -187,8 +188,8 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // Pull a connected upstream prompt (提示词 / 分镜) into this node's blank prompt —
   // image_gen advertises "← 提示词 / 分镜" as inputs but never consumed them. The
   // selector returns a primitive string, so it only re-renders when that text changes.
-  const upstreamPrompt = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
-  const upstreamNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
+  const upstreamPrompt = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).positive);
+  const upstreamNeg = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).negative);
   useEffect(() => {
     const patch: Record<string, string> = {};
     if (upstreamPrompt && !payload.prompt?.trim()) patch.prompt = upstreamPrompt;
@@ -265,13 +266,13 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
   // 这里再叠加「@角色 / 连线角色」结构化注入与 post_process 效果词，和 handleGenerate 同源。
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.prompt ?? "";
-    const chars = effectiveCharacters(id, base, s.edges, s.nodes);
+    const chars = effectiveCharactersCached(id, base, s.edges, s.nodes);
     return appendEffectPrompts(
       mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes), chars),
       connectedEffectPrompts(id, s.edges, s.nodes),
     );
   });
-  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
+  const hasCharInject = useCanvasStore((s) => effectiveCharactersCached(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图（可编辑）+ 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.prompt ?? "");
   const stripImages: StripItem[] = [

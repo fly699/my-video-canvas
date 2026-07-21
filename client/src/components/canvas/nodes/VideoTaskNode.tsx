@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { upstreamPromptCached, effectiveCharactersCached } from "@/lib/nodeGraphCache";
 import { BaseNode } from "../BaseNode";
 import { handleStyle } from "../../../lib/handleStyle";
 import { useConnectState } from "../../../hooks/useConnectingStore";
@@ -369,8 +370,8 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // Pull a connected upstream prompt (提示词 / 分镜) into this node's blank prompt —
   // video_task advertises "← 提示词 / 分镜" but never consumed them. Primitive selector
   // result → only re-renders when the upstream prompt text actually changes.
-  const upstreamPrompt = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).positive);
-  const upstreamNeg = useCanvasStore((s) => detectUpstreamPrompt(id, s.edges, s.nodes).negative);
+  const upstreamPrompt = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).positive);
+  const upstreamNeg = useCanvasStore((s) => upstreamPromptCached(id, s.edges, s.nodes).negative);
   useEffect(() => {
     const patch: Record<string, string> = {};
     if (upstreamPrompt && !payload.prompt?.trim()) patch.prompt = upstreamPrompt;
@@ -398,7 +399,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   // 「最终提示词」= 真正送去生成的正向词：本地/上游已填入 payload.prompt，再叠加角色注入与效果词。
   const finalPromptDisplay = useCanvasStore((s) => {
     const base = payload.prompt ?? "";
-    const chars = effectiveCharacters(id, base, s.edges, s.nodes);
+    const chars = effectiveCharactersCached(id, base, s.edges, s.nodes);
     // 先去角色 @提及，再去 @音频名/@视频名 字面量（这些只作媒体引用，不应进 prompt 文本）。
     const stripped = stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes);
     return appendEffectPrompts(
@@ -406,7 +407,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
       connectedEffectPrompts(id, s.edges, s.nodes),
     );
   });
-  const hasCharInject = useCanvasStore((s) => effectiveCharacters(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
+  const hasCharInject = useCanvasStore((s) => effectiveCharactersCached(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
   // 左侧吸附窗 = 自有参考图（可编辑）+ 最终参与的角色/场景图（@提及或连线，只读），各带类型标签。
   const charSceneItems = useCharSceneItems(id, payload.prompt ?? "");
   // 音视频参考磁贴：仅当该模型支持视频/音频输入时展示（含上游来源 + 角色携带，各注明来源）。
