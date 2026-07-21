@@ -105,3 +105,21 @@ describe("#323 upstreamPromptCached / effectiveCharactersCached", () => {
     expect(b).not.toBe(a);
   });
 });
+
+describe("#325 graphContentVersion", () => {
+  it("位置拖动（外壳新对象、data 引用不变）→ 版本不变；data 变化/增删 → 版本 +1", async () => {
+    const { graphContentVersion } = await import("./nodeGraphCache");
+    const a = N("a"), b = N("b");
+    const v1 = graphContentVersion([a, b]);
+    expect(graphContentVersion([a, b])).toBe(v1); // 同数组引用命中
+    // 拖拽帧形态：新数组 + 新外壳对象，data 引用复用
+    const dragged = [{ ...a, position: { x: 9, y: 9 } }, b];
+    expect(graphContentVersion(dragged)).toBe(v1);
+    // data 引用变化（payload 更新）→ 版本前进
+    const updated = [{ ...a, data: { ...a.data } }, b];
+    const v2 = graphContentVersion(updated);
+    expect(v2).not.toBe(v1);
+    // 节点增删 → 版本前进
+    expect(graphContentVersion([...updated, N("c")])).not.toBe(v2);
+  });
+});

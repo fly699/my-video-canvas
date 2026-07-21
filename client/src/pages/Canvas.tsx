@@ -71,6 +71,7 @@ import { Lightbox } from "../components/canvas/studio/Lightbox";
 import { MultiSelectBar } from "../components/canvas/studio/MultiSelectBar";
 import { AlignToolbar } from "../components/canvas/AlignToolbar";
 import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
+import { PerfHud } from "../components/canvas/PerfHud";
 import { ReturnToNodesHint } from "../components/canvas/ReturnToNodesHint";
 import { EmptyCanvasGuide } from "../components/canvas/EmptyCanvasGuide";
 import { AiClientPanel } from "../components/canvas/AiClientPanel";
@@ -3283,6 +3284,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <AlignToolbar />
           {/* 操作小贴士（右下角，定时/情境弹出，可自动消失，右键不再显示） */}
           <CanvasTips />
+          {/* #326 隐藏性能 HUD：默认 null 零开销；?perfhud=1 或 localStorage avc:perfHud=1 显示 */}
+          <PerfHud />
           {/* 全局悬浮 AI 客户端（Cmd/Ctrl+J 呼出；会话同源于 ai_chat 节点）。 */}
           {!isPopout && isAuthenticated && <AiClientPanel />}
           {/* 「返回节点」提示：视野里看不到任何节点时浮出，一键归位（对标 LibTV） */}
