@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
-import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal } from "lucide-react";
+import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations, ensureAliasNums, buildNodeDetailText } from "@/lib/agentApply";
@@ -23,6 +23,8 @@ import { maxRefImagesForProvider, videoRefCapBadge } from "../../../../shared/vi
 import { videoDurationCap } from "../../../../shared/videoModelParams";
 import { extractFrameMedia } from "../../lib/nodeMedia";
 import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
+// #305 语音口令：统一语音输入 hook（Web Speech 主路径 + 服务端 whisper 兜底），与 AI 客户端/聊天室同源。
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
@@ -160,6 +162,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     saveHistoryMut.mutate({ projectId, turns: clean }, { onError: (err) => toast.error("画布助手对话保存失败：" + (err.message || "网络错误")) });
   };
   const [input, setInput] = useState("");
+  // #305 语音口令：麦克风按钮 → 识别文本【追加】进输入框，由用户确认后 Enter/点发送（安全默认，
+  // 不自动直发——画布指令会真实改画布，误识别直发风险高于收益）。Web Speech 实时回填，
+  // 无法访问 Google 时自动回退「录音 → voice.transcribe 服务端转写」（与 AI 客户端/聊天室同一 hook）。
+  const voice = useVoiceInput({ getText: () => input, setText: setInput });
   const [staged, setStaged] = useState<File[]>([]);
   const [attachErr, setAttachErr] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -927,6 +933,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     const rawInput = overrideMsg ?? input; // 出错时用于恢复输入原文（避免规划失败后要重打字）
     const msg = (overrideMsg ?? input).trim() || (files.length ? "请参考附件规划画布。" : "");
     if (!msg || busy) return;
+    if (voice.recording) voice.stop(); // #305 发送即停录，防止后续识别文本回填进已清空的输入框
     if (!overrideMsg) { setInput(""); setStaged([]); setAttachErr(""); }
     setShowQuick(false); // #254 发送指令即自动收回快捷设置面板（设置已随本轮生效，无需占屏）
     // 每条截到 8000（服务端 history zod 上限）——否则发过超长消息后，下一条会整包被 400 拒掉。
@@ -1440,6 +1447,15 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           style={{ display: "inline-flex", height: 38, padding: "0 10px", gap: 5, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${staged.length ? accent : "var(--c-bd2)"}`, background: staged.length ? accentSoft : "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: busy ? "not-allowed" : "pointer", flexShrink: 0, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>
           <Paperclip size={15} />参考{staged.length > 0 ? ` ×${staged.length}` : ""}
         </button>
+        {/* #305 语音口令：点击开始/停止，识别文本填入输入框（追加），用户确认后再发送。
+            不支持的环境（无 Web Speech 且无 MediaRecorder）不渲染，布局零影响。 */}
+        {voice.supported && (
+          <button onClick={voice.toggle} disabled={voice.busy}
+            title={voice.recording ? "停止语音输入" : voice.busy ? "识别中…" : "语音输入（说出画布指令，识别结果填入输入框，确认后发送）"}
+            style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${voice.recording ? "#e5484d" : "var(--c-bd2)"}`, background: voice.recording ? "color-mix(in oklch, #e5484d 18%, transparent)" : "var(--c-surface)", color: voice.recording ? "#e5484d" : "var(--c-t3)", cursor: voice.busy ? "default" : "pointer", flexShrink: 0 }}>
+            {voice.busy ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} className={voice.recording ? "animate-pulse" : undefined} />}
+          </button>
+        )}
         <textarea ref={composerRef} value={input} onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
           onDrop={(e) => { const fs = Array.from(e.dataTransfer.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
