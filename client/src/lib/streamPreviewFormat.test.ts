@@ -40,3 +40,36 @@ describe("#312 formatStreamPreview", () => {
     expect(formatStreamPreview(raw)).toBe('💬 第一行 他说："走"。');
   });
 });
+
+// #322 超长 partial 被服务端裁成「头+省略标记+尾」后仍需完整结构化（用户截图：
+// 247~283s 大计划全程裸 JSON——旧版只留尾部、特征键被截掉、守卫不命中整段直出）。
+describe("#322 formatStreamPreview 裁剪窗口", () => {
+  const MARK = "\n〔…中间省略…〕\n";
+
+  it("头+标记+尾：首窗编号清单、省略提示行、尾窗圆点行，不再裸 JSON", () => {
+    const head = `{"reply":"已为你规划第三集。","operations":[{"op":"create","tempId":"sb1","nodeType":"storyboard","title":"镜1 开场","payload":{}},{"op":"create","tempId":"vt1","nodeType":"video_task","title":"镜1 视频"}`;
+    const tail = `rompt": "multi-panel, grid", "provider": "kie_grok_i2v"}}, {"op":"connect","sourceRef":"vt9","targetRef":"merge3"},{"op":"group","targetRefs":["sb1","vt1"],"title":"S1 帝前对`;
+    const out = formatStreamPreview(head + MARK + tail);
+    expect(out).toContain("💬 已为你规划第三集。");
+    expect(out).toContain("1. 新建 分镜「镜1 开场」");
+    expect(out).toContain("2. 新建 视频「镜1 视频」");
+    expect(out).toContain("……（中间部分已省略）……");
+    expect(out).toContain("· 连线 vt9 → merge3");
+    expect(out).toContain("· 编组"); // 未闭合 title 不取，但操作本身要显示
+    expect(out).not.toContain('"provider"'); // 尾窗前置的半截 payload 不裸出
+    expect(out).not.toContain("S1 帝前对"); // 未闭合 title 不取
+  });
+
+  it("只剩尾部窗口（老服务端 slice(-8000) 形态）：靠 \"op\" 特征也要结构化 + 前置省略提示", () => {
+    const raw = `esolution": "720p"}, "sceneGroup": "s4"}, "note": "镜9出片位"}, {"op":"create","tempId":"sb10","nodeType":"storyboard","title":"第三集·镜10 落子","payload":{"sceneNumber":10}}`;
+    const out = formatStreamPreview(raw);
+    expect(out).toContain("……（前面部分已省略）……");
+    expect(out).toContain("· 新建 分镜「第三集·镜10 落子」");
+    expect(out).not.toContain('"sceneGroup"'); // 窗口开头的半截 payload 丢弃、不裸出
+  });
+
+  it("普通长文本（非规划）被裁剪：原样直出（含省略标记，诚实展示）", () => {
+    const raw = "前半段回答……" + MARK + "后半段回答。";
+    expect(formatStreamPreview(raw)).toBe(raw);
+  });
+});

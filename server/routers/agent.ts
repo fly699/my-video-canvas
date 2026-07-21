@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FACTORY_DEFAULT_MODELS } from "../../shared/nodeDefaultModels";
+import { cutStreamPartial } from "../../shared/streamPreviewCut";
 import { dubbingVoicePromptLines } from "../../shared/dubbingVoices";
 import { router, protectedProcedure } from "../_core/trpc";
 import { assertProjectAccess } from "../_core/permissions";
@@ -1012,8 +1013,10 @@ export const agentRouter = router({
         return { state: "error" as const, error: "服务重启导致本次规划中断，请重新发送" };
       }
       // #136 running 时带上阶段与耗时，前端等待行显示「模型规划中 · 已 Ns」而非干等。
-      // #306 顺带捎上流式回显增量（仅桥接+开关开时有值；尾部 8000 字截断兜底防超长轮询响应）。
-      if (!j.done) return { state: "running" as const, stage: j.stage, elapsedMs: Date.now() - j.createdAt, partial: j.partial ? j.partial.slice(-8000) : undefined };
+      // #306 顺带捎上流式回显增量（仅桥接+开关开时有值；8000 字截断兜底防超长轮询响应）。
+      // #322 截断改「头+省略标记+尾」：原 slice(-8000) 只留尾部，长计划开头的 "reply"/
+      // "operations" 键被截掉 → 客户端排版守卫不命中，整段裸 JSON 直出（用户截图实锤）。
+      if (!j.done) return { state: "running" as const, stage: j.stage, elapsedMs: Date.now() - j.createdAt, partial: j.partial ? cutStreamPartial(j.partial) : undefined };
       agentChatJobs.delete(input.jobId);
       clearPendingByJobId(input.jobId); // #251 结果被取走 → 项目级 pending 登记同步清除
       void db.deleteAgentChatJobRow(input.jobId).catch(() => {}); // #252 持久层行同步删除
