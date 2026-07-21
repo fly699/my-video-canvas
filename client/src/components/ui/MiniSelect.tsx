@@ -62,7 +62,9 @@ export function MiniSelect({
         <ChevronDown size={11} style={{ flexShrink: 0, opacity: 0.6 }} />
       </button>
       {open && createPortal(
-        <div ref={menuRef} className="nowheel" style={{ position: "fixed", left: box.left, top: box.top, bottom: box.bottom,
+        // data-miniselect-menu：菜单 portal 到 body、脱离触发方 DOM 树——外层「点击面板外
+        // 自动收起」类逻辑（如画布助手快捷设置）用此标记豁免，防止点菜单选项被误判为外部点击。
+        <div ref={menuRef} data-miniselect-menu="" className="nowheel" style={{ position: "fixed", left: box.left, top: box.top, bottom: box.bottom,
           minWidth: Math.max(170, box.width), maxHeight: box.maxH, overflowY: "auto",
           background: "var(--c-elevated, #1b1b1f)", border: "1px solid var(--c-bd3, rgba(128,128,128,0.32))", borderRadius: 9, boxShadow: "0 10px 30px rgba(0,0,0,0.45)", zIndex: 9999, padding: 4 }}>
           {groups.map((g, gi) => (
