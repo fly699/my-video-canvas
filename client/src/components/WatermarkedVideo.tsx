@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type VideoHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Repeat, X, ChevronLeft, ChevronRight, Gauge, Play, Pause, Volume2, VolumeX } from "lucide-react";
+import { Maximize2, Repeat, Repeat1, X, ChevronLeft, ChevronRight, Gauge, Play, Pause, Volume2, VolumeX } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
@@ -146,7 +146,9 @@ export function WatermarkedVideo({ block, ...props }: VideoHTMLAttributes<HTMLVi
         className="wm-loop-btn nodrag"
         data-on={loop ? "true" : "false"}
       >
-        <Repeat style={{ width: 14, height: 14 }} />
+        {/* 开启态换 Repeat1 图标（图形本身可辨），不只靠底色高亮——创意皮肤曾把
+            data-on 高亮整个压掉（特异性），用户点了完全看不出开没开。 */}
+        {loop ? <Repeat1 style={{ width: 14, height: 14 }} /> : <Repeat style={{ width: 14, height: 14 }} />}
       </button>
       {/* 逐帧步进 + 倍速（hover 显示，位于循环钮右侧）。nodrag 防止触发画布拖拽；
           onPointerDown 阻断冒泡，避免点击这些叠加钮时把节点选中→展开配置区。 */}
