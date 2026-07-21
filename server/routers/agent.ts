@@ -290,7 +290,11 @@ type AuthedCtx = TrpcContext & { user: NonNullable<TrpcContext["user"]> };
 // 改为 submitChat 提交 → chatStatus 轮询（同图生 3D 的两端点模式），彻底不依赖长连接。
 type AgentChatJob = { userId: number; createdAt: number; done: boolean; stage?: string; result?: Awaited<ReturnType<typeof runAgentChat>>; error?: string;
   /** #306 流式回显：生成中的增量文本累积（仅桥接模型 + 开关开时有值；换阶段清零重来）。 */
-  partial?: string };
+  partial?: string;
+  /** #318 用户已取消：后台 LLM 调用无法中断，但完成后【结果直接丢弃】——绝不写 result、
+   *  不落持久层、不被 #251 断线续跑捞回应用（此前「取消」只中止客户端轮询，任务结果仍被
+   *  重进画布时自动恢复落地——用户实报「两套分镜」的根因）。 */
+  canceled?: boolean };
 const agentChatJobs = new Map<string, AgentChatJob>();
 const AGENT_JOB_TTL_MS = 30 * 60_000; // 完成后 30 分钟内没被取走（客户端崩了）就清理
 // #251 跨进出画布续跑：按项目记「进行中/已完成未取走」的规划任务。此前 jobId 只在前端
@@ -928,15 +932,45 @@ export const agentRouter = router({
       const unsub = wantStream ? subscribeBridgeStream(jobId, (d) => { job.partial = (job.partial ?? "") + d; }) : undefined;
       void runAgentChat(ctx, input, (s) => { job.stage = s; if (wantStream) job.partial = ""; }, wantStream ? jobId : null)
         .then((r) => {
+          // #318 取消贯穿到底：用户已取消 → 结果丢弃（不写 result、不落 done 行），
+          // 持久层行一并删除，杜绝任何路径把它捞回画布。
+          if (job.canceled) {
+            job.error = "本次规划已被取消"; job.done = true;
+            void db.deleteAgentChatJobRow(jobId).catch(() => {});
+            return;
+          }
           job.result = r; job.done = true;
           void db.finishAgentChatJobRow(jobId, { result: r }).catch(() => {});
         })
         .catch((e) => {
           job.error = e instanceof Error ? e.message : String(e); job.done = true;
+          if (job.canceled) { void db.deleteAgentChatJobRow(jobId).catch(() => {}); return; }
           void db.finishAgentChatJobRow(jobId, { error: job.error }).catch(() => {});
         })
         .finally(() => { unsub?.(); job.partial = undefined; });
       return { jobId };
+    }),
+
+  // #318 取消进行中的规划：删项目级 pending 登记 + job 标 canceled（后台 LLM 无法中断，
+  // 但完成后结果直接丢弃）+ 删持久层行——让「取消」真正贯穿到底，杜绝 #251 断线续跑把
+  // 被取消的规划捞回画布（用户实报「两套分镜」根因：取消只停了轮询、重进画布结果照落）。
+  // 「+ 新对话」也调用本端点：清空会话 = 明确放弃进行中的规划。
+  cancelChat: protectedProcedure
+    .input(z.object({ projectId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertProjectAccess(input.projectId, ctx.user.id, "editor");
+      const p = pendingJobByProject.get(input.projectId);
+      if (p && p.userId === ctx.user.id) {
+        const j = agentChatJobs.get(p.jobId);
+        if (j && !j.done) j.canceled = true;
+        pendingJobByProject.delete(input.projectId);
+        void db.deleteAgentChatJobRow(p.jobId).catch(() => {});
+        return { canceled: true };
+      }
+      // 内存无登记（服务重启后只剩 DB 行）→ 清最近一条未取走的行，防重启恢复路径捞回。
+      const row = await db.getLatestAgentChatJobForProject(input.projectId, ctx.user.id).catch(() => undefined);
+      if (row) { void db.deleteAgentChatJobRow(row.jobId).catch(() => {}); return { canceled: true }; }
+      return { canceled: false };
     }),
 
   // #251 跨进出画布续跑：查本项目是否有「进行中/已完成未取走」的规划任务（仅提交者本人可见
