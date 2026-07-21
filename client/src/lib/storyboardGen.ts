@@ -19,7 +19,7 @@ import { mergeCharactersIntoPrompt } from "./characterPrompt";
 import { connectedEffectPrompts, appendEffectPrompts } from "./effectPrompt";
 import { resolveImageParam, resolvePoyoImageSize } from "./paramDefs";
 import { estimateImageCost, costEstimateLabel } from "./costEstimate";
-import { nearestUpstreamStoryboard, titleShotNumber } from "./inputOrder";
+import { nearestUpstreamStoryboard, nearestUpstreamPrompt, titleShotNumber } from "./inputOrder";
 
 // 与 StoryboardNode UI 共用的模型常量（单一事实源）。
 export const SOUL_SIZES_LIST = [
@@ -429,9 +429,14 @@ export function assembleFromStoryboards(
     let voice: string | null = null;
     let voiceDur: number | null = null;
     let sfx: string | null = null;
-    if (sb) {
+    // #300 无分镜段的配音对位：排除分镜工作流的镜载体是 prompt 节点
+    //（script→prompt→[image_gen]→video），「给每个镜头配音」把工位挂在 prompt 下游
+    // ——回溯不到分镜时改回溯最近上游 prompt，扫它下游的音频。有分镜的段
+    // 行为逐字节不变（仍只扫分镜下游）。
+    const voiceHost = sb ?? (nearestUpstreamPrompt(vn.id, edges, byId as never) as (typeof nodes)[number] | undefined);
+    if (voiceHost) {
       for (const e3 of edges) {
-        if (e3.source !== sb.id) continue;
+        if (e3.source !== voiceHost.id) continue;
         const an = byId.get(e3.target);
         if (an?.data.nodeType === "audio") {
           const ap = an.data.payload as { url?: string; audioCategory?: string; duration?: number };
