@@ -495,6 +495,10 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   const imgStoredInMinio = isOwnStorageUrl(payload.imageUrl);
 
   const heroMedia = (() => {
+    // #314 创意模式展开「高级」时连 hero 一并收起（#220 视频节点同款修法，当年漏了分镜）：
+    // hero（分镜图/参考图/描述卡）常驻会触发 BaseNode 全局收纳把配置区藏起来，点「高级」
+    // 看起来毫无反应（用户实报）。收起高级即恢复 hero。
+    if (isCreativeMode && advancedOpen) return null;
     if (payload.imageUrl) {
       return (
         <div className="relative" style={{ width: "100%" }}>

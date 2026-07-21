@@ -30,6 +30,7 @@ import { CanvasChatWindow } from "../components/chat/CanvasChatWindow";
 import { CanvasChatNotifier } from "../components/canvas/CanvasChatNotifier";
 import { CanvasAnnounceBanner } from "../components/canvas/CanvasAnnounceBanner";
 import { getDeviceFingerprint } from "@/lib/deviceFingerprint";
+import { sanitizeCharacterRuntimeOnLoad } from "@/lib/nodeRuntimeSanitize";
 import { CanvasAgentChat } from "../components/canvas/CanvasAgentChat";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useTopbarNarrow } from "../hooks/useTopbarNarrow";
@@ -990,7 +991,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
       return {
         id: n.id, type: "custom",
         position: { x: n.posX, y: n.posY },
-        data: { nodeType: n.type as NodeType, title: n.title ?? cfg.defaultTitle, payload: (n.data as Record<string, unknown>) ?? {}, projectId },
+        // #313 角色/场景节点滞留运行态清洗：processing 必为死流程遗留（客户端瞬态不跨会话）、
+        // failed+已有图必为迟到失败糊图——加载即清，防「图都在了还挂生成中/失败横幅」。
+        data: { nodeType: n.type as NodeType, title: n.title ?? cfg.defaultTitle, payload: sanitizeCharacterRuntimeOnLoad(n.type, (n.data as Record<string, unknown>) ?? {}), projectId },
         style,
         zIndex: n.zIndex,
       };

@@ -732,7 +732,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       } catch (err) {
         console.warn("[autoPortrait] 定妆照/场景图生成失败", t.id, err);
         const live = useCanvasStore.getState().nodes.find((n) => n.id === t.id);
-        if (live) useCanvasStore.getState().updateNodeData(t.id, { status: "failed", errorMessage: `自动生成失败：${err instanceof Error ? err.message : String(err)}` } as Partial<CharacterNodeData>, true);
+        // #313 迟到失败竞态守卫：fill-only 语义下若节点【此刻已有图】（并行的「运行全部」
+        // 或手动生成先落地），本条失败已无意义——只清运行态，绝不把失败横幅糊到成果上
+        // （真实翻车：Poyo 5 分钟超时的迟到 failed 盖在已生成的定妆照上）。
+        if (live) {
+          const hasImg = !!((live.data.payload as CharacterNodeData).referenceImageUrl ?? "").trim();
+          if (hasImg) { ok++; useCanvasStore.getState().updateNodeData(t.id, { status: undefined, errorMessage: undefined } as Partial<CharacterNodeData>, true); }
+          else useCanvasStore.getState().updateNodeData(t.id, { status: "failed", errorMessage: `自动生成失败：${err instanceof Error ? err.message : String(err)}` } as Partial<CharacterNodeData>, true);
+        }
       }
     }
     if (ok > 0) toast.success(`已生成 ${ok} 张主参考图（角色定妆照/场景图已写入节点）`);
