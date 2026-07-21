@@ -40,13 +40,17 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; summaryMode: string };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; summaryMode: string; streamEcho: boolean };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
 const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, // #259 selfCheck 默认开：#258 真模型 A/B 实证质量提升（自查后主动补齐角色一致性管线），
 // 且注入方式是「# 输出要求 末尾纯追加一条规则」——与 #145 对白语种硬规则同风险级（已有
 // 生产先例）。老用户存档里无 selfCheck 键 → 展开 QP_DEFAULT 时吃到新默认 true；随时可关。
 // leanPrompt 保持默认关（省 token 属锦上添花，等「规划质量」面板数据佐证后再评估转默认）。
-autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, summaryMode: "compressed" };
+autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, summaryMode: "compressed",
+// #306 流式回显（默认关）：仅本机桥接模型（claude-local*）生效——生成中的文字实时回显在等待
+// 行下方；云端模型/关闭时自动走原有非流式（服务端三重门控，零回归）。旧账号预设快照没有此
+// 键 → 展开合并回落 false，行为与升级前一致。
+streamEcho: false };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -123,6 +127,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [busy, setBusy] = useState(false);
   // #136 规划进度可见：服务端阶段（分析模板库/模型规划中…）+ 本地每秒计时，替代干等。
   const [planStage, setPlanStage] = useState("");
+  // #306 流式回显：轮询捎回的「生成中文本」（仅本机桥接模型 + 开关开时非空）。预览框自动滚到底。
+  const [planPartial, setPlanPartial] = useState("");
+  const partialRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const el = partialRef.current; if (el) el.scrollTop = el.scrollHeight; }, [planPartial]);
   const [planSec, setPlanSec] = useState(0);
   useEffect(() => {
     if (!busy) return;
@@ -908,10 +916,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     abortRef.current = controller;
     setBusy(true);
     setPlanStage("");
+    setPlanPartial("");
     toast.info(job.running ? "检测到上次未完成的规划任务，已自动恢复等待…" : "上次的规划已在后台完成，正在取回并应用…", { duration: 4000 });
     void (async () => {
       try {
-        const r = await pollAgentChatJob(utils.client, job.jobId, controller.signal, (p) => { if (p.stage) setPlanStage(p.stage); });
+        const r = await pollAgentChatJob(utils.client, job.jobId, controller.signal, (p) => { if (p.stage) setPlanStage(p.stage); setPlanPartial(p.partial ?? ""); });
         const out = applyChatResult(r);
         // #291 恢复路径没有原消息可自动弹跳——提示用户重发即可（fetch_details 极少出现在恢复轮）。
         if (out.fetchIds.length) toast.info("助手请求了部分节点的全文——请把刚才的消息重发一次以继续", { duration: 7000 });
@@ -984,6 +993,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       const persona = template === BLANK_TEMPLATE_ID ? undefined : ALL_AI_TEMPLATES.find((t) => t.id === template)?.prompt;
       // 提交后台任务 → 轮询取结果（runAgentChatJob：短请求轮询，断连/掐线/重启不丢等待）。
       setPlanStage("");
+      setPlanPartial("");
       // #140 快速设置「节点」未勾任何 ComfyUI 系 → 本轮用不到模板：让服务端完全跳过
       // 模板分析与模板知识注入（省 DB 读与提示词体积，规划更快）。
       const skipComfyTemplates = !quickPrefs.genNodes.some((n) => n.startsWith("comfyui"));
@@ -1009,9 +1019,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           // #141 模型清单按需注入：锁定的模型随每轮请求实时传入（服务端无状态）——
           // 改模型下一轮即按新模型注入、选回「默认」下一轮即恢复该类别全量清单。
           // A3 增量规划：框选节点透传服务端 → prompt 硬约束 + sanitize 拦框选外的 update/delete。
-          { projectId, message: extraDetail ? `${msg}\n\n【系统注入·你上一轮 fetch_details 请求的节点全文】\n${extraDetail}` : msg, history, graphSummary: summary || undefined, summaryFull: fullMode || undefined, summaryMode: quickPrefs.summaryMode || undefined, selectedNodeIds: selIds, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined },
+          { projectId, message: extraDetail ? `${msg}\n\n【系统注入·你上一轮 fetch_details 请求的节点全文】\n${extraDetail}` : msg, history, graphSummary: summary || undefined, summaryFull: fullMode || undefined, summaryMode: quickPrefs.summaryMode || undefined, selectedNodeIds: selIds, model, persona, includeCharacterLibrary: true, attachments, prefs: buildQuickPrefsText(), imageFirst: quickPrefs.imageFirst || undefined, skipComfyTemplates: skipComfyTemplates || undefined, useComfyMemory: quickPrefs.useComfyMemory === false ? false : undefined, pinnedImageModel: quickPrefs.imageModel || undefined, pinnedVideoModel: quickPrefs.videoProvider || undefined, dialogueLang: quickPrefs.dialogueLang || undefined, fastChatRoute: quickPrefs.fastChat || undefined, useModelSkills: quickPrefs.useModelSkills || undefined, interactive: quickPrefs.interactive || undefined, leanPrompt: quickPrefs.leanPrompt || undefined, selfCheck: quickPrefs.selfCheck || undefined, streamEcho: quickPrefs.streamEcho || undefined },
           controller.signal,
-          (p) => { if (p.stage) setPlanStage(p.stage); },
+          (p) => { if (p.stage) setPlanStage(p.stage); setPlanPartial(p.partial ?? ""); },
         );
         return applyChatResult(r);
       };
@@ -1235,7 +1245,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             )}
             {secHead("规划流程")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["streamEcho", "流式回显（限本机模型）", "开启后：用本机 Claude/GPT 订阅桥接模型（如「本机 Claude」）规划时，生成中的文字实时回显在等待行下方——大计划等 1~5 分钟不再干等黑盒。仅本机桥接模型生效；kie 等云端模型自动走原有非流式方式（服务端网关未提供流式契约），行为与关闭时完全一致。关闭时全链路与现状一致。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
@@ -1357,6 +1367,15 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               style={{ marginLeft: "auto", fontSize: 11, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}>
               取消
             </button>
+          </div>
+        )}
+        {/* #306 流式回显预览（仅本机桥接模型 + 快捷设置开关开时有内容）：生成中的原始文本
+            实时滚动——大计划不再干等黑盒。规划轮是 JSON 草稿观感（属预期，标注「原始输出」），
+            快问快答轮就是答案本身。最终仍以完成后的正式回复为准（与预览逐字同源）。 */}
+        {busy && planPartial && (
+          <div ref={partialRef} data-testid="stream-echo-preview" style={{ fontSize: 11, lineHeight: 1.5, color: "var(--c-t3)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 130, overflowY: "auto", background: "var(--c-surface)", border: "1px dashed var(--c-bd2)", borderRadius: 8, padding: "6px 9px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+            <span style={{ color: "var(--c-t4)", fontSize: 10 }}>生成中（模型原始输出实时回显）：{"\n"}</span>
+            {planPartial}
           </div>
         )}
       </div>
