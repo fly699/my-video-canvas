@@ -774,20 +774,41 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // Keep the floating minimap + toolbar on-screen when the window shrinks (e.g.
   // exiting F11). Persisted pixel offsets from a larger window can push them off
   // the smaller viewport otherwise.
+  // #296 视口尺寸 state：工具栏默认位（x<0 哨兵）的 left/top 是 render 时直接算的，
+  // 而 resize 本身不触发重渲染——F11 退出后视口变矮，工具栏却停留在全屏时算出的
+  // 旧 top 上掉出屏幕（钳制 effect 又刻意跳过哨兵态）。把视口尺寸放进 state，
+  // resize 时 setVp 驱动重渲染，哨兵分支永远按当前视口重算默认位。
+  const [vp, setVp] = useState(() => ({
+    w: typeof window === "undefined" ? 1280 : window.innerWidth,
+    h: typeof window === "undefined" ? 800 : (window.visualViewport?.height ?? window.innerHeight),
+  }));
   useEffect(() => {
     const fix = () => {
+      setVp({ w: window.innerWidth, h: window.visualViewport?.height ?? window.innerHeight });
       setMmPos((p) => ({
         bottom: Math.max(4, Math.min(p.bottom, Math.max(4, window.innerHeight - mmSize.h - 4))),
         right: Math.max(4, Math.min(p.right, Math.max(4, window.innerWidth - mmSize.w - 4))),
       }));
       setToolbarPos((p) => {
         if (p.x < 0) return p; // unplaced — leave the sentinel for default placement
-        return { x: Math.max(0, Math.min(p.x, window.innerWidth - 80)), y: Math.max(0, Math.min(p.y, window.innerHeight - 40)) };
+        // #296 工具栏是 absolute 定位在顶栏下方的画布容器里（容器比 window 矮一个顶栏
+        // 高度），按 window.innerHeight 钳制会差出这段偏移——y 钳到 innerHeight-40 时
+        // 实际渲染位置仍在视口外（真机复现：钳 770 渲染在 814 > 视口 810）。
+        // 改按真实定位容器（offsetParent）的尺寸钳制；量不到时回退 window 并多留余量。
+        const host = (document.querySelector(".canvas-bottombar") as HTMLElement | null)?.offsetParent as HTMLElement | null;
+        const hostW = host?.clientWidth ?? window.innerWidth;
+        const hostH = host?.clientHeight ?? window.innerHeight - 104;
+        return { x: Math.max(0, Math.min(p.x, hostW - 80)), y: Math.max(0, Math.min(p.y, hostH - 48)) };
       });
     };
     window.addEventListener("resize", fix);
+    // 移动端地址栏伸缩只动 visualViewport 不一定发 window resize；F11 则两者都发。
+    window.visualViewport?.addEventListener("resize", fix);
     fix();
-    return () => window.removeEventListener("resize", fix);
+    return () => {
+      window.removeEventListener("resize", fix);
+      window.visualViewport?.removeEventListener("resize", fix);
+    };
   }, [setMmPos, setToolbarPos, mmSize.h, mmSize.w]);
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -3330,10 +3351,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
               el.addEventListener("pointercancel", onUp);
             }}
             style={{
-              left: toolbarPos.x < 0 ? Math.max(8, window.innerWidth / 2 - 180) : toolbarPos.x,
-              // 默认位置上移并改用 visualViewport 高度：移动端浏览器地址栏会吃掉 innerHeight，
+              // #296 默认位读 vp state（随 resize 更新）而非直接读 window：否则 F11 退出
+              // 后不重渲染，工具栏停在全屏时算出的旧 top 上掉出视口。
+              left: toolbarPos.x < 0 ? Math.max(8, vp.w / 2 - 180) : toolbarPos.x,
+              // 默认位置上移并用 visualViewport 高度：移动端浏览器地址栏会吃掉 innerHeight，
               // 旧的 innerHeight-64 常把工具栏顶到可视区外只露一半。
-              top: toolbarPos.x < 0 ? (window.visualViewport?.height ?? window.innerHeight) - 104 : toolbarPos.y,
+              top: toolbarPos.x < 0 ? vp.h - 104 : toolbarPos.y,
               touchAction: "none",
               cursor: "grab",
               // 创意模式（LibTV 风）：容器更实一点、模糊更强、边框更淡、圆角更大、阴影更柔，
