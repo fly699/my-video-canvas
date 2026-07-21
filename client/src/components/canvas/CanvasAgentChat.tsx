@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
 import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal } from "lucide-react";
@@ -166,6 +166,15 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 输入框高度（可拖拽调整「对话区/输入框」比例）。0 = 默认自适应（单行起、随内容长到 120）。
   const [composerH, setComposerH] = useState<number>(() => { try { return Number(localStorage.getItem("avc:canvasAgent:composerH")) || 0; } catch { return 0; } });
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:composerH", String(composerH)); } catch { /* restricted */ } }, [composerH]);
+  // #92 输入条高度自适应：未手动定高（composerH===0）时随内容自动长高到 120（超出内部滚动）。
+  // 此前样式注释写「随内容长到 120」但没有任何增高逻辑，多行草稿只能挤在单行高度里滚动。
+  // 用户拖过高度手柄（composerH>0）后完全尊重手动高度，本效果不再介入——用户设置永远第一位。
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el || composerH > 0) return;
+    el.style.height = "auto"; // 先归零再量 scrollHeight，否则删行后不回缩
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [input, composerH]);
   const addFiles = (files: File[]) => {
     if (!files.length) return;
     setAttachErr("");
@@ -334,7 +343,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   useEffect(() => { if (pos) { try { localStorage.setItem("avc:canvasAgent:pos", JSON.stringify(pos)); } catch { /* quota */ } } }, [pos]);
   // 初始位置也钳制在视口内（窄屏下 380px 面板若不钳制会右侧溢出被裁）。
   const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
-  const effW = Math.min(size.w, vw - 16);
+  // #92 内容驱动的面板自适应加宽：草稿较长（>60 字或含换行）时把面板平滑加宽到至少
+  // 520px，草稿清空（发送/清除）自动回落原宽。特意用「内容」而非「聚焦」驱动——若 blur
+  // 就收窄，点发送按钮时 mousedown 触发 blur → 面板收窄 → 按钮在 mouseup 前位移，click
+  // 会点空。用户手动把面板调到 ≥520 时此机制零作用（取 max），用户设置永远第一位；
+  // 临时加宽不写入持久化 size，回落后仍是用户原宽。
+  // boostMuted：用户在长草稿期间亲手拖了缩放把手 → 本条草稿内不再自动加宽（手动尺寸
+  // 优先，哪怕比 520 窄）；草稿清空后解除静音，下条长草稿恢复自适应。
+  const [boostMuted, setBoostMuted] = useState(false);
+  useEffect(() => { if (input.length === 0) setBoostMuted(false); }, [input]);
+  const composeBoost = !boostMuted && (input.length > 60 || input.includes("\n"));
+  const boostW = composeBoost ? Math.min(520, vw - 16) : 0;
+  const effW = Math.max(Math.min(size.w, vw - 16), boostW);
+  // 手动拖动/缩放期间关掉宽度过渡——否则 pointermove 逐帧 setState 会被 0.18s 过渡拖出橡皮筋感。
+  const [interacting, setInteracting] = useState(false);
   const left = pos ? Math.max(8, Math.min(pos.left, vw - effW - 8)) : Math.max(8, vw - effW - 16);
   const top = pos ? pos.top : Math.max(8, window.innerHeight - size.h - 16);
 
@@ -405,16 +427,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const startDrag = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button, input, textarea, [role='listbox']")) return;
     e.preventDefault();
+    setInteracting(true);
     const sx = e.clientX, sy = e.clientY, il = left, it = top;
     const onMove = (mv: PointerEvent) => setPos({ left: Math.max(0, Math.min(window.innerWidth - 120, il + mv.clientX - sx)), top: Math.max(0, Math.min(window.innerHeight - 40, it + mv.clientY - sy)) });
-    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
+    const onUp = () => { setInteracting(false); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
     window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp); window.addEventListener("pointercancel", onUp);
   };
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault(); e.stopPropagation();
+    setInteracting(true);
+    setBoostMuted(true); // 手动缩放 = 用户对尺寸表态，本条草稿内停用自动加宽
+
     const sx = e.clientX, sy = e.clientY, iw = size.w, ih = size.h;
     const onMove = (mv: PointerEvent) => setSize({ w: Math.max(300, Math.min(window.innerWidth - 16, iw + mv.clientX - sx)), h: Math.max(360, Math.min(window.innerHeight - 16, ih + mv.clientY - sy)) });
-    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
+    const onUp = () => { setInteracting(false); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("pointercancel", onUp); };
     window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp); window.addEventListener("pointercancel", onUp);
   };
   // 拖拽调整「对话区 / 输入框」高度比例：上拖 = 输入框变高、对话区变矮（对话区 flex:1 自动收缩）。
@@ -988,6 +1014,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       position: "fixed", left, top, width: effW, height: size.h,
       display: "flex", flexDirection: "column", background: "var(--c-base)", border: `1px solid ${accent}`, borderRadius: 14,
       boxShadow: "0 18px 50px rgba(0,0,0,0.45)", zIndex: 50, overflow: "hidden",
+      // #92 自动加宽/回落走平滑过渡；手动拖动/缩放期间必须关掉，否则逐帧 setState 出橡皮筋感。
+      transition: interacting ? undefined : "width 0.18s ease, left 0.18s ease",
     }} onClick={(e) => e.stopPropagation()}>
       {/* header（拖动手柄） */}
       <div onPointerDown={startDrag} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--c-bd2)", flexShrink: 0, cursor: "move", touchAction: "none" }}>
@@ -1327,9 +1355,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "8px 10px 10px", flexShrink: 0 }}>
         <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx" style={{ display: "none" }}
           onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); if (fileInputRef.current) fileInputRef.current.value = ""; }} />
-        <button onClick={() => fileInputRef.current?.click()} disabled={busy} title="附参考图 / 文档（据图规划画面·风格·角色）"
-          style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: busy ? "not-allowed" : "pointer", flexShrink: 0 }}>
-          <Paperclip size={16} />
+        {/* #92 参考上传入口显性化：纯图标 📎 几乎没人注意到能传参考图——改带文字药丸，
+            已附文件时描边点亮 + 显示数量。 */}
+        <button onClick={() => fileInputRef.current?.click()} disabled={busy} title="附参考图 / 文档（据图规划画面·风格·角色；也可直接粘贴或拖拽图片到输入框）"
+          style={{ display: "inline-flex", height: 38, padding: "0 10px", gap: 5, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${staged.length ? accent : "var(--c-bd2)"}`, background: staged.length ? accentSoft : "var(--c-surface)", color: staged.length ? accent : "var(--c-t3)", cursor: busy ? "not-allowed" : "pointer", flexShrink: 0, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>
+          <Paperclip size={15} />参考{staged.length > 0 ? ` ×${staged.length}` : ""}
         </button>
         <textarea ref={composerRef} value={input} onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
@@ -1346,8 +1376,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           }}
           placeholder="指挥画布，Enter 发送；@ 角色、/ 技能、📎 附参考图" rows={1}
           style={{ flex: 1, resize: "none", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", fontSize: 13, outline: "none", fontFamily: "inherit",
-            // 拖拽过手柄（composerH>0）→ 固定高度、内部滚动；否则默认单行起、随内容长到 120。
-            ...(composerH > 0 ? { height: composerH, maxHeight: composerH, overflowY: "auto" as const } : { maxHeight: 120 }) }} />
+            // 拖拽过手柄（composerH>0）→ 固定高度、内部滚动；否则默认单行起、随内容自动长
+            // 高到 120（#92 上方 useLayoutEffect 实测 scrollHeight 驱动），超出内部滚动。
+            ...(composerH > 0 ? { height: composerH, maxHeight: composerH, overflowY: "auto" as const } : { maxHeight: 120, overflowY: "auto" as const }) }} />
         <button onClick={() => void send()} disabled={busy || (!input.trim() && staged.length === 0)} title="发送"
           style={{ display: "inline-flex", width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 10, border: `1px solid ${accent}`, background: accentSoft, color: accent, cursor: busy || (!input.trim() && !staged.length) ? "not-allowed" : "pointer", opacity: busy || (!input.trim() && !staged.length) ? 0.5 : 1, flexShrink: 0 }}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}

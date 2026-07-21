@@ -105,6 +105,7 @@ import { toast } from "sonner";
 import type { NodeType, NodeData, GroupNodeData } from "../../../shared/types";
 import { getNodeConfig, NODE_TYPE_LIST, NODE_ICONS, COLLABORATOR_COLORS, type NodeConfig } from "../lib/nodeConfig";
 import { sortNodeConfigsForPalette } from "../lib/nodeOrder";
+import { NODE_CATEGORIES, MAIN_FLOW_TYPES } from "../lib/nodeCategories";
 import { buildRunPlanItems, aggregateRunPlan, costEstimateLabel, type RunPlanItem } from "../lib/costEstimate";
 import { resolveActiveNodeModel } from "../contexts/NodeDefaultModelsContext";
 import { io, type Socket } from "socket.io-client";
@@ -2873,22 +2874,53 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 const recentConfigs = !q
                   ? recentNodeTypes.map((t) => NODE_TYPE_LIST.find((c) => c.type === t)).filter((c): c is NodeConfig => !!c && c.comingSoon !== true).slice(0, 8)
                   : [];
+                // 搜索态：保持平铺过滤（含 wizard/tpl 命中）不变。
+                if (q) {
+                  return (
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {showWizardTile && wizardTile}{showTplLibTile && tplLibTile}{list.map(renderTile)}
+                    </div>
+                  );
+                }
+                // #93 无搜索态改三段分层：最近使用 → 主流程（成片生产主干，按创作顺序）→
+                // 全部节点（按 NODE_CATEGORIES 分组分段）。主流程与最近使用一样是快捷重复
+                // 入口，每个类型仍出现在所属分类里，节点一个不少（nodeCategories 守卫测试
+                // 保证每种类型都归了类）。同一 config 在不同 <div> 网格里重复渲染，React
+                // key 仅要求同父唯一，无冲突。
+                const byType = new Map(NODE_TYPE_LIST.map((c) => [c.type, c]));
+                const mainFlowConfigs = MAIN_FLOW_TYPES
+                  .map((t) => byType.get(t)).filter((c): c is NodeConfig => !!c && c.comingSoon !== true);
+                const sectionLabel = (text: string) => (
+                  <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 px-0.5" style={{ color: "var(--c-t4)" }}>{text}</p>
+                );
                 return (
                   <>
                     {recentConfigs.length > 0 && (
                       <div className="mb-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5 px-0.5" style={{ color: "var(--c-t4)" }}>最近使用</p>
+                        {sectionLabel("最近使用")}
                         <div className="grid grid-cols-4 gap-1.5">{recentConfigs.map(renderTile)}</div>
                         <div className="mt-2.5 mb-0.5" style={{ height: 1, background: "var(--c-bd1)" }} />
                       </div>
                     )}
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {q
-                        ? <>{showWizardTile && wizardTile}{showTplLibTile && tplLibTile}{list.map(renderTile)}</>
-                        // 无搜索时把首个节点（工程智能体，HEAD_ORDER 置顶）排在最前面，
-                        // 再放「导入工作流」「节点模板库」两个 ComfyUI 快捷入口。
-                        : (() => { const [first, ...rest] = list; return <>{first && renderTile(first)}{showWizardTile && wizardTile}{showTplLibTile && tplLibTile}{rest.map(renderTile)}</>; })()}
-                    </div>
+                    {mainFlowConfigs.length > 0 && (
+                      <div className="mb-2">
+                        {sectionLabel("主流程 · 剧本 → 分镜 → 角色 → 生图 → 生视频 → 配音 → 成片")}
+                        <div className="grid grid-cols-4 gap-1.5">{mainFlowConfigs.map(renderTile)}</div>
+                        <div className="mt-2.5 mb-0.5" style={{ height: 1, background: "var(--c-bd1)" }} />
+                      </div>
+                    )}
+                    {NODE_CATEGORIES.map((cat) => {
+                      const cfgs = cat.types.map((t) => byType.get(t)).filter((c): c is NodeConfig => !!c);
+                      // 「导入工作流」「节点模板库」两个快捷格归入 ComfyUI 组（语义归属）。
+                      const extras = cat.id === "comfyui" ? <>{showWizardTile && wizardTile}{showTplLibTile && tplLibTile}</> : null;
+                      if (cfgs.length === 0 && !extras) return null;
+                      return (
+                        <div key={cat.id} className="mb-2 last:mb-0">
+                          {sectionLabel(cat.label)}
+                          <div className="grid grid-cols-4 gap-1.5">{extras}{cfgs.map(renderTile)}</div>
+                        </div>
+                      );
+                    })}
                   </>
                 );
               })()}
