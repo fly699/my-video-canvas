@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget, characterRunPlan, buildRunPlanItems, aggregateRunPlan } from "./costEstimate";
+import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget, characterRunPlan, buildRunPlanItems, aggregateRunPlan, hasExistingRunOutput } from "./costEstimate";
 
 describe("estimateVideoCost", () => {
   it("按时长线性计费（poyo kling 2.1 std：6 cr/s）", () => {
@@ -364,5 +364,55 @@ describe("#276 buildRunPlanItems / aggregateRunPlan — 运行确认弹窗逐节
     expect(b.pt).toBe(a.pt);
     expect(b.selectedCount).toBe(a.selectedCount);
     expect(a.skippedCount).toBe(4); // sb1 + sb2 + c2 + d1
+  });
+});
+
+describe("#321 hasExistingRunOutput / done 标记 — 已有产物默认剔除", () => {
+  const n = (id: string, nodeType: string, payload: Record<string, unknown> = {}, title = id) =>
+    ({ id, title, data: { nodeType, payload } });
+  const resolve = (nt: string, slot: string): string | undefined => {
+    if (slot === "image") return "kie_gpt_image_2";
+    if (nt === "video_task" && slot === "video") return "kie_kling21_std";
+    return undefined;
+  };
+  it("字段口径与运行器写回同源：各生成类节点按各自产物字段判定", () => {
+    expect(hasExistingRunOutput("video_task", { resultVideoUrl: "https://x/v.mp4" })).toBe(true);
+    expect(hasExistingRunOutput("video_task", { resultVideoUrl: "  " })).toBe(false); // 空白不算
+    expect(hasExistingRunOutput("video_task", {})).toBe(false);
+    expect(hasExistingRunOutput("comfyui_video", { resultVideoUrl: "https://x/v.mp4" })).toBe(true);
+    expect(hasExistingRunOutput("comfyui_workflow", { outputUrl: "https://x/o.png" })).toBe(true);
+    expect(hasExistingRunOutput("comfyui_image", { imageUrl: "https://x/i.png" })).toBe(true);
+    expect(hasExistingRunOutput("image_gen", { imageUrl: "https://x/i.png" })).toBe(true);
+    expect(hasExistingRunOutput("storyboard", { imageUrl: "https://x/kf.png" })).toBe(true);
+  });
+  it("本机免费加工类不判 done（合并常在上游变化后有意重跑，自动跳过会造成困惑）", () => {
+    expect(hasExistingRunOutput("merge", { outputUrl: "https://x/m.mp4" })).toBe(false);
+    expect(hasExistingRunOutput("clip", { outputUrl: "https://x/c.mp4" })).toBe(false);
+    expect(hasExistingRunOutput("prompt", { output: "文本" })).toBe(false);
+    expect(hasExistingRunOutput("character", { referenceImageUrl: "https://x/a.png" })).toBe(false);
+  });
+  it("buildRunPlanItems：已生成节点带 done 标记，未生成不带；skipped 不受影响", () => {
+    const eps = [
+      n("ep1v", "video_task", { provider: "kie_kling21_std", duration: 5, resultVideoUrl: "https://x/1.mp4" }),
+      n("ep1sb", "storyboard", { imageUrl: "https://x/kf.png" }),
+      n("ep2v", "video_task", { provider: "kie_kling21_std", duration: 5 }),
+      n("ep2sb", "storyboard", {}),
+      n("d1", "video_task", { resultVideoUrl: "https://x/d.mp4", disabled: true }), // skipped 也带 done 但不可选
+    ];
+    const items = buildRunPlanItems(eps, resolve, []);
+    const by = (id: string) => items.find((i) => i.id === id)!;
+    expect(by("ep1v").done).toBe(true);
+    expect(by("ep1sb").done).toBe(true);
+    expect(by("ep2v").done).toBeUndefined();
+    expect(by("ep2sb").done).toBeUndefined();
+    expect(by("d1").kind).toBe("skipped");
+    // 弹窗打开时的默认剔除口径：done 且非 skipped
+    const autoDeselect = items.filter((i) => i.done && i.kind !== "skipped").map((i) => i.id);
+    expect(autoDeselect.sort()).toEqual(["ep1sb", "ep1v"]);
+    // 默认剔除后估价只剩第二集：ep2v 25 点 + ep2sb 6 点（默认 GPT Image 2 1K）
+    const agg = aggregateRunPlan(items, new Set(autoDeselect));
+    expect(agg.pt).toBe(31);
+    // 勾回 ep1v → 精确加回其单价 25 点
+    expect(aggregateRunPlan(items, new Set(["ep1sb"])).pt).toBe(56);
   });
 });

@@ -681,8 +681,29 @@ function CanvasInner({ projectId }: { projectId: number }) {
     setPendingRunNodeId(startNodeId);
     setPendingRunOnlyIds(onlyIds && onlyIds.length > 0 ? onlyIds : null);
     setRunConfirmCountdown(3);
-    setRunDeselected(new Set()); // #276 每次打开重置为全选
-    setRunExpandedTypes(new Set());
+    // #321 已有产物的生成节点默认取消勾选（清单里仍列出，可勾回重生成）——用户实报：
+    // 续写第二集后点「全部运行」，弹窗默认全选会把第一集已生成的节点全部重跑烧钱。
+    // 仅对「整体运行 / 框选运行」启用：这两条腿取消勾选后走显式 onlyIds 清单，范围只减不增；
+    // 「从节点开始」（startNodeId）不启用——它的旧语义是 DFS 祖先+后代子图，而弹窗清单是
+    // 全画布，一旦预置取消勾选就会改传全画布显式清单，反而【扩大】运行范围（#276 时代
+    // 用户手动取消勾选属自担语义，自动预置不能引入这种翻转）。
+    if (!startNodeId) {
+      const { nodes: allNodes, edges: allEdges } = useCanvasStore.getState();
+      const onlySet = onlyIds && onlyIds.length > 0 ? new Set(onlyIds) : null;
+      const scope = onlySet ? allNodes.filter((n) => onlySet.has(n.id)) : allNodes;
+      const items = buildRunPlanItems(
+        scope.map((n) => ({ id: n.id, title: n.data.title, data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } })),
+        resolveActiveNodeModel as (nt: string, slot: "llm" | "image" | "video") => string,
+        allEdges.map((e) => ({ source: e.source, target: e.target })),
+      );
+      const doneItems = items.filter((i) => i.done && i.kind !== "skipped");
+      setRunDeselected(new Set(doneItems.map((i) => i.id)));
+      // 自动展开含已生成节点的分类：用户一眼看到「谁被默认剔除了」，不用自己翻。
+      setRunExpandedTypes(new Set(doneItems.map((i) => i.nodeType)));
+    } else {
+      setRunDeselected(new Set()); // #276 从节点开始：保持全选默认
+      setRunExpandedTypes(new Set());
+    }
     setShowRunConfirm(true);
   }, []);
 
@@ -4533,6 +4554,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           if (!parts.length) parts.push(g.selectedCount > 0 ? "免费/本地" : "—");
           return parts.join(" · ");
         };
+        // #321 「已有产物且当前未勾选」的计数——驱动说明行，勾回即时递减。
+        const deselectedDoneCount = selectableItems.filter((i) => i.done && runDeselected.has(i.id)).length;
         const confirmDisabled = runConfirmCountdown > 0 || runState.running || selectedIds.length === 0;
         return (
           <div
@@ -4566,6 +4589,12 @@ function CanvasInner({ projectId }: { projectId: number }) {
                   已勾选 <b style={{ color: "oklch(0.72 0.22 142)" }}>{totals.selectedCount}</b> / {totals.selectableCount} 个参与运行
                   {totals.skippedCount > 0 && <span style={{ color: "var(--c-t4)" }}>（另 {totals.skippedCount} 个自动跳过）</span>}。
                 </div>
+                {/* #321 已生成节点默认剔除的说明（计数随勾选实时变化；全部勾回后自动消失） */}
+                {deselectedDoneCount > 0 && (
+                  <div style={{ marginTop: 4, color: "oklch(0.72 0.14 155)", fontSize: 12 }}>
+                    ✓ 其中 {deselectedDoneCount} 个节点已有生成结果，已默认取消勾选（不重复扣费）——展开清单可勾回重新生成。
+                  </div>
+                )}
               </div>
 
               {/* #276 分类清单：类型行（三态勾选+小计）→ 二级展开逐节点（勾选+模型+单价） */}
@@ -4620,6 +4649,18 @@ function CanvasInner({ projectId }: { projectId: number }) {
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textDecoration: skipped || !on ? "line-through" : undefined, opacity: !skipped && !on ? 0.55 : 1 }} title={it.title}>
                                 {it.title}
                               </span>
+                              {/* #321 已有产物徽标：未勾选=默认跳过省钱；勾回则明确提示会重新生成 */}
+                              {!skipped && it.done && (
+                                <span
+                                  title={on ? "该节点已有生成结果，再次运行会重新生成并计费" : "已有生成结果，默认跳过（勾选可重新生成）"}
+                                  style={{
+                                    fontSize: 10, whiteSpace: "nowrap", flexShrink: 0, padding: "0 5px", borderRadius: 4, lineHeight: "16px",
+                                    color: on ? "oklch(0.78 0.18 60)" : "oklch(0.72 0.14 155)",
+                                    border: `1px solid ${on ? "oklch(0.78 0.18 60 / 0.4)" : "oklch(0.72 0.14 155 / 0.4)"}`,
+                                    background: on ? "oklch(0.78 0.18 60 / 0.08)" : "oklch(0.72 0.14 155 / 0.08)",
+                                  }}
+                                >{on ? "已生成·将重跑" : "已生成"}</span>
+                              )}
                               {skipped
                                 ? <span style={{ fontSize: 10.5, whiteSpace: "nowrap", maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }} title={it.skipReason}>{it.skipReason}</span>
                                 : <>

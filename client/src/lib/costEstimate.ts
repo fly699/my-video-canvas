@@ -443,8 +443,34 @@ export type RunPlanItem = {
   modelLabel?: string;
   /** skipped 的原因——运行器会自动跳过，弹窗中不可勾选。 */
   skipReason?: string;
+  /** #321 已有生成产物（重跑=重新烧钱）。弹窗对整体/框选运行默认取消勾选，可勾回重生成。 */
+  done?: boolean;
 };
 type RunPlanNode = { id: string; title: string; data: { nodeType: string; payload?: Record<string, unknown> } };
+
+// #321 「已有产物」判定（用户实报：续写第二集后点全部运行，弹窗默认全选把第一集
+// 已生成的节点又要重跑一遍烧钱）。只认【重跑会重新花钱/花算力的生成类】节点；
+// 本机免费加工类（clip/merge/overlay/subtitle 等）不判——它们常在上游变化后有意
+// 重跑（如合并节点加了新段），自动跳过反而会造成「点了运行合并没更新」的困惑。
+// 字段口径与 useWorkflowRunner 写回严格同源：video_task/comfyui_video 由轮询器回填
+// resultVideoUrl；comfyui_workflow 写 outputUrl；image_gen/comfyui_image/storyboard
+// 写 imageUrl（分镜关键帧图）。character 不在此列——fill-only 已把有主参考图的
+// 角色判成 skipped（连勾选都不给），无需重复覆盖。
+const DONE_OUTPUT_FIELDS: Record<string, string[]> = {
+  video_task: ["resultVideoUrl"],
+  comfyui_video: ["resultVideoUrl"],
+  comfyui_workflow: ["outputUrl"],
+  comfyui_image: ["imageUrl"],
+  image_gen: ["imageUrl"],
+  storyboard: ["imageUrl"],
+};
+
+/** 节点是否已有生成产物（重跑=重新计费）。纯函数，供弹窗默认剔除与单测。 */
+export function hasExistingRunOutput(nodeType: string, payload?: Record<string, unknown>): boolean {
+  const fields = DONE_OUTPUT_FIELDS[nodeType];
+  if (!fields || !payload) return false;
+  return fields.some((f) => typeof payload[f] === "string" && (payload[f] as string).trim() !== "");
+}
 
 // 运行器会执行、但不消耗云端点数/积分的类型 → 免费口径说明。
 // prompt 走 LLM 文本调用（按 token 计费但金额极小、无固定价），如实标注而非冒充免费。
@@ -471,7 +497,8 @@ export function buildRunPlanItems(
     const t = n.data.nodeType;
     if (!(RUNNABLE_TYPES as readonly string[]).includes(t)) continue;
     const p = (n.data.payload ?? {}) as Record<string, unknown>;
-    const base = { id: n.id, title: n.title, nodeType: t };
+    // done 标记打在 base 上：skipped 项虽也会带上，但它们本就不可勾选，标记无副作用。
+    const base = { id: n.id, title: n.title, nodeType: t, done: hasExistingRunOutput(t, p) || undefined };
     if (p.disabled === true) {
       items.push({ ...base, kind: "skipped", skipReason: "已设为「跳过执行」（右键节点可恢复）" });
     } else if (t === "comfyui_image" || t === "comfyui_video" || t === "comfyui_workflow") {
