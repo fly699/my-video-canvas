@@ -378,6 +378,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // ── 收起为悬浮小球（点关闭=收起，非真关闭；小球右键才可关闭）──
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem("avc:canvasAgent:collapsed") === "1");
   useEffect(() => { try { localStorage.setItem("avc:canvasAgent:collapsed", collapsed ? "1" : "0"); } catch { /* quota */ } }, [collapsed]);
+  // #293 空画布引导「画布助手 · 一句话快速成片」入口：收到事件展开助手窗并聚焦输入框
+  //（EmptyCanvasGuide 与助手窗无组件层级关系，走自定义事件，与 canvas:fit-view 同机制）。
+  useEffect(() => {
+    const onOpen = () => { setCollapsed(false); setTimeout(() => composerRef.current?.focus(), 150); };
+    window.addEventListener("canvas:open-agent", onOpen);
+    return () => window.removeEventListener("canvas:open-agent", onOpen);
+  }, []);
   // 创意模式（LibTV 风）悬浮球更小巧（34），减少对媒体优先画布的遮挡；其它模式沿用 44。
   const { mode: canvasMode } = useCanvasMode();
   const BALL = canvasMode === "creative" ? 34 : 44;

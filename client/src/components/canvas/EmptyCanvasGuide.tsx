@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { BookOpen, User, Film, Music, Plus, LayoutGrid, Wand2 } from "lucide-react";
+import { BookOpen, User, Film, Music, Plus, LayoutGrid, Wand2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { applyAgentOperations } from "@/lib/agentApply";
@@ -92,9 +92,29 @@ export function EmptyCanvasGuide({ onAddNode, onImportWorkflow }: {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: "var(--c-t3)" }}>
         <span style={{ display: "inline-flex", width: 22, height: 22, alignItems: "center", justifyContent: "center", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", fontSize: 11 }}>🖱</span>
-        <span><strong style={{ color: "var(--c-t2)" }}>双击画布</strong> 添加节点 · 或用向导 / 工作流卡快速开始</span>
+        <span><strong style={{ color: "var(--c-t2)" }}>双击画布</strong> 添加节点 · 或用助手 / 向导 / 工作流卡快速开始</span>
       </div>
-      {/* #159 建立向导：分步选择需求 → 自动搭建节点链 + 功能分区群组。放在最显眼处。 */}
+      {/* #293 画布助手入口（置顶）：本应用招牌——一句话快速成片。点击展开右下角助手窗
+          并聚焦输入框（CanvasAgentChat 监听 canvas:open-agent 自定义事件）。 */}
+      <div style={{ pointerEvents: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, maxWidth: "min(92vw, 640px)" }}>
+        <button
+          onClick={() => window.dispatchEvent(new Event("canvas:open-agent"))}
+          className="nodrag"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 26px", borderRadius: 12, fontSize: 14, fontWeight: 800,
+            border: "none", cursor: "pointer", color: "#fff",
+            background: "linear-gradient(135deg, oklch(0.62 0.22 285), oklch(0.68 0.21 310))",
+            boxShadow: "0 8px 26px oklch(0.64 0.22 295 / 0.45)",
+          }}
+        >
+          <Sparkles size={17} /> 画布助手 · 一句话快速成片
+        </button>
+        <span style={{ fontSize: 11.5, lineHeight: 1.6, color: "var(--c-t4)", textAlign: "center" }}>
+          试试对它说：<strong style={{ color: "var(--c-t3)" }}>「做一个橘猫晒太阳的竖屏短片，3 个镜头」</strong>——自动写脚本、拆分镜、建节点连线；
+          生成后说「按镜头表装配」直接出成片。📎 可附参考图定风格，建/连/改画布不花钱。
+        </span>
+      </div>
+      {/* #159 建立向导：分步选择需求 → 自动搭建节点链 + 功能分区群组。 */}
       <div style={{ pointerEvents: "auto" }}>
         <button
           onClick={() => setShowWizard(true)}

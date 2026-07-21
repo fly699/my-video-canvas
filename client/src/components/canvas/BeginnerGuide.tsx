@@ -57,6 +57,10 @@ function WelcomeModal({ onClose, onStartTour }: { onClose: () => void; onStartTo
 
   // 9 大核心工具（2 列布局，呼应图1）
   const features = [
+    // #293 置顶旗舰：画布助手一句话快速成片——新用户最该先知道的一件事。
+    { Icon: Wand2, color: "oklch(0.70 0.20 310)",
+      title: "画布助手 · 一句话快速成片", desc: "对右下角助手说「做一个雨夜侦探短片，6 个镜头，竖屏」——自动写脚本、拆分镜、建角色出定妆照、逐镜建生成节点并连线、按场景分组排版；生成后说「按镜头表装配」自动合成成片（镜号排序·逐镜转场·配音对位），「运行全部」批量生成（先弹费用确认），「做个动态样片」零成本预览节奏。快捷设置可锁比例/总时长/模型/转场/对白语种（你的设置永远优先）；📎 参考图据图定风格、可直接作视频首帧或角色锁脸；@ 引用角色库、/ 唤起技能；先框选=只改选中、随时一键撤销。建/连/改画布不花钱",
+      badge: "HOT" },
     { Icon: Layers, color: "oklch(0.68 0.22 285)",
       title: "节点式工作流", desc: "脚本 / 分镜 / 提示词 / 图像 / 视频 / 剪辑节点自由编排，可视化连线" },
     { Icon: Clapperboard, color: "oklch(0.62 0.16 265)",
@@ -147,9 +151,6 @@ function WelcomeModal({ onClose, onStartTour }: { onClose: () => void; onStartTo
       badge: "NEW" },
     { Icon: Zap, color: "oklch(0.72 0.18 60)",
       title: "画布效率操作", desc: "顶栏全局运行状态条（生成中/排队/失败一目了然，点失败直接跳到出错节点）；框选后 Ctrl+C/V 复制整条镜头链（含内部连线）；「一键整理」按连线方向自动排版 + 网格吸附；吸附窗在提示词/参考元素变更时自动弹出 2 秒",
-      badge: "NEW" },
-    { Icon: Bot, color: "oklch(0.70 0.18 250)",
-      title: "画布助手 · 对话改画布", desc: "右下角浮层里一句话让 AI 直接在画布建/连/改节点（复用智能体同一套引擎），支持 @角色 引用、/ 唤起技能、一键撤销本次改动；每次进入画布默认打开，对话上下文落库、跨设备/清缓存不丢",
       badge: "NEW" },
     { Icon: Wand2, color: "oklch(0.68 0.19 285)",
       title: "ComfyUI 工作流 · AI 辅助分析导入", desc: "粘贴任意 ComfyUI 工作流 JSON，勾选「AI 辅助分析」用本机 Claude + ComfyUI MCP 查真实节点 schema，自动纠正参数类型/正负、按主次排序（提示词/尺寸/主模型/步数排前）；不开 AI 也有启发式主次分明，失败自动回退",
