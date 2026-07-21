@@ -26,6 +26,9 @@ import { ModelPicker } from "../ModelPicker";
 import { estimateMusicCost, estimateTtsCost, estimateAudioToolCost, costEstimateLabel } from "@/lib/costEstimate";
 import { useDisabledModels } from "@/lib/useDisabledModels";
 import { sunoMvForModel } from "@/lib/sunoMv";
+// #295 音色表单一真源：shared/dubbingVoices（server 端画布助手 set_voice 校验也用同一份，
+// 物理同源杜绝两端漂移）。本文件只保留 voicesForModel 的模型→表映射逻辑。
+import { OPENAI_VOICES, ELEVENLABS_VOICES, GEMINI_VOICES, XAI_VOICES } from "../../../../../shared/dubbingVoices";
 
 interface Props {
   id: string;
@@ -244,56 +247,8 @@ export const AUDIO_TOOL_MODELS = [
 // both cases still bill the user. Pick a per-model list and reset on switch.
 // 发音人显示统一中文（音频节点音色 chips 与镜头表 casting 下拉共用本数据源）；
 // value 仍是上游 wire 名，不影响提交。
-const OPENAI_VOICES = [
-  { value: "alloy",   label: "艾洛伊 Alloy",   desc: "中性" },
-  { value: "echo",    label: "回声 Echo",      desc: "男声" },
-  { value: "fable",   label: "寓言 Fable",     desc: "英式" },
-  { value: "onyx",    label: "玛瑙 Onyx",      desc: "低沉" },
-  { value: "nova",    label: "新星 Nova",      desc: "女声" },
-  { value: "shimmer", label: "微光 Shimmer",   desc: "柔和" },
-];
-// ElevenLabs V3 voice names (per Poyo OpenAPI). value === the wire name; Rachel
-// is first so it becomes the default selection (matches the spec default).
-const ELEVENLABS_VOICES = [
-  { value: "Rachel",    label: "瑞秋 Rachel",       desc: "女声 · 旁白" },
-  { value: "Aria",      label: "阿莉雅 Aria",       desc: "女声" },
-  { value: "Sarah",     label: "莎拉 Sarah",        desc: "女声" },
-  { value: "Laura",     label: "劳拉 Laura",        desc: "女声" },
-  { value: "Charlotte", label: "夏洛特 Charlotte",  desc: "女声" },
-  { value: "Alice",     label: "爱丽丝 Alice",      desc: "女声" },
-  { value: "Matilda",   label: "玛蒂尔达 Matilda",  desc: "女声" },
-  { value: "Jessica",   label: "杰西卡 Jessica",    desc: "女声" },
-  { value: "Lily",      label: "莉莉 Lily",         desc: "女声" },
-  { value: "River",     label: "里弗 River",        desc: "中性" },
-  { value: "Roger",     label: "罗杰 Roger",        desc: "男声" },
-  { value: "Charlie",   label: "查理 Charlie",      desc: "男声" },
-  { value: "George",    label: "乔治 George",       desc: "男声" },
-  { value: "Callum",    label: "卡勒姆 Callum",     desc: "男声" },
-  { value: "Liam",      label: "利亚姆 Liam",       desc: "男声" },
-  { value: "Will",      label: "威尔 Will",         desc: "男声" },
-  { value: "Eric",      label: "埃里克 Eric",       desc: "男声" },
-  { value: "Chris",     label: "克里斯 Chris",      desc: "男声" },
-  { value: "Brian",     label: "布莱恩 Brian",      desc: "男声" },
-  { value: "Daniel",    label: "丹尼尔 Daniel",     desc: "男声" },
-  { value: "Bill",      label: "比尔 Bill",         desc: "男声" },
-];
-
-// #151 Gemini 3.1 Flash TTS 音色（官方枚举 30 个，默认 Kore；此处收录全量）。
-const GEMINI_VOICES = [
-  "Kore", "Puck", "Zephyr", "Charon", "Fenrir", "Leda", "Orus", "Aoede", "Callirrhoe", "Autonoe",
-  "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", "Algenib", "Rasalgethi",
-  "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
-  "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
-].map((v) => ({ value: v, label: v, desc: v === "Kore" ? "默认" : "" }));
-// #151 xAI TTS 音色（官方枚举 5 个，默认 eve）。
-const XAI_VOICES = [
-  { value: "eve", label: "Eve",  desc: "默认 · 女声" },
-  { value: "ara", label: "Ara",  desc: "女声" },
-  { value: "rex", label: "Rex",  desc: "男声" },
-  { value: "sal", label: "Sal",  desc: "男声" },
-  { value: "leo", label: "Leo",  desc: "男声" },
-];
-
+// #295 起四组音色表常量（OPENAI/ELEVENLABS/GEMINI/XAI_VOICES）从 shared/dubbingVoices
+// 顶部 import，与画布助手 set_voice 的服务端校验共享同一份数据。
 export function voicesForModel(model?: string): { value: string; label: string; desc: string }[] {
   if (modelIsVoxCPM(model)) return []; // 音色来自参考音频，无固定列表
   if (model === "gemini-3-1-flash-tts") return GEMINI_VOICES;

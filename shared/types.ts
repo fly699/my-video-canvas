@@ -1422,7 +1422,13 @@ export interface AgentOperation {
    *  省略=画布全部有名字的 character 节点）。需要 tRPC（characterLibrary.create），
    *  由 CanvasAgentChat 应用层在画布操作落地后抽走执行——apply 层纯 store 不发网络
    *  （与 animatic/library 同一架构边界）。同名条目跳过不覆盖（保护既有库内容）。 */
-  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup" | "focus_node" | "save_library" | "fetch_details";
+  action?: "minimal_on" | "minimal_off" | "arrange_layout" | "fit_view" | "download_all" | "assemble" | "run_all" | "run_node" | "animatic" | "ungroup" | "focus_node" | "save_library" | "fetch_details" | "set_voice";
+  /** #295 canvas set_voice：锁定角色音色——targetRef 指向角色（id/短号/tempId/角色名），
+   *  两字段取值必须来自 shared/dubbingVoices 目录（sanitize 与 apply 双层校验，防幻觉
+   *  音色 id）。落地写入角色节点声音档案 voiceModel/voiceId 并 fill-only 同步脚本
+   *  castVoices——与「角色配音·Casting」面板同一套数据，批量配音按角色套用。 */
+  voiceModel?: string;
+  voiceId?: string;
   /** library: 入库类型——person=角色库、scene=场景库。 */
   libraryKind?: "person" | "scene";
   /** library: 库条目名称（用户指定原文，如「李宁」「足球场」），入库后可 @名称 引用。 */

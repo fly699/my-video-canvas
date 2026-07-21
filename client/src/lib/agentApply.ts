@@ -7,6 +7,7 @@ import { isConnectionValid, defaultTargetHandle } from "./connectionRules";
 import { charDisplayName, libraryOverlayByName, type CharacterImportMode } from "./characterConditioning";
 import { assembleFromStoryboards, assembledPlanToMergePatch } from "./storyboardGen";
 import type { NodeType, NodeData, AgentOperation, WorkflowParamBinding, CharacterNodeData, CharacterKind } from "../../../shared/types";
+import { isValidDubbingVoice, dubbingVoiceLabel } from "../../../shared/dubbingVoices";
 
 /** 边去重 key 的分隔符：用 NUL（节点 id 里绝不会出现，防拼接碰撞）。以转义写出而非裸字节，
  *  避免源文件被 git 当二进制（裸 0x00 会让 diff/grep 失效）。种子与查重两侧必须用同一分隔符——
@@ -62,6 +63,8 @@ export interface ApplyResult {
   /** #285 被确定性合并到画布已有同名角色的 create 数（LLM 重复建角色 → 复用已有节点，
    *  不新建、不重新定妆）。供 UI 透明反馈「已复用 N 个已有角色」。 */
   reusedCharacters: number;
+  /** #295 本批锁定的角色音色（「陈默 → 瑞秋 Rachel·女声·旁白（ElevenLabs v3 TTS）」），反馈行展示。 */
+  voiceLocks: string[];
 }
 
 const COMFY_NODE_TYPES = new Set<string>(["comfyui_image", "comfyui_video", "comfyui_workflow"]);
@@ -328,7 +331,7 @@ export function applyAgentOperations(
   // would create a dangling edge, and an illegal pairing would bypass the rules.
   const liveIds = new Set(store.nodes.map((n) => n.id));
   const typeById = new Map<string, NodeType>(store.nodes.map((n) => [n.id, n.data.nodeType as NodeType]));
-  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, canvasActions: 0, failures: [], touchedIds: [], createdIds: [], autoLinkedChars: 0, reusedCharacters: 0 };
+  const res: ApplyResult = { created: 0, connected: 0, updated: 0, deleted: 0, canvasActions: 0, failures: [], touchedIds: [], createdIds: [], autoLinkedChars: 0, reusedCharacters: 0, voiceLocks: [] };
   const fail = (index: number, op: AgentOperation, reason: string) => {
     op.status = "failed"; op.error = reason;
     res.failures.push({ index, op: op.op, reason });
@@ -917,6 +920,35 @@ export function applyAgentOperations(
           op.status = "applied";
           res.deleted++;
         } else if (op.op === "canvas") {
+          // #295 set_voice：锁定角色音色——显式用户指令，直接覆盖旧档案（刻意不受复用
+          // fill-only 保护约束：那套保护针对 LLM 初始化误覆盖，这里是用户点名要改）。
+          // 写入角色节点声音档案（voiceModel/voiceId，与「角色配音·Casting」同一数据），
+          // 并 fill-only 同步各脚本节点 castVoices（脚本上已有该角色的分配是更具体的
+          // 用户设置，不覆盖——批量配音本就按「脚本表优先、角色档案兜底」读取）。
+          if (op.action === "set_voice") {
+            const st2 = useCanvasStore.getState();
+            let target = resolve(op.targetRef);
+            if (!target || !st2.nodes.some((n) => n.id === target && n.data.nodeType === "character")) {
+              // 引用没解析到角色节点 → 按角色显示名匹配（用户口语「把陈默的音色…」给的是名字）
+              const wanted = String(op.targetRef ?? "").trim();
+              const byName = st2.nodes.find((n) => n.data.nodeType === "character" && charDisplayName(n.data.payload as CharacterNodeData) === wanted);
+              target = byName?.id;
+            }
+            if (!target) { fail(index, op, `未找到要锁音色的角色（${String(op.targetRef)}）——targetRef 可用角色节点 id/短号或角色名`); return; }
+            if (!isValidDubbingVoice(op.voiceModel, op.voiceId)) { fail(index, op, `音色不合法（${String(op.voiceModel)} / ${String(op.voiceId)}），必须取自配音音色清单`); return; }
+            const charName = charDisplayName(useCanvasStore.getState().nodes.find((n) => n.id === target)!.data.payload as CharacterNodeData) || "角色";
+            store.updateNodeData(target, { voiceModel: op.voiceModel, voiceId: op.voiceId } as Partial<NodeData>, true);
+            for (const sn of useCanvasStore.getState().nodes.filter((n) => n.data.nodeType === "script")) {
+              const sp = sn.data.payload as { castVoices?: Record<string, { model: string; voice: string }> };
+              if (sp.castVoices?.[charName]) continue;
+              store.updateNodeData(sn.id, { castVoices: { ...(sp.castVoices ?? {}), [charName]: { model: op.voiceModel!, voice: op.voiceId! } } } as Partial<NodeData>, true);
+            }
+            res.voiceLocks.push(`${charName} → ${dubbingVoiceLabel(op.voiceModel!, op.voiceId!)}`);
+            res.touchedIds.push(target);
+            op.status = "applied";
+            res.canvasActions++;
+            return;
+          }
           // #112 画布级动作。失败原因（如非创意模式）走统一 failures 通道。
           // #266 传入整个 op + resolve：assemble/run_node 需要 targetRef（可为本批 tempId）。
           const err = runCanvasAction(op, resolve);
@@ -1086,7 +1118,8 @@ const SUMMARY_FIELDS: Partial<Record<NodeType, string[]>> = {
   audio: ["audioCategory", "ttsText", "musicPrompt"],
   note: ["content"],
   // 角色：此前完全缺失——智能体看不到已建角色，跨镜一致性/后续编辑无从协调。
-  character: ["characterKind", "name", "role", "appearance", "outfit", "signature", "sceneName", "sceneDescription"],
+  // #295 voiceModel/voiceId：已锁音色对助手可见（增量编辑不重复锁、答疑能报当前音色）。
+  character: ["characterKind", "name", "role", "appearance", "outfit", "signature", "sceneName", "sceneDescription", "voiceModel", "voiceId"],
 };
 
 /**
