@@ -279,7 +279,7 @@ export const SubtitleMotionNode = memo(function SubtitleMotionNode({ id, selecte
                 </div>
                 <div className="flex flex-col gap-1 max-h-48 overflow-y-auto nodrag">
                   {payload.entries!.map((entry, i) => (
-                    <div key={i} className="flex items-start gap-1.5 p-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                    <div key={i} className="flex flex-shrink-0 items-start gap-1.5 p-2 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
                       <div className="flex flex-col gap-0.5 flex-shrink-0" style={{ width: 88 }}>
                         <input type="number" min={0} step={0.1} value={entry.start.toFixed(2)}
                           onChange={(e) => handleUpdateEntry(i, { start: Number(e.target.value) })}

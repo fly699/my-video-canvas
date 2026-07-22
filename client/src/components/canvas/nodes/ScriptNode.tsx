@@ -1168,7 +1168,7 @@ export const ScriptNode = memo(function ScriptNode({ id, selected, data }: Props
                   {moodBoardResult.length > 0 && (
                     <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto nodrag nowheel">
                       {moodBoardResult.map((scene, i) => (
-                        <div key={`${scene.sceneIndex}-${i}`} className="p-2.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
+                        <div key={`${scene.sceneIndex}-${i}`} className="flex-shrink-0 p-2.5 rounded-lg" style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}>
                           <div className="flex items-center gap-1.5 mb-1.5">
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold" style={{ background: ADV_ACCENT_A(0.15), color: ADV_ACCENT }}>场景{scene.sceneIndex}</span>
                             <span style={{ fontSize: 10, fontWeight: 600, color: "var(--c-t2)" }}>{scene.sceneTitle}</span>
