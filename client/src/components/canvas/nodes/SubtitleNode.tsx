@@ -18,6 +18,7 @@ import { useDisabledModels } from "@/lib/useDisabledModels";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { Captions, Loader2, Download, RotateCcw, Mic2, Plus, Trash2, X } from "lucide-react";
 import { buildShotSubtitles } from "@/lib/shotSubtitles";
+import { shiftSubtitleEntries, DEFAULT_ASR_TIMING_OFFSET } from "@/lib/subtitleTiming";
 
 interface Props {
   id: string;
@@ -112,13 +113,17 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   const transcribeMutation = trpc.subtitle.transcribe.useMutation({
     onSuccess: (result) => {
       if (abandonedRef.current) return;
+      // #334 ASR 时间补偿：Whisper 段级 start 系统性偏早，转录落地时套用当前微调值
+      //（首次=默认补偿；用户已调过则沿用其设置）。读最新 store 快照避免闭包 payload 陈旧。
+      const curOff = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as SubtitleNodeData | undefined)?.timingOffsetSec ?? DEFAULT_ASR_TIMING_OFFSET;
       update({
-        entries: result.entries,
+        entries: shiftSubtitleEntries(result.entries, curOff),
+        timingOffsetSec: curOff,
         language: result.language,
         status: "done",
         errorMessage: undefined,
       });
-      toast.success(`转录完成，共 ${result.entries.length} 条字幕，语言：${result.language}`);
+      toast.success(`转录完成，共 ${result.entries.length} 条字幕，语言：${result.language}（已套时间微调 ${curOff >= 0 ? "+" : ""}${curOff}s，可在下方调整）`);
     },
     onError: (err) => {
       if (abandonedRef.current) return;
@@ -242,6 +247,18 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
   const handleDeleteEntry = (index: number) => {
     const entries = (payload.entries ?? []).filter((_, i) => i !== index);
     update({ entries });
+  };
+
+  // #334 字幕时间微调：把当前所有条目按【增量】平移到目标偏移（entries 已烘焙偏移，
+  // timingOffsetSec 记录当前值）。正=延后（补偿 Whisper 提前）/负=提前。夹到 ±10s。
+  const timingOffset = payload.timingOffsetSec ?? 0;
+  const setTimingOffset = (next: number) => {
+    const clamped = Math.round(Math.max(-10, Math.min(10, next)) * 100) / 100;
+    if (clamped === timingOffset) return;
+    update({
+      entries: shiftSubtitleEntries(payload.entries ?? [], clamped - timingOffset),
+      timingOffsetSec: clamped,
+    });
   };
 
   // 只看持久化 status——两条链路都会同步先置状态；并上 isPending 会让
@@ -370,6 +387,21 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                     <X style={{ width: 8, height: 8 }} />
                     清空
                   </button>
+                </div>
+                {/* #334 字幕时间微调：整体平移所有条目时间（补偿识别提前/滞后）。正=延后。 */}
+                <div className="nodrag flex items-center gap-1.5" title="识别字幕整体偏早/偏晚时，用此把全部字幕时间往后（+）或往前（−）平移对齐语音。正值延后出现——补偿 Whisper 时间戳提前。从镜头表确定性生成的字幕通常无需调整。">
+                  <span style={{ fontSize: 9.5, color: "var(--c-t3)", flexShrink: 0 }}>时间微调</span>
+                  <button onClick={() => setTimingOffset(timingOffset - 0.1)} className="nodrag flex items-center justify-center rounded" style={{ width: 20, height: 18, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>−</button>
+                  <input
+                    type="number" step={0.1} value={timingOffset}
+                    onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setTimingOffset(v); }}
+                    className="nodrag" style={{ ...fieldStyle, width: 58, padding: "2px 6px", fontSize: 10, fontFamily: "monospace", textAlign: "center" }}
+                  />
+                  <button onClick={() => setTimingOffset(timingOffset + 0.1)} className="nodrag flex items-center justify-center rounded" style={{ width: 20, height: 18, background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>＋</button>
+                  <span style={{ fontSize: 9.5, color: "var(--c-t4)", flexShrink: 0 }}>秒（正=延后）</span>
+                  {timingOffset !== 0 && (
+                    <button onClick={() => setTimingOffset(0)} className="nodrag rounded" style={{ fontSize: 9, padding: "1px 6px", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t4)", cursor: "pointer" }}>归零</button>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1 max-h-48 overflow-y-auto nodrag">
                   {payload.entries!.map((entry, i) => {
