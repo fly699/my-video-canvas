@@ -513,6 +513,19 @@ function CanvasInner({ projectId }: { projectId: number }) {
   const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
   // #329 连线样式面板开关（按钮在底部工具条，data-tb-sec 收缩隐藏）
   const [showEdgeStylePanel, setShowEdgeStylePanel] = useState(false);
+  const edgeStylePanelRef = useRef<HTMLDivElement | null>(null);
+  // 外点关闭：不能用工具条内的全屏遮罩——它被困在 .canvas-bottombar 的堆叠上下文
+  // （z-20）里，会被空态卡等更高层盖住吃掉点击；且 pointerdown 冒泡到工具条会被
+  // 拖拽起手 preventDefault 吞掉 click。改用 document 捕获阶段监听，层级无关。
+  useEffect(() => {
+    if (!showEdgeStylePanel) return;
+    const onDown = (e: PointerEvent) => {
+      if (edgeStylePanelRef.current?.contains(e.target as Node)) return;
+      setShowEdgeStylePanel(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [showEdgeStylePanel]);
   const edgeStylePrefs = useEdgeStyleStore((s) => s.prefs);
   // Keep --c-canvas in sync with the picker so all components using
   // var(--c-canvas) (node borders, inset previews, vignette) match the
@@ -3494,7 +3507,7 @@ function CanvasInner({ projectId }: { projectId: number }) {
 
             {/* #329 连线样式：线宽档位 + 颜色，按模式（创意/专业/工作室）各存一份，
                 各模式现状即「默认」。标 data-tb-sec → 收缩工具条时隐藏。 */}
-            <div style={{ position: "relative", flexShrink: 0 }} data-tb-sec>
+            <div ref={edgeStylePanelRef} style={{ position: "relative", flexShrink: 0 }} data-tb-sec>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -3514,9 +3527,11 @@ function CanvasInner({ projectId }: { projectId: number }) {
                 const pref = edgeStylePrefs[modeKey];
                 return (
                   <>
-                    {/* 点击面板外关闭 */}
-                    <div style={{ position: "fixed", inset: 0, zIndex: 48 }} onClick={() => setShowEdgeStylePanel(false)} />
-                    <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)", zIndex: 49,
+                    {/* 外点关闭走 document 捕获监听（见 showEdgeStylePanel 的 effect）。
+                        面板在工具条 DOM 内：pointerdown 必须 stopPropagation，否则冒泡到
+                        工具条的拖拽起手 preventDefault 会吞掉 click 并误拖工具条。 */}
+                    <div onPointerDown={(e) => e.stopPropagation()}
+                      style={{ position: "absolute", bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)", zIndex: 49,
                       width: 232, padding: "10px 12px", borderRadius: 12, background: "var(--c-overlay, var(--c-base))",
                       border: "1px solid var(--c-bd3)", boxShadow: "0 12px 34px rgba(0,0,0,0.35)" }}>
                       <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t4)", letterSpacing: "0.04em", marginBottom: 7 }}>
