@@ -425,3 +425,43 @@ describe("agentCatalog.modelKnowledgeText · A3 批2 编辑模式精简清单（
     expect(modelKnowledgeText({})).toBe(modelKnowledgeText());
   });
 });
+
+import { dedupDialogueLines } from "./_core/agentCatalog";
+
+describe("#330 分镜对白去重（保守口径：只压相邻重复，绝不丢对白）", () => {
+  it("相邻 trim 后一字不差的重复行只保留一行（含三连、含尾空格差异）", () => {
+    expect(dedupDialogueLines("陈默：我们走。\n陈默：我们走。\n林晚：好。")).toBe("陈默：我们走。\n林晚：好。");
+    expect(dedupDialogueLines("旁白：夜色渐深。\n旁白：夜色渐深。 \n旁白：夜色渐深。")).toBe("旁白：夜色渐深。");
+  });
+  it("【对白不丢守卫】隔行复读原样保留（戏剧呼应不删）", () => {
+    const d = "甲：住手！\n乙：放开我！\n甲：住手！";
+    expect(dedupDialogueLines(d)).toBe(d);
+    const d2 = "陈默：我们走。\n林晚：好。\n陈默：我们走。";
+    expect(dedupDialogueLines(d2)).toBe(d2);
+  });
+  it("【对白不丢守卫】同一行内复读、不同台词、空行隔开的相同行均原样保留", () => {
+    const d = "陈默：救命！救命！\n陈默：有人吗？\n林晚：我在这。";
+    expect(dedupDialogueLines(d)).toBe(d);
+    const d2 = "甲：一。\n\n甲：一。";
+    expect(dedupDialogueLines(d2)).toBe(d2);
+  });
+  it("create storyboard：相邻重复经去重后落地", () => {
+    const r = sanitizeOperation({ op: "create", nodeType: "storyboard", payload: { sceneNumber: 1, description: "d", promptText: "p", dialogue: "甲：你好。\n甲：你好。" } });
+    expect(r).not.toBeNull();
+    expect((r as { payload: { dialogue: string } }).payload.dialogue).toBe("甲：你好。");
+  });
+  it("update：同口径去重；非 storyboard create 的 dialogue 被字段白名单剥除", () => {
+    const u = sanitizeOperation({ op: "update", targetRef: "n7", payload: { dialogue: "乙：走吧。\n乙：走吧。\n甲：等等。" } });
+    expect((u as { payload: { dialogue: string } }).payload.dialogue).toBe("乙：走吧。\n甲：等等。");
+    const c = sanitizeOperation({ op: "create", nodeType: "prompt", payload: { positivePrompt: "x", dialogue: "甲：a。\n甲：a。" } });
+    expect((c as { payload: Record<string, unknown> }).payload.dialogue).toBeUndefined();
+  });
+  it("跨镜同句互不干扰（两个 create 各自保留同一句）+ 无重复对白逐字不变", () => {
+    const mk = () => sanitizeOperation({ op: "create", nodeType: "storyboard", payload: { dialogue: "旁白：雨夜。" } });
+    expect((mk() as { payload: { dialogue: string } }).payload.dialogue).toBe("旁白：雨夜。");
+    expect((mk() as { payload: { dialogue: string } }).payload.dialogue).toBe("旁白：雨夜。");
+    const d = "陈默：今晚行动。\n林晚：收到。\n旁白：雨越下越大。";
+    const r = sanitizeOperation({ op: "create", nodeType: "storyboard", payload: { dialogue: d } });
+    expect((r as { payload: { dialogue: string } }).payload.dialogue).toBe(d);
+  });
+});
