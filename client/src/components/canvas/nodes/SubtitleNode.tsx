@@ -115,7 +115,11 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
       if (abandonedRef.current) return;
       // #334 ASR 时间补偿：Whisper 段级 start 系统性偏早，转录落地时套用当前微调值
       //（首次=默认补偿；用户已调过则沿用其设置）。读最新 store 快照避免闭包 payload 陈旧。
-      const curOff = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as SubtitleNodeData | undefined)?.timingOffsetSec ?? DEFAULT_ASR_TIMING_OFFSET;
+      // #335 词级收紧：服务端已用 words[] 把每段起点对齐真实开口（wordAligned=true），此时
+      // 起点已准确，首次默认补偿改为 0（不再整体后移）；无词级数据时仍用默认补偿兜底。
+      const existingOff = (useCanvasStore.getState().nodes.find((n) => n.id === id)?.data.payload as SubtitleNodeData | undefined)?.timingOffsetSec;
+      const defaultOff = result.wordAligned ? 0 : DEFAULT_ASR_TIMING_OFFSET;
+      const curOff = existingOff ?? defaultOff;
       update({
         entries: shiftSubtitleEntries(result.entries, curOff),
         timingOffsetSec: curOff,
@@ -123,7 +127,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
         status: "done",
         errorMessage: undefined,
       });
-      toast.success(`转录完成，共 ${result.entries.length} 条字幕，语言：${result.language}（已套时间微调 ${curOff >= 0 ? "+" : ""}${curOff}s，可在下方调整）`);
+      toast.success(`转录完成，共 ${result.entries.length} 条字幕，语言：${result.language}${result.wordAligned ? "（已按词级时间戳收紧每句起点）" : `（已套时间微调 ${curOff >= 0 ? "+" : ""}${curOff}s，可在下方调整）`}`);
     },
     onError: (err) => {
       if (abandonedRef.current) return;

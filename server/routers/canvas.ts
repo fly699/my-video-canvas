@@ -84,6 +84,7 @@ import { synthesizeGradioTTS } from "../_core/gradioTTS";
 import { resolveVoxcpmBaseUrl, voxcpmDefaultSource } from "../_core/voxcpmConfig";
 import { trimVideo, getVideoDuration, mergeVideos, burnSubtitles, generateSRT, overlayVideo, assertSafeUrl, burnAssSubtitles, smartCutVideo, detectSceneChanges, detectSilences, extractFrame, extractAudio, concatAudioSegments, processAudioClip } from "../_core/videoEditor";
 import { transcribeAudio } from "../_core/voiceTranscription";
+import { alignSegmentsToWords } from "../_core/subtitleWordAlign";
 import { VIDEO_PROVIDERS, IMAGE_GEN_MODELS } from "../../shared/types";
 import type { SubtitleEntry } from "../../shared/types";
 import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyuiCloudAllowed, isComfyuiCloudAllowed } from "../_core/whitelist";
@@ -3574,7 +3575,9 @@ export const subtitleRouter = router({
       // dedupe by that triple — repeated submits during the long call collapse.
       guardUrl(input.audioUrl);
       return dedupe("subtitle.transcribe", ctx.user.id, input, async () => {
-        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model });
+        // #335 请求词级时间戳：用于把每段起点收紧到「段内首词开口」，消除段内前导静音
+        // 造成的字幕提前（whisper-1 返回 words[]；非 whisper 模型返回空则自动退回段级）。
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model, wordTimestamps: true });
         if ("error" in result) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         }
@@ -3582,17 +3585,16 @@ export const subtitleRouter = router({
         // 崩 500。改为可读业务错误，引导换用支持时间戳的模型。
         const segs = result.segments ?? [];
         if (segs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "该转写模型未返回时间戳段落，无法生成字幕；请改用支持段级时间戳的模型（如 whisper-1）" });
-        const entries: SubtitleEntry[] = segs.map((s) => ({
-          start: s.start,
-          end: s.end,
-          text: s.text.trim(),
-        }));
+        // #335 词级收紧：wordAligned=true 表示确实用词数据收紧了至少一段（起点已对齐真实
+        // 开口，无需再套默认 ASR 补偿）；无 words 时退回段级、置 false，前端仍用默认补偿。
+        const { entries: aligned, wordAligned } = alignSegmentsToWords(segs, result.words);
+        const entries: SubtitleEntry[] = aligned;
         writeAuditLog({
           ctx,
           action: "subtitle_transcribe",
-          detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length },
+          detail: { audioUrl: truncate(input.audioUrl, 200), language: result.language, segmentCount: entries.length, wordAligned },
         });
-        return { entries, fullText: result.text, language: result.language };
+        return { entries, fullText: result.text, language: result.language, wordAligned };
       });
     }),
 
@@ -3639,14 +3641,16 @@ export const subtitleMotionRouter = router({
       await assertWhitelisted(ctx);
       guardUrl(input.audioUrl);
       return dedupe("subtitleMotion.transcribe", ctx.user.id, input, async () => {
-        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model });
+        // #335 词级收紧（与 subtitle.transcribe 同口径）：请求 words[]，把每段起点对齐真实开口。
+        const result = await transcribeAudio({ audioUrl: input.audioUrl, language: input.language, model: input.model, wordTimestamps: true });
         if ("error" in result) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
         const segs = result.segments ?? [];
         if (segs.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "该转写模型未返回时间戳段落，无法生成字幕；请改用支持段级时间戳的模型（如 whisper-1）" });
-        const entries: SubtitleEntry[] = segs.map((s) => ({ start: s.start, end: s.end, text: s.text.trim() }));
+        const { entries: aligned, wordAligned } = alignSegmentsToWords(segs, result.words);
+        const entries: SubtitleEntry[] = aligned;
         // #73 纳管审计：动态字幕转写此前无审计记录（subtitle.transcribe 的孪生入口，口径对齐）
-        writeAuditLog({ ctx, action: "subtitle_transcribe", detail: { model: input.model ?? "default", entries: entries.length, kind: "motion", success: true } });
-        return { entries, fullText: result.text, language: result.language };
+        writeAuditLog({ ctx, action: "subtitle_transcribe", detail: { model: input.model ?? "default", entries: entries.length, kind: "motion", success: true, wordAligned } });
+        return { entries, fullText: result.text, language: result.language, wordAligned };
       });
     }),
 
