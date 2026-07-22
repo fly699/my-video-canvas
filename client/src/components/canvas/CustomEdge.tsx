@@ -145,12 +145,10 @@ export const CustomEdge = memo(function CustomEdge({
 
   // Colored by source node type; idle lines are slightly translucent so the
   // canvas feels lighter, hover/selected go solid for clear emphasis.
-  // #328 创意模式：纯墨线 → 「墨线掺 38% 源节点类型色」的低调调和色——不同来源的
-  // 连线有含蓄的色彩区分（图像/视频/脚本…各随其源节点色相），但饱和度被墨底压住、
-  // 不抢画面；无类型色时回退纯墨线。透明度经 strokeOpacity 单独分态控制（见下）。
-  const creativeInk = typeColor
-    ? `color-mix(in oklch, ${typeColor} 38%, oklch(${inkBase}))`
-    : `oklch(${inkBase})`;
+  // #328b 创意模式：纯墨线（用户复核后去掉了类型色调和——试过掺 38% 源节点色，
+  // 反馈还是不要颜色）。深色皮肤近白墨、浅色皮肤深墨；透明度经 strokeOpacity
+  // 单独分态控制（见下），静止态清晰度维持 #328 的提升不回退。
+  const creativeInk = `oklch(${inkBase})`;
   const strokeColor = sourceCompleted
     ? "oklch(0.64 0.22 155 / 0.9)"
     : sourceFailed
@@ -167,9 +165,10 @@ export const CustomEdge = memo(function CustomEdge({
   // 创意模式分态透明度：静止低调、hover 提亮、选中近实；浅底整体高一档（浅底更吃对比）。
   const creativeOpacity = selected ? 1 : hovered ? (isCreativeLight ? 0.9 : 0.85) : (isCreativeLight ? 0.62 : 0.55);
 
-  // #328 创意模式整体加粗一档（1.6→2.2，hover/选中同步上调）——用户反馈原线偏细。
+  // #328b 创意模式线宽定格 1.8（原 1.25 偏细 → 2.2 用户反馈偏粗 → 取中），
+  // hover/选中同步分档。
   const strokeWidth = isCreative
-    ? selected ? 3 : hovered ? 2.6 : 2.2
+    ? selected ? 2.6 : hovered ? 2.2 : 1.8
     : isStudio
       ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
       : selected ? 3.5 : hovered ? 2.75 : 2;
