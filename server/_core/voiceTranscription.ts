@@ -216,7 +216,12 @@ async function transcribeLocalFile(
     if (looksLikeAVContainer(header)) {
       audioTemp = `${srcTemp}.mp3`;
       try {
-        await execFileAsync("ffmpeg", ["-y", "-protocol_whitelist", "file,crypto,data", "-i", srcTemp, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
+        // #333 时间轴保真：合并成片/云端生成的视频常见「音频流 start_time > 0」（起始
+        // 延迟）——默认抽音会把音频平移到 0 开头、丢掉这段偏移，Whisper 时间戳随之整体
+        // 提前（用户实报字幕不同步、提前数秒）。aresample=first_pts=0 按输入时间轴在
+        // 开头补等长静音，抽出音频与播放器语义对齐；无偏移的普通视频逐样本不变
+        //（真机 beep 标记视频量化验证：延迟 3s 容器 beep@13/43 保真，基准 10/40 不变）。
+        await execFileAsync("ffmpeg", ["-y", "-protocol_whitelist", "file,crypto,data", "-i", srcTemp, "-vn", "-af", "aresample=first_pts=0", "-ac", "1", "-ar", "16000", "-b:a", "64k", "-f", "mp3", audioTemp], { timeoutMs: 180000 });
         const audioBuf = await fs.readFile(audioTemp);
         if (!audioBuf.length) throw new Error("提取到空音频（源可能无音轨）");
         const sizeMB = audioBuf.length / (1024 * 1024);

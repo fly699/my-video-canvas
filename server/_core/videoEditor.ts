@@ -543,7 +543,10 @@ export async function extractAudio(opts: { inputUrl: string }): Promise<{ url: s
   const inputPath = await downloadToTemp(opts.inputUrl, "mp4");
   const outPath = path.join(os.tmpdir(), `audio-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
   try {
-    await execFileAsync("ffmpeg", ["-i", inputPath, "-vn", "-acodec", "libmp3lame", "-b:a", "192k", "-y", outPath]);
+    // #333 与转录抽音同理：音频流 start_time>0 的容器（合并/云端生成产物）默认抽音会
+    // 丢起始偏移，分离出的音频与原视频对位时整体前移。first_pts=0 按输入时间轴补前置
+    // 静音，与播放器语义对齐；无偏移视频逐样本不变。
+    await execFileAsync("ffmpeg", ["-i", inputPath, "-vn", "-af", "aresample=first_pts=0", "-acodec", "libmp3lame", "-b:a", "192k", "-y", outPath]);
     const buf = await fs.readFile(outPath);
     if (buf.length < 200) throw new Error("视频不含音轨或音轨为空");
     await assertObjectStorageWritable();
