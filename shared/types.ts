@@ -1038,6 +1038,9 @@ export interface SubtitleNodeData {
   burnInEnabled?: boolean;
   fontSize?: number;             // 14–36, default 22
   fontColor?: string;            // CSS color, default "white"
+  /** #334 已套用的字幕时间微调（秒，正=延后）。补偿 Whisper 段级时间戳提前偏差；
+   *  entries 已烘焙此偏移，本字段仅记录当前值供 UI 增量调整。 */
+  timingOffsetSec?: number;
 }
 
 export type OverlayMode = "watermark" | "pip" | "color_correction";
