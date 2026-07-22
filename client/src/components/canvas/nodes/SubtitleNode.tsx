@@ -377,7 +377,7 @@ export const SubtitleNode = memo(function SubtitleNode({ id, selected, data }: P
                     return (
                     <div
                       key={i}
-                      className="flex items-start gap-1.5 p-2 rounded-lg"
+                      className="flex flex-shrink-0 items-start gap-1.5 p-2 rounded-lg"
                       style={{ background: "var(--c-input)", border: "1px solid var(--c-bd1)" }}
                     >
                       <div className="flex flex-col gap-0.5 flex-shrink-0" style={{ width: 88 }}>
