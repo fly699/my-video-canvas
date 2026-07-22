@@ -152,6 +152,7 @@ import {
   Lightbulb,
   Clapperboard,
   Spline,
+  Waypoints,
   MessageSquare,
   Sparkles,
   MoreHorizontal,
@@ -174,6 +175,7 @@ import {
 } from "lucide-react";
 import { loadNamedSnapshots, type NamedSnapshot } from "../hooks/useCanvasStore";
 import { usePerfStore, selectPerfLite, PERF_MODE_LABEL, PERF_MODE_ORDER } from "../lib/perfMode";
+import { useEdgeStyleStore, EDGE_WIDTH_OPTIONS, EDGE_COLOR_OPTIONS, MODE_LABEL, type EdgeStyleModeKey } from "../hooks/useEdgeStyleStore";
 import { usePerfSentinel } from "../hooks/usePerfSentinel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -509,6 +511,9 @@ function CanvasInner({ projectId }: { projectId: number }) {
     "ui:panel:timeline:v1", false, { validate: validateBool, crossTab: false },
   );
   const [canvasBg, setCanvasBg] = useState<CanvasBg>(() => loadCanvasBg());
+  // #329 连线样式面板开关（按钮在底部工具条，data-tb-sec 收缩隐藏）
+  const [showEdgeStylePanel, setShowEdgeStylePanel] = useState(false);
+  const edgeStylePrefs = useEdgeStyleStore((s) => s.prefs);
   // Keep --c-canvas in sync with the picker so all components using
   // var(--c-canvas) (node borders, inset previews, vignette) match the
   // user-chosen background color. In "follow theme" mode we must NOT set an
@@ -3486,6 +3491,74 @@ function CanvasInner({ projectId }: { projectId: number }) {
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">特效广场（运镜 / 画风特效 / 工作流）</TooltipContent>
             </Tooltip>
+
+            {/* #329 连线样式：线宽档位 + 颜色，按模式（创意/专业/工作室）各存一份，
+                各模式现状即「默认」。标 data-tb-sec → 收缩工具条时隐藏。 */}
+            <div style={{ position: "relative", flexShrink: 0 }} data-tb-sec>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setShowEdgeStylePanel((v) => !v)}
+                    className="w-7 h-7 rounded-xl flex items-center justify-center transition-all flex-shrink-0"
+                    style={{ color: showEdgeStylePanel ? "oklch(0.72 0.18 285)" : "var(--c-t3)" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--c-bd1)"; (e.currentTarget as HTMLElement).style.color = "var(--c-t1)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = showEdgeStylePanel ? "oklch(0.72 0.18 285)" : "var(--c-t3)"; }}
+                  >
+                    <Waypoints className="w-4 h-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">连线样式（线宽 / 颜色，每个模式各自记住）</TooltipContent>
+              </Tooltip>
+              {showEdgeStylePanel && (() => {
+                const modeKey: EdgeStyleModeKey = canvasMode === "creative" ? "creative" : uiStyle === "studio" ? "studio" : "pro";
+                const pref = edgeStylePrefs[modeKey];
+                return (
+                  <>
+                    {/* 点击面板外关闭 */}
+                    <div style={{ position: "fixed", inset: 0, zIndex: 48 }} onClick={() => setShowEdgeStylePanel(false)} />
+                    <div style={{ position: "absolute", bottom: "calc(100% + 10px)", left: "50%", transform: "translateX(-50%)", zIndex: 49,
+                      width: 232, padding: "10px 12px", borderRadius: 12, background: "var(--c-overlay, var(--c-base))",
+                      border: "1px solid var(--c-bd3)", boxShadow: "0 12px 34px rgba(0,0,0,0.35)" }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--c-t4)", letterSpacing: "0.04em", marginBottom: 7 }}>
+                        连线样式 · {MODE_LABEL[modeKey]}（各模式独立记住）
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "var(--c-t3)", marginBottom: 4 }}>线宽</div>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 9 }}>
+                        {EDGE_WIDTH_OPTIONS.map((o) => {
+                          const on = pref.width === o.v;
+                          return (
+                            <button key={o.label} onClick={() => useEdgeStyleStore.getState().setWidth(modeKey, o.v)}
+                              style={{ fontSize: 11, padding: "3px 9px", borderRadius: 7, cursor: "pointer",
+                                border: `1px solid ${on ? "oklch(0.70 0.20 310 / 0.55)" : "var(--c-bd2)"}`,
+                                background: on ? "oklch(0.70 0.20 310 / 0.14)" : "transparent",
+                                color: on ? "var(--c-t1)" : "var(--c-t3)" }}>
+                              {o.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "var(--c-t3)", marginBottom: 4 }}>颜色</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {EDGE_COLOR_OPTIONS.map((o) => {
+                          const on = pref.color === o.v;
+                          return (
+                            <button key={o.label} title={o.label} onClick={() => useEdgeStyleStore.getState().setColor(modeKey, o.v)}
+                              style={{ width: 20, height: 20, borderRadius: 10, cursor: "pointer", position: "relative",
+                                border: on ? "2px solid oklch(0.70 0.20 310)" : "1.5px solid var(--c-bd3)",
+                                background: o.v ?? "transparent" }}>
+                              {/* 「默认」项：斜杠圆圈表示跟随模式默认 */}
+                              {o.v === null && (
+                                <span style={{ position: "absolute", left: 2, right: 2, top: "50%", height: 1.5, background: "var(--c-t4)", transform: "rotate(-45deg)" }} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
 
             {/* LibTV 化 2.4：资产管理左栏开关（画布大纲 + 资产双 tab）。
                 常用入口：不标 data-tb-sec，收缩工具条时保留。 */}
