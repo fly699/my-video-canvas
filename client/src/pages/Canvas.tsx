@@ -458,9 +458,14 @@ function CanvasInner({ projectId }: { projectId: number }) {
   // 边界节点反复挂载/卸载 + 图片重解码。节点少时代价 > 收益——手机真实反馈「流畅模式反而更慢」
   // 正是这个反噬。阈值 30：小画布 lite 只保留 CSS/3D 降级，大画布才叠加裁剪。
   const perfNodeCount = useCanvasStore((s) => s.nodes.length);
-  // #324 裁剪扩围：>30 节点时 auto/lite 档都裁剪视口外节点（原先仅 lite 档）。
-  // quality 档尊重「永不降档」契约维持全量渲染；≤30 节点不裁剪（#94：少节点反噬）。
-  const perfCullOffscreen = perfNodeCount > 30 && perfMode !== "quality";
+  // #324/#327 分档裁剪门槛（用户反馈：40 多节点画布滚出视野的视频回来要重新加载，体验回退）：
+  // - 流畅档（手动/哨兵降档）：>30 就裁——完全是 #81/#94 的老行为；
+  // - 默认/自适应未降档：>60 才裁——中型画布（30~60）恢复全量常驻（视频不再重新加载），
+  //   超大画布仍有裁剪保护；
+  // - 画质档：永不裁剪（「永不降档」契约）。
+  const perfCullOffscreen = perfLite
+    ? perfNodeCount > 30
+    : perfMode !== "quality" && perfNodeCount > 60;
   const [showPromptLib, setShowPromptLib] = usePersistentState<boolean>(
     "ui:panel:promptlib:v1", false, { validate: validateBool, crossTab: false },
   );
