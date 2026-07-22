@@ -53,6 +53,7 @@ import { signUploadToken } from "../_core/uploadToken";
 import { safeUploadMime, SAFE_UPLOAD_MIME_MSG } from "../_core/uploadMime";
 import { getCachedStorageSettings } from "../_core/storageConfig";
 import { getCachedDisabledModels } from "../_core/modelToggles";
+import { dedupDialogueLines } from "../_core/agentCatalog";
 import { getCachedSystemDefaultModels, getSystemDefaultModel } from "../_core/systemDefaultModels";
 import { listBridgeSkills } from "../_core/bridgeSkills";
 import { allSelfHostedModels } from "../_core/selfHostedLlm";
@@ -1650,8 +1651,9 @@ function sceneFieldsInstruction(promptLangName: string, avgDuration: number): st
 - "transition": string — transition INTO the next shot, one of: cut, dissolve, fade, wipe, match-cut. Use "cut" by default.`;
 }
 
-/** Validate + normalize one raw scene object from the LLM into a GeneratedScene. */
-function normalizeScene(raw: Record<string, unknown>, avgDuration: number): GeneratedScene {
+/** Validate + normalize one raw scene object from the LLM into a GeneratedScene.
+ *  （导出仅供单测锁 #330 对白去重接线。） */
+export function normalizeScene(raw: Record<string, unknown>, avgDuration: number): GeneratedScene {
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const cam = str(raw.cameraMovement);
   const durNum = typeof raw.duration === "number" && isFinite(raw.duration) ? Math.round(raw.duration) : avgDuration;
@@ -1665,7 +1667,8 @@ function normalizeScene(raw: Record<string, unknown>, avgDuration: number): Gene
     lens: str(raw.lens) || undefined,
     lighting: str(raw.lighting) || undefined,
     colorGrade: str(raw.colorGrade) || undefined,
-    dialogue: str(raw.dialogue) || undefined,
+    // #330 与助手规划同口径：LLM 产出的对白只压相邻精确重复行（绝不丢词）。
+    dialogue: str(raw.dialogue) ? dedupDialogueLines(str(raw.dialogue)) : undefined,
     sfx: str(raw.sfx) || undefined,
     transition: str(raw.transition) || undefined,
     beatRef: str(raw.beatRef) || (typeof raw.beatRef === "number" ? String(raw.beatRef) : undefined),
@@ -2522,7 +2525,8 @@ strengths 列 2-4 条亮点。summary 写 2-4 句总评。${shortDramaBlock}
           ],
           model: input.model ?? await getSystemDefaultModel("llm"),
         });
-        return { result: extractTextContent(response).trim() };
+        // #330 同口径兜底：优化稿相邻精确重复行压缩（绝不丢词，见 dedupDialogueLines）。
+        return { result: dedupDialogueLines(extractTextContent(response).trim()) };
       });
     }),
 
