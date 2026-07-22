@@ -11,6 +11,7 @@ import { getNodeConfig } from "../../lib/nodeConfig";
 import { Check, X, Trash2, Plus } from "lucide-react";
 import { useEdgeInsert } from "../../hooks/useEdgeInsert";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
+import { useEdgeStyleStore } from "../../hooks/useEdgeStyleStore";
 
 function arrowPoints(tx: number, ty: number, pos: Position, sz: number, hw: number): string {
   if (pos === Position.Left)  return `${tx+sz},${ty-hw} ${tx+sz},${ty+hw} ${tx},${ty}`;
@@ -148,30 +149,43 @@ export const CustomEdge = memo(function CustomEdge({
   // #328b 创意模式：纯墨线（用户复核后去掉了类型色调和——试过掺 38% 源节点色，
   // 反馈还是不要颜色）。深色皮肤近白墨、浅色皮肤深墨；透明度经 strokeOpacity
   // 单独分态控制（见下），静止态清晰度维持 #328 的提升不回退。
-  const creativeInk = `oklch(${inkBase})`;
+  // #329 用户自定义连线样式（底部工具条「连线样式」按钮）：创意/专业/工作室
+  // 三种模式各存一份线宽与颜色偏好，只作用于各自模式；null=跟随该模式内置默认
+  // （即改动前的既有样式）。完成/失败状态色始终优先（功能性反馈不可覆盖）。
+  const edgeModeKey = isCreative ? ("creative" as const) : isStudio ? ("studio" as const) : ("pro" as const);
+  const customWidth = useEdgeStyleStore((s) => s.prefs[edgeModeKey].width);
+  const customColor = useEdgeStyleStore((s) => s.prefs[edgeModeKey].color);
+  const creativeInk = customColor || `oklch(${inkBase})`;
   const strokeColor = sourceCompleted
     ? "oklch(0.64 0.22 155 / 0.9)"
     : sourceFailed
       ? "oklch(0.62 0.24 25 / 0.9)"
       : isCreative
         ? creativeInk
-        : selected
-          ? (typeColor ?? "oklch(0.68 0.24 285)")
-          : hovered
-            ? (typeColor ?? "oklch(0.72 0.18 285)")
-            : typeColor
-              ? `${typeColor}c0`
-              : "oklch(0.68 0.16 260 / 0.75)";
+        : customColor
+          ? customColor // 非创意模式自定义色：替代类型色（透明度经 strokeOpacity 分态）
+          : selected
+            ? (typeColor ?? "oklch(0.68 0.24 285)")
+            : hovered
+              ? (typeColor ?? "oklch(0.72 0.18 285)")
+              : typeColor
+                ? `${typeColor}c0`
+                : "oklch(0.68 0.16 260 / 0.75)";
   // 创意模式分态透明度：静止低调、hover 提亮、选中近实；浅底整体高一档（浅底更吃对比）。
   const creativeOpacity = selected ? 1 : hovered ? (isCreativeLight ? 0.9 : 0.85) : (isCreativeLight ? 0.62 : 0.55);
+  // 非创意模式自定义色的分态透明度（原逻辑靠 hex 拼 alpha，自定义 oklch 色改用 strokeOpacity 等效）。
+  const customColorOpacity = selected ? 1 : hovered ? 0.92 : 0.78;
 
-  // #328c 创意模式线宽回归原始 1.25（用户三轮试后拍板：2.2 粗、1.8 仍偏粗，
-  // 要原始粗细）；hover/选中不加宽，交互反馈全靠透明度分态（下方 strokeOpacity）。
+  // #328c 创意模式线宽默认 1.25（用户三轮试后拍板回原始粗细），hover/选中不加宽
+  // （交互反馈靠透明度分态）；专业/工作室维持原默认与原 hover/选中增幅。
+  // #329 各模式设置了自定义线宽则以其为常态值（非创意保留相对增幅）。
   const strokeWidth = isCreative
-    ? 1.25
-    : isStudio
-      ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
-      : selected ? 3.5 : hovered ? 2.75 : 2;
+    ? (customWidth ?? 1.25)
+    : customWidth != null
+      ? (selected ? customWidth + 1.5 : hovered ? customWidth + 0.75 : customWidth)
+      : isStudio
+        ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
+        : selected ? 3.5 : hovered ? 2.75 : 2;
 
   // ── Particle flow ───────────────────────────────────────────────────────────
   const svgPathId = `pp-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
@@ -227,7 +241,13 @@ export const CustomEdge = memo(function CustomEdge({
           stroke: strokeColor,
           strokeWidth,
           // #328 创意模式透明度分态（原由 index.css !important 锁定，现收归组件）
-          strokeOpacity: isCreative && !sourceCompleted && !sourceFailed ? creativeOpacity : undefined,
+          strokeOpacity: sourceCompleted || sourceFailed
+            ? undefined
+            : isCreative
+              ? creativeOpacity
+              : customColor
+                ? customColorOpacity // #329 非创意自定义色：等效原 hex-alpha 的分态
+                : undefined,
           // Persistent soft glow on every edge so colored lines feel luminous,
           // upgraded for selected / completed / failed states.
           // LibTV（创意）极简：常态不带彩色光晕，只留运行/完成/失败的状态辉光。
