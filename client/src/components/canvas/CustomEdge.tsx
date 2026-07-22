@@ -165,10 +165,10 @@ export const CustomEdge = memo(function CustomEdge({
   // 创意模式分态透明度：静止低调、hover 提亮、选中近实；浅底整体高一档（浅底更吃对比）。
   const creativeOpacity = selected ? 1 : hovered ? (isCreativeLight ? 0.9 : 0.85) : (isCreativeLight ? 0.62 : 0.55);
 
-  // #328b 创意模式线宽定格 1.8（原 1.25 偏细 → 2.2 用户反馈偏粗 → 取中），
-  // hover/选中同步分档。
+  // #328c 创意模式线宽回归原始 1.25（用户三轮试后拍板：2.2 粗、1.8 仍偏粗，
+  // 要原始粗细）；hover/选中不加宽，交互反馈全靠透明度分态（下方 strokeOpacity）。
   const strokeWidth = isCreative
-    ? selected ? 2.6 : hovered ? 2.2 : 1.8
+    ? 1.25
     : isStudio
       ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
       : selected ? 3.5 : hovered ? 2.75 : 2;
