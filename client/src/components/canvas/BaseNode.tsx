@@ -92,6 +92,9 @@ interface BaseNodeProps {
   heroMedia?: React.ReactNode;
   /** 左侧吸附浮层（如参考图预览条带）。渲染在折叠 body 之外，故节点收缩后仍常驻可见。 */
   leftDock?: React.ReactNode;
+  /** #331 常驻提示条（如「提示词台词与对白不一致」黄条）：渲染在失败红条同区、
+   *  折叠 body 之外——节点收缩/创意净卡体下仍可见。 */
+  noticeBar?: React.ReactNode;
   /** 自定义连接桩（用于多桩节点如剪辑）。渲染在折叠 body 之外，与 BaseNode 自带桩同层，
    *  故工作室收缩态 body 折叠后仍可见。配 showHandles={false} 使用（替代默认桩）。 */
   extraHandles?: React.ReactNode;
@@ -196,7 +199,7 @@ export const BaseNode = memo(function BaseNode({
   id, selected, nodeType, title, children,
   minWidth = 280, minHeight = 140, showHandles = true, headerRight, resizable = false,
   onRun, canRun = true, running: nodeRunning = false, hasResult = false,
-  heroMedia, leftDock, extraHandles, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
+  heroMedia, leftDock, noticeBar, extraHandles, borderTint, headerTooltip, hideTypeBadge, capNodeHeight = false, onAssetImageDrop,
   onHeaderHoverChange,
   heroBareHeader,
   onCancelGenerate,
@@ -1981,6 +1984,9 @@ export const BaseNode = memo(function BaseNode({
           )}
         </div>
       )}
+
+      {/* #331 常驻提示条（调用方自渲内容；与失败红条同区，收缩态可见） */}
+      {noticeBar}
 
       {/* ── Hero media (creative mode only, shown via CSS) ── */}
       {hasHero && (

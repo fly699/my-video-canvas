@@ -13,6 +13,30 @@
 //     被当成对白（这些"角色名"不会在对白角色集合里）。
 import { parseDialogueLines } from "./dialogueCasting";
 
+/** #331 提示词台词与对白不一致（用户改了分镜 dialogue、下游视频提示词里的旧台词没同步）。
+ *
+ *  判定口径（防误报第一，与 videoPromptSpeaks 同哲学）：
+ *  - 只在 dialogue 非空时判（没有权威对白就无从谈「不一致」）；
+ *  - 只看提示词里「角色名：台词」格式、且【角色名出现在本镜 dialogue 角色集合里】的行
+ *   （角色集合过滤掉「风格：写实」「运镜：推近」这类参数行——与 #303 辅规则同源）；
+ *  - 该行台词正文 ≥4 字、且【不以子串出现】在当前 dialogue 里 → 视为脱同步的旧台词。
+ *  返回不一致行（"角色：台词" 展示形态）；空数组 = 一致或无可比对行。
+ *  诚实限制：无角色前缀的旁白行与画面描述无法区分，不参与判定（宁可漏报不误报）。 */
+export function videoPromptStaleDialogue(videoPrompt: string | undefined | null, dialogue: string | undefined | null): string[] {
+  const vp = (videoPrompt ?? "").trim();
+  const d = (dialogue ?? "").trim();
+  if (!vp || !d) return [];
+  const roles = new Set(parseDialogueLines(d).map((s) => s.role).filter((r): r is string => r != null));
+  if (roles.size === 0) return [];
+  const out: string[] = [];
+  for (const s of parseDialogueLines(vp)) {
+    if (s.role == null || !roles.has(s.role)) continue;
+    const t = s.text.trim();
+    if (t.length >= 4 && !d.includes(t)) out.push(`${s.role}：${t}`);
+  }
+  return out;
+}
+
 export function videoPromptSpeaks(videoPrompt: string | undefined | null, dialogue: string | undefined | null): boolean {
   const vp = (videoPrompt ?? "").trim();
   const d = (dialogue ?? "").trim();

@@ -20,3 +20,29 @@ describe("#303 videoPromptSpeaks（视频提示词是否会念出这段对白）
     expect(videoPromptSpeaks("有画面。", "")).toBe(false);
   });
 });
+
+import { videoPromptStaleDialogue } from "./voiceConflict";
+
+describe("#331 videoPromptStaleDialogue（提示词台词与对白脱同步检测）", () => {
+  it("提示词含本镜角色的旧台词行、且不在当前对白中 → 检出该行", () => {
+    const r = videoPromptStaleDialogue("夜雨码头。\n陈默：我们明天走。", "陈默：我们现在走。\n林晚：好。");
+    expect(r).toEqual(["陈默：我们明天走。"]);
+  });
+  it("提示词台词与当前对白一致（原样包含）→ 不报", () => {
+    expect(videoPromptStaleDialogue("夜雨码头，陈默：我们现在走。镜头推近。", "陈默：我们现在走。")).toEqual([]);
+    expect(videoPromptStaleDialogue("台词：\n陈默：我们现在走。\n林晚：好。", "陈默：我们现在走。\n林晚：好。")).toEqual([]);
+  });
+  it("防误报：参数行（角色名不在对白角色集合）/ 无角色行的旁白 / 空对白 / 空提示词 一律不报", () => {
+    expect(videoPromptStaleDialogue("风格：写实电影感\n运镜：缓慢推近", "陈默：走吧走吧。")).toEqual([]);
+    expect(videoPromptStaleDialogue("旁白式描述没有前缀的一句话", "陈默：走吧走吧。")).toEqual([]);
+    expect(videoPromptStaleDialogue("陈默：随便说点什么台词。", "")).toEqual([]);
+    expect(videoPromptStaleDialogue("", "陈默：走吧走吧。")).toEqual([]);
+    // 对白纯旁白（无角色前缀）→ 角色集合为空，不判（诚实限制）
+    expect(videoPromptStaleDialogue("陈默：旧台词在这里。", "夜幕降临，城市安静下来。")).toEqual([]);
+  });
+  it("短台词（<4 字）不报；多行旧台词逐行检出", () => {
+    expect(videoPromptStaleDialogue("陈默：走。", "陈默：走吧走吧。")).toEqual([]);
+    const r = videoPromptStaleDialogue("陈默：旧的第一句台词。\n林晚：旧的第二句台词。", "陈默：新台词一。\n林晚：新台词二。");
+    expect(r).toEqual(["陈默：旧的第一句台词。", "林晚：旧的第二句台词。"]);
+  });
+});
