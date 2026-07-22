@@ -1,5 +1,6 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { upstreamPromptCached, effectiveCharactersCached } from "@/lib/nodeGraphCache";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { upstreamPromptCached, effectiveCharactersCached, graphContentVersion } from "@/lib/nodeGraphCache";
+import { videoPromptStaleDialogue } from "@/lib/voiceConflict";
 import { createPortal } from "react-dom";
 import { useNodeDefaultModels } from "../../../contexts/NodeDefaultModelsContext";
 import { TRPCClientError } from "@trpc/client";
@@ -10,7 +11,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { StoryboardNodeData } from "../../../../../shared/types";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp, Plus, Palette, MapPin, Camera } from "lucide-react";
+import { Sparkles, ImageIcon, Loader2, Upload, X, Wand2, History, Languages, Film, ZoomIn, Download, Copy, ClipboardList, Rotate3d, Boxes, ArrowUp, Plus, Palette, MapPin, Camera, AlertTriangle } from "lucide-react";
 import { nanoid } from "nanoid";
 import { CameraRigPicker, stripCameraRig } from "../CameraRigPicker";
 import { ToolChip, RefThumbRow, MarkElementPicker, MarkChipRow, loadMarkModel, saveMarkModel, switchMark, removeMark } from "../InlineBarParts";
@@ -142,6 +143,38 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
     return () => window.removeEventListener("canvas:toggle-advanced", h);
   }, [selected]);
   const payload = data.payload;
+  // #331 提示词台词与对白不一致检测：改了 dialogue 后，分镜 promptText / 下游视频
+  // 提示词里的旧台词若没同步，重生成的视频（可发声模型）仍会念旧词——常驻黄条提醒。
+  // 依赖 graphContentVersion（数据面版本号）而非 nodes 引用：拖拽/平移不触发重算（#323 性能红线）。
+  const graphVer = useCanvasStore((s) => graphContentVersion(s.nodes));
+  const staleDialogue = useMemo(() => {
+    const d = payload.dialogue?.trim();
+    if (!d) return [] as string[];
+    const st = useCanvasStore.getState();
+    const out = new Set<string>();
+    for (const l of videoPromptStaleDialogue(payload.promptText, d)) out.add(l);
+    const VIDEO = new Set(["video_task", "comfyui_video", "comfyui_workflow"]);
+    const IMG = new Set(["image_gen", "comfyui_image"]);
+    const vpOf = (n?: { data: { nodeType: string; payload?: unknown } }) => {
+      if (!n || !VIDEO.has(n.data.nodeType)) return undefined;
+      const p = (n.data.payload ?? {}) as { prompt?: string; promptText?: string; positivePrompt?: string };
+      return p.prompt ?? p.promptText ?? p.positivePrompt;
+    };
+    for (const e of st.edges) {
+      if (e.source !== id) continue;
+      const t = st.nodes.find((m) => m.id === e.target);
+      if (!t) continue;
+      for (const l of videoPromptStaleDialogue(vpOf(t), d)) out.add(l);
+      if (IMG.has(t.data.nodeType)) {
+        for (const e2 of st.edges) {
+          if (e2.source !== t.id) continue;
+          for (const l of videoPromptStaleDialogue(vpOf(st.nodes.find((m) => m.id === e2.target)), d)) out.add(l);
+        }
+      }
+    }
+    return Array.from(out);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphVer, payload.dialogue, payload.promptText, id]);
   // Auto-prefer the upstream AI temporary public URL as the reference source when
   // the admin toggle is on and that URL probes alive (no-op when off / default).
   const preferUpstreamRef = usePreferUpstreamRefSource();
@@ -554,6 +587,18 @@ export const StoryboardNode = memo(function StoryboardNode({ id, selected, data 
   return (
     <>
     <BaseNode id={id} selected={selected} nodeType="storyboard" title={data.title} minHeight={280} heroMedia={heroMedia}
+      noticeBar={staleDialogue.length > 0 && (
+        <div
+          className="nodrag" data-testid="dialogue-stale-bar"
+          title={`提示词中疑似未同步的旧台词：\n${staleDialogue.join("\n")}\n\n视频里念出来的词跟【提示词】走、不跟对白字段走：请把分镜提示词 / 下游视频提示词里的台词改成当前对白（改完需重新生成该镜视频）；配音与字幕会自动用新对白（已生成的配音需删掉工位重配）。`}
+          style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", flexShrink: 0, background: "oklch(0.75 0.15 85 / 0.14)", borderBottom: "1px solid var(--c-bd1)" }}
+        >
+          <AlertTriangle size={11} style={{ color: "oklch(0.72 0.14 85)", flexShrink: 0 }} />
+          <span style={{ fontSize: 9.5, fontWeight: 600, color: "oklch(0.72 0.14 85)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            提示词台词与对白不一致（{staleDialogue.length} 处）——重生成的视频仍会念旧台词，悬停看详情
+          </span>
+        </div>
+      )}
       onRun={handleGenerate} running={generating} canRun={!!payload.promptText?.trim()} hasResult={!!payload.imageUrl}
       onAssetImageDrop={(urls) => refImages.addUrls(urls, "drop")}
       onHeaderHoverChange={docks.onHeaderHoverChange}
