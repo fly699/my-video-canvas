@@ -145,15 +145,18 @@ export const CustomEdge = memo(function CustomEdge({
 
   // Colored by source node type; idle lines are slightly translucent so the
   // canvas feels lighter, hover/selected go solid for clear emphasis.
+  // #328 创意模式：纯墨线 → 「墨线掺 38% 源节点类型色」的低调调和色——不同来源的
+  // 连线有含蓄的色彩区分（图像/视频/脚本…各随其源节点色相），但饱和度被墨底压住、
+  // 不抢画面；无类型色时回退纯墨线。透明度经 strokeOpacity 单独分态控制（见下）。
+  const creativeInk = typeColor
+    ? `color-mix(in oklch, ${typeColor} 38%, oklch(${inkBase}))`
+    : `oklch(${inkBase})`;
   const strokeColor = sourceCompleted
     ? "oklch(0.64 0.22 155 / 0.9)"
     : sourceFailed
       ? "oklch(0.62 0.24 25 / 0.9)"
       : isCreative
-        // LibTV：细「墨线」，交互只加深/提亮不变彩色（反色强调）；完成/失败保留状态色。
-        // 深色皮肤=近白线；浅色皮肤=深墨线。对齐 LibTV——静止态也要清晰可辨，
-        // 之前 0.25 太淡近乎不可见，提到 0.5/0.6 让连线在近黑底上明确可读。
-        ? (selected ? `oklch(${inkBase} / 0.98)` : hovered ? `oklch(${inkBase} / ${isCreativeLight ? 0.85 : 0.82})` : `oklch(${inkBase} / ${isCreativeLight ? 0.6 : 0.5})`)
+        ? creativeInk
         : selected
           ? (typeColor ?? "oklch(0.68 0.24 285)")
           : hovered
@@ -161,11 +164,12 @@ export const CustomEdge = memo(function CustomEdge({
             : typeColor
               ? `${typeColor}c0`
               : "oklch(0.68 0.16 260 / 0.75)";
+  // 创意模式分态透明度：静止低调、hover 提亮、选中近实；浅底整体高一档（浅底更吃对比）。
+  const creativeOpacity = selected ? 1 : hovered ? (isCreativeLight ? 0.9 : 0.85) : (isCreativeLight ? 0.62 : 0.55);
 
-  // Slightly thinner than the bold pass (user asked to slim down a touch);
-  // hover/selection still step up for emphasis.
+  // #328 创意模式整体加粗一档（1.6→2.2，hover/选中同步上调）——用户反馈原线偏细。
   const strokeWidth = isCreative
-    ? selected ? 2.5 : hovered ? 2 : 1.6
+    ? selected ? 3 : hovered ? 2.6 : 2.2
     : isStudio
       ? selected ? 3.5 : hovered ? 3 : 2.4   // studio: a touch thicker/softer flow
       : selected ? 3.5 : hovered ? 2.75 : 2;
@@ -223,6 +227,8 @@ export const CustomEdge = memo(function CustomEdge({
         style={{
           stroke: strokeColor,
           strokeWidth,
+          // #328 创意模式透明度分态（原由 index.css !important 锁定，现收归组件）
+          strokeOpacity: isCreative && !sourceCompleted && !sourceFailed ? creativeOpacity : undefined,
           // Persistent soft glow on every edge so colored lines feel luminous,
           // upgraded for selected / completed / failed states.
           // LibTV（创意）极简：常态不带彩色光晕，只留运行/完成/失败的状态辉光。

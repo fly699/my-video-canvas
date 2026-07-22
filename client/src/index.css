@@ -561,7 +561,8 @@
     /* 层级修正（3.1c）：画布=温和灰「桌面」，面板/卡片=近白「抬升」——
        浅色 UI 里越靠上的层越亮，配合投影才有清晰的卡片边界；旧版把面板做得比画布更深，
        导致整体发灰、卡片与画布糊成一片。文字统一加深至 WCAG 可读区间。 */
-    --c-canvas:   #e8e6e1;                  /* 温和暖灰「桌面」（比卡片深，衬托抬升） */
+    --c-canvas:   #d8d5ce;                  /* 温和暖灰「桌面」——#328 用户反馈 #e8e6e1 仍太亮，
+                                               再压暗一档（白卡对比更立体，久看不刺眼） */
     --c-base:     #faf9f7;                  /* 顶栏/dock/面板：近白（明显亮于画布） */
     --c-surface:  #ffffff;                  /* cards — 纯净白，与灰画布清晰分离 */
     --c-elevated: #f4f2ee;                  /* 控件/抬升（chip、按钮底） */
@@ -1791,24 +1792,10 @@ button:active:not(:disabled) {
   flex-direction: column !important;
 }
 
-/* Creative mode (LibTV dark) edge lines：低透明细白线 */
-:root[data-canvas-mode="creative"] .react-flow__edge-path {
-  stroke-width: 1.25 !important;
-  stroke: oklch(0.98 0 0) !important;
-  stroke-opacity: 0.22 !important;
-}
-:root[data-canvas-mode="creative"] .react-flow__edge.selected .react-flow__edge-path {
-  stroke-opacity: 0.7 !important;
-}
-/* 创意浅色变体：近白线在浅底上完全看不见 → 改深墨线（更高特异性覆盖上面的白线；
-   静止态透明度略高一档，浅底上更清晰）。 */
-:root[data-canvas-mode="creative"][data-canvas-theme="light"] .react-flow__edge-path {
-  stroke: oklch(0.30 0 0) !important;
-  stroke-opacity: 0.42 !important;
-}
-:root[data-canvas-mode="creative"][data-canvas-theme="light"] .react-flow__edge.selected .react-flow__edge-path {
-  stroke-opacity: 0.85 !important;
-}
+/* #328 创意模式连线样式已全部收归 CustomEdge 组件内联（墨线掺源节点类型色的低调
+   调和色 + 2.2px 线宽 + 分态透明度）。此处原有的 !important 锁定（1.25px 纯白/纯墨线）
+   会盖掉组件的所有分支——包括按类型着色与 hover/选中反馈——故整块移除，让组件成为
+   连线样式的单一事实源。 */
 
 /* Creative mode: filmstrip follows dark tokens */
 :root[data-canvas-mode="creative"] .canvas-filmstrip {
