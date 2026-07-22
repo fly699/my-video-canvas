@@ -391,6 +391,24 @@ export function templateKnowledgeText(
   return out;
 }
 
+/** #330 分镜对白去重（保守口径：绝不误删）：只压缩【相邻的、trim 后一字不差】的
+ *  重复行——紧挨着把同一句台词原样复写一遍几乎必是 LLM 规划失误（用户实报
+ *  「对白说了两遍」）。刻意的戏剧复读不受影响：同一行内复读（「救命！救命！」）
+ *  原样保留；隔行复读（「甲：住手！/乙：放开我！/甲：住手！」）因不相邻也原样
+ *  保留；空行阻断相邻判定（空行隔开的两个相同行不删）。跨行/跨镜的重复交给
+ *  规划提示词的「对白防重复」硬规则约束 LLM 自查——确定性层宁可漏删、绝不丢词。 */
+export function dedupDialogueLines(dialogue: string): string {
+  const out: string[] = [];
+  let prevKey: string | null = null;
+  for (const line of dialogue.split("\n")) {
+    const key = line.trim();
+    if (key && key === prevKey) continue;
+    prevKey = key || null; // 空行重置相邻判定
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 /**
  * Validate + sanitize one raw operation from the LLM. Returns a cleaned op, or
  * null if it is structurally invalid (unknown create nodeType, missing refs).
@@ -537,6 +555,10 @@ export function sanitizeOperationDetailed(
     if (typeof payload.provider === "string" && !VALID_VIDEO_PROVIDERS.has(payload.provider)) delete payload.provider;
     if (typeof payload.model === "string" && !VALID_IMAGE_MODELS.has(payload.model)) delete payload.model;
     if (typeof payload.imageModel === "string" && !VALID_IMAGE_MODELS.has(payload.imageModel)) delete payload.imageModel;
+    // #330 分镜对白镜内精确去重（dialogue 字段仅属 storyboard，见 dedupDialogueLines）。
+    if (nodeType === "storyboard" && typeof payload.dialogue === "string") {
+      payload.dialogue = dedupDialogueLines(payload.dialogue);
+    }
     // video_task.params 键按所选模型的参数表过滤（幻觉键会被上游拒绝或静默无效）；
     // provider 未设/未知时保留原样——提交层还有各 provider 的 allow-list 兜底。
     if (nodeType === "video_task" && payload.params && typeof payload.params === "object") {
@@ -598,6 +620,8 @@ export function sanitizeOperationDetailed(
     if (typeof payload.provider === "string" && !VALID_VIDEO_PROVIDERS.has(payload.provider)) delete payload.provider;
     if (typeof payload.model === "string" && !VALID_IMAGE_MODELS.has(payload.model)) delete payload.model;
     if (typeof payload.imageModel === "string" && !VALID_IMAGE_MODELS.has(payload.imageModel)) delete payload.imageModel;
+    // #330 与 create 同口径：update 回写的分镜对白也做镜内精确去重（dialogue 全目录仅属 storyboard）。
+    if (typeof payload.dialogue === "string") payload.dialogue = dedupDialogueLines(payload.dialogue);
     if (payload.params !== undefined && (typeof payload.params !== "object" || payload.params === null || Array.isArray(payload.params))) delete payload.params;
     // 与 create 同口径清洗：键过滤 + 数值夹取 + 枚举校验（「改时长/分辨率」也不越界）。
     // 注：update 未带 provider 时无从取参数表，只能透传（生成时按节点实际 provider 再夹取）。
