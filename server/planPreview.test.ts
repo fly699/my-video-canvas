@@ -182,7 +182,7 @@ describe("planOutline", () => {
       connect("s1", "v1"),
     ];
     const out = planOutline(ops);
-    expect(out.split("\n")[0]).toBe("镜头表（2 个节点）");
+    expect(out.split("\n")[0]).toBe("镜头表（2 个节点）"); // 本例无 video_task 时长 → 不带成片时长
     expect(out).toContain("- 镜1 分镜（WS 4s）：白天开场 💬陈默：出发");
     expect(out).toContain("连线：");
     expect(out).toContain("- 分镜 → 镜1视频");
@@ -192,6 +192,15 @@ describe("planOutline", () => {
     const out = planOutline([create("i1", "image_gen", { prompt: "一只猫" }, "图1")]);
     expect(out).toContain("- 图1：一只猫");
     expect(out).not.toContain("连线：");
+  });
+
+  it("含视频镜时长时标题带「约 Ns 成片」（累加 video_task）", () => {
+    const out = planOutline([
+      create("v1", "video_task", { duration: 5 }, "镜1视频"),
+      create("v2", "video_task", { duration: 8 }, "镜2视频"),
+      create("i1", "image_gen", { prompt: "一只猫" }, "图1"), // 非视频不计
+    ]);
+    expect(out.split("\n")[0]).toBe("镜头表（3 个节点，约 13s 成片）");
   });
 });
 
