@@ -42,7 +42,7 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; summaryMode: string; streamEcho: boolean };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; summaryMode: string; streamEcho: boolean; expertMode: boolean };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
 const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, // #259 selfCheck 默认开：#258 真模型 A/B 实证质量提升（自查后主动补齐角色一致性管线），
 // 且注入方式是「# 输出要求 末尾纯追加一条规则」——与 #145 对白语种硬规则同风险级（已有
@@ -52,7 +52,10 @@ autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: fals
 // #306 流式回显（默认关）：仅本机桥接模型（claude-local*）生效——生成中的文字实时回显在等待
 // 行下方；云端模型/关闭时自动走原有非流式（服务端三重门控，零回归）。旧账号预设快照没有此
 // 键 → 展开合并回落 false，行为与升级前一致。
-streamEcho: false };
+streamEcho: false,
+// 优化A 简易/专业双档（默认简易）：简易只显示核心（比例/风格/时长/图视模型），专业展开全部。
+// 老账号预设快照无此键 → 展开合并回落 false（简易），高级设置值仍保留、切专业即见。
+expertMode: false };
 
 /** 对白语种（#138）：对白/旁白/台词统一书写语言；空 = 跟随内容默认。 */
 const QP_DIALOGUE_LANGS = [
@@ -1164,8 +1167,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--c-t4)", marginTop: 3, borderTop: "1px dashed var(--c-bd1)", paddingTop: 7 }}>{label}</div>
         );
         const iconBtn: React.CSSProperties = { padding: "0 3px", fontSize: 10, lineHeight: 1, background: "transparent", border: "none", color: "var(--c-t4)", cursor: "pointer" };
+        const expert = quickPrefs.expertMode; // 优化A：简易(false)只显示核心；专业(true)展开全部
         return (
           <div data-qs-panel className="nowheel" style={{ padding: "8px 12px 10px", borderBottom: "1px solid var(--c-bd2)", display: "flex", flexDirection: "column", gap: 8, maxHeight: "46vh", overflowY: "auto" }}>
+            {/* ── 简易 / 专业 双档：简易只留核心项，扫一眼就能上手；专业展开全部高级设置 ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>模式</span>
+              <div data-testid="qp-mode-seg" style={{ display: "inline-flex", borderRadius: 8, border: "1px solid var(--c-bd2)", overflow: "hidden" }}>
+                <button data-testid="qp-mode-simple" onClick={() => setQP({ expertMode: false })}
+                  style={{ padding: "3px 12px", fontSize: 11, border: "none", cursor: "pointer", background: !expert ? accent : "var(--c-surface)", color: !expert ? "#0b0d12" : "var(--c-t3)", fontWeight: !expert ? 700 : 500 }}>简易</button>
+                <button data-testid="qp-mode-expert" onClick={() => setQP({ expertMode: true })}
+                  style={{ padding: "3px 12px", fontSize: 11, border: "none", borderLeft: "1px solid var(--c-bd2)", cursor: "pointer", background: expert ? accent : "var(--c-surface)", color: expert ? "#0b0d12" : "var(--c-t3)", fontWeight: expert ? 700 : 500 }}>专业</button>
+              </div>
+              <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>{expert ? "全部设置" : "只显示常用项，需要更多点「专业」"}</span>
+            </div>
             {/* ── 预设条：整套设置的保存 / 一键调取 / 重命名 / 覆盖 / 删除 ── */}
             <div data-testid="qp-preset-bar" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="把当前整套快捷设置存成命名预设，随时一键调取（存在本浏览器）">预设</span>
@@ -1202,6 +1217,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)" }}>时长</span>
               {QP_DURATIONS.map((d) => <button key={d.v} onClick={() => setQP({ durationSec: d.v })} style={chip(quickPrefs.durationSec === d.v)}>{d.label}</button>)}
             </div>
+            {expert && (<>
             {/* #244 成片转场风格：默认=直切（现状，concat 快路径零改动）；其余风格作用于合并成片 */}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="合并成片时镜头间的转场风格；默认=直切（不设转场，与以前完全一致）">转场</span>
@@ -1226,7 +1242,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                   { value: "full", label: "全量完整（最大最全，较慢较贵）", title: "不做任何存根/省略：字段截断放宽到 1000 字、摘要上限提高到 58000 字符——适合要求助手看到画布每一个字的场景；每轮更贵更慢" },
                 ] }]} onChange={(v) => setQP({ summaryMode: v || "compressed" })} />
             </div>
-            {secHead("模型与语种")}
+            </>)}
+            {secHead(expert ? "模型与语种" : "模型")}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }}>模型</span>
               <span style={{ fontSize: 10.5, color: "var(--c-t4)" }}>图</span>
@@ -1242,6 +1259,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 ⚠ 所选视频模型<b>不吃参考图（纯文生）</b>：「生图 → 再生视频」的首帧、角色定妆照参考、「链式下一镜」的尾帧衔接都不会生效。需要这些能力请换支持首帧图的模型（下拉各项已标注）。
               </div>
             )}
+            {expert && (<>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ width: 32, fontSize: 11, color: "var(--c-t3)", flexShrink: 0 }} title="对白与最终提示词的书写语言；默认=跟随内容">语种</span>
               <span style={{ fontSize: 10.5, color: "var(--c-t4)", flexShrink: 0 }}>对白</span>
@@ -1298,6 +1316,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 </label>
               ))}
             </div>
+            </>)}
           </div>
         );
       })()}
