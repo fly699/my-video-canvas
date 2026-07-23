@@ -37,3 +37,33 @@ export function canSaveOrchestration(ops: AgentOperation[]): boolean {
   const replay = extractReplayableOps(ops);
   return replay.some((o) => o.op === "create") && replay.length <= MAX_ORCH_OPS;
 }
+
+// ── 导入/导出：把「我的编排」备份成 JSON 或从 JSON 导入（跨账号/项目共享、备份）。──────
+/** 序列化编排模板列表为可下载的 JSON 文本（带版本号）。纯函数。 */
+export function serializeOrchestrations(list: OrchestrationTemplate[]): string {
+  return JSON.stringify({ version: 1, templates: list }, null, 2);
+}
+
+/** 解析导入的 JSON 文本为编排模板：容错跳过非法项，只保留可重放（含 create）的编排，
+ *  重新分配 id 防与现有冲突，最多取 MAX_ORCHESTRATIONS 套。纯函数（id 由外部传入生成器保证可测）。 */
+export function parseOrchestrations(json: string, genId: (i: number) => string): OrchestrationTemplate[] {
+  let data: unknown;
+  try { data = JSON.parse(json); } catch { return []; }
+  const raw = Array.isArray(data) ? data : (data && typeof data === "object" && Array.isArray((data as { templates?: unknown }).templates) ? (data as { templates: unknown[] }).templates : []);
+  const out: OrchestrationTemplate[] = [];
+  for (const item of raw) {
+    if (out.length >= MAX_ORCHESTRATIONS) break;
+    if (!item || typeof item !== "object") continue;
+    const t = item as { name?: unknown; ops?: unknown; createdAt?: unknown };
+    if (!Array.isArray(t.ops)) continue;
+    const ops = extractReplayableOps(t.ops as AgentOperation[]);
+    if (!ops.some((o) => o.op === "create")) continue; // 无可建节点操作 → 跳过
+    out.push({
+      id: genId(out.length),
+      name: typeof t.name === "string" && t.name.trim() ? t.name.trim().slice(0, 60) : `导入编排${out.length + 1}`,
+      createdAt: typeof t.createdAt === "number" ? t.createdAt : 0,
+      ops,
+    });
+  }
+  return out;
+}
