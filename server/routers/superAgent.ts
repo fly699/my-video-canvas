@@ -17,6 +17,7 @@ import { emitSuperAgentEvent } from "../_core/superAgent/socket";
 import { buildClaudeArgs, runCodeAgent, frameCodeTask, shouldKeepWorkspace, planCodeRepair, buildCodeRepairPrompt } from "../_core/superAgent/codeAgent";
 import { streamClaudeCode, isCodeAgentEnabled, isBashAllowed } from "../_core/superAgent/claudeProcess";
 import { getSuperAgentConfig } from "../_core/superAgent/config";
+import { isClaudeLocalModel, isBridgeModel, bridgeModelArg } from "../_core/claudeBridge";
 import { invalidateComfyKnowledge, getComfyKnowledge } from "../_core/comfyKnowledge";
 import { runImageQc } from "../_core/imageQcCore";
 import {
@@ -28,6 +29,22 @@ import * as db from "../db";
 import type { TrpcContext } from "../_core/context";
 
 const norm = (u: string) => u.replace(/\/+$/, "").trim();
+
+/** 代码任务始终跑【真实 claude CLI】（订阅额度），而非桥接。前端会把当前会话模型透传过来，
+ *  但 `claude-local` / `gpt-local` / `grok-local` 只是桥接的伪 id——直接当 `--model` 传给真实
+ *  claude CLI 会报「selected model (claude-local) … may not exist」（用户实报）。这里归一：
+ *  - claude-local        → undefined（不传 --model，用订阅默认模型）
+ *  - claude-local:opus 等 → 取冒号后缀（opus）传给 claude CLI
+ *  - gpt-local / grok-local → undefined（claude CLI 跑不了这些家族，回退订阅默认）
+ *  - 其它值（真实模型 id，如 opus/sonnet/完整 id）→ 原样透传
+ *  纯函数，便于单测。 */
+export function codeTaskModelArg(model?: string): string | undefined {
+  const m = model?.trim();
+  if (!m) return undefined;
+  if (isClaudeLocalModel(m)) return bridgeModelArg(m) ?? undefined;
+  if (isBridgeModel(m)) return undefined; // gpt-local / grok-local
+  return m;
+}
 
 /**
  * 下载模型/节点框架（默认关闭，inert）：仅当「ComfyUI 缺件自动安装」开启（后台配置优先、
@@ -584,6 +601,9 @@ export const superAgentRouter = router({
       let keepWorkspace = false;
       try {
         const capUsd = input.maxBudgetUsd ?? 2;
+        // 代码任务跑真实 claude CLI：把桥接伪 id（claude-local*）归一成真实 --model 值，
+        // 否则会报「selected model (claude-local) … may not exist」（用户实报）。
+        const codeModel = codeTaskModelArg(input.model);
         let cancelled = false; // 用户取消（runningJobs 回调）→ 绝不自动修复重跑
         const runOnce = async (taskText: string, resumeId: string | undefined, budgetUsd: number) => {
           const handle = streamClaudeCode({
@@ -593,7 +613,7 @@ export const superAgentRouter = router({
             argsBuilder: (policy) => buildClaudeArgs({
               ...policy,
               addDirs: [workspace],
-              model: input.model,
+              model: codeModel,
               maxBudgetUsd: budgetUsd,
               resumeSessionId: resumeId,
             }),
