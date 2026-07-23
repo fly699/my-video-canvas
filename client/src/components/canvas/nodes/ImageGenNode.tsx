@@ -352,6 +352,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         imageUrlSources: result.sourceUrls,
         imageUrlSource: result.sourceUrls?.[0] ?? result.sourceUrl,
         imageUrlSourceAt: result.sourceAt,
+        appliedEmotion: undefined, // #336 批2：整图重生成→清旧情绪标记，防误注入下游视频
       });
       propagateRefImage(id, result.urls[0]);
       toast.success(`批量生成完成，共 ${result.urls.length} 张图像`);
@@ -367,6 +368,7 @@ export const ImageGenNode = memo(function ImageGenNode({ id, selected, data }: P
         imageUrlSource: result.sourceUrl ?? result.sourceUrls?.[0],
         imageUrlSources: undefined,
         imageUrlSourceAt: result.sourceAt,
+        appliedEmotion: undefined, // #336 批2：整图重生成→清旧情绪标记，防误注入下游视频
       });
       propagateRefImage(id, imageUrl);
       toast.success("图像生成成功");

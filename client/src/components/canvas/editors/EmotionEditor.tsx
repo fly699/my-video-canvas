@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { X, RotateCcw, Loader2, Send, Coins, ScanFace } from "lucide-react";
+import { X, RotateCcw, Loader2, Send, Coins, ScanFace, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { ModelPicker, type ModelPickerOption } from "../ModelPicker";
 import { IMAGE_EDIT_MODEL_GROUPS, DEFAULT_IMAGE_EDIT_MODEL, buildImageEditInstruction, comfyDenoiseForOp } from "../../../../../shared/imageEdit";
@@ -10,7 +10,8 @@ import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate"
 import { IMAGE_MODELS } from "../../../lib/models";
 import { sourceAspectRatio } from "../../../lib/imageAspect";
 import {
-  EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt, withEmotionRegion, isValidEmotionRegion,
+  EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt, isValidEmotionRegion,
+  regionToLocationPhrase, emotionTargetPhrase, withEmotionFocus, toAppliedEmotion,
   type EmotionCell, type EmotionIntensity, type EmotionRegion,
 } from "../../../../../shared/emotionGrid";
 
@@ -23,7 +24,7 @@ export interface EmotionEditorProps {
   sourceUrl: string;
   nodeId: string;
   projectId: number;
-  onApply: (url: string) => void;
+  onApply: (url: string, extra?: Record<string, unknown>) => void;
   onClose: () => void;
 }
 
@@ -113,11 +114,14 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
   const [cell, setCell] = useState<EmotionCell>(EMOTION_DEFAULT_CELL);
   const [hoverCell, setHoverCell] = useState<EmotionCell | null>(null);
   const [intensity, setIntensity] = useState<EmotionIntensity>("moderate");
-  const [region, setRegion] = useState<EmotionRegion | null>(null); // 多人图选脸（null=全部/主体）
+  const [region, setRegion] = useState<EmotionRegion | null>(null); // 多人图选脸：手动框（null=全部/主体）
+  const [faces, setFaces] = useState<{ name: string; desc?: string }[]>([]); // 人脸自动识别 chip
+  const [targetDesc, setTargetDesc] = useState<string | null>(null); // 选中的人物 chip（与手动框二选一）
   const [override, setOverride] = useState<string | null>(null);
   const [model, setModel] = useState(loadModel);
   const run = trpc.imageEdit.run.useMutation();
   const comfyGen = trpc.comfyui.generateImage.useMutation();
+  const detect = trpc.aiEnhance.analyzeImageElements.useMutation();
 
   const preview = hoverCell ?? cell; // hover 试看，点击定选（对齐打光预设「试穿」交互）
   const auto = useMemo(() => buildEmotionPrompt(cell, intensity), [cell, intensity]);
@@ -128,14 +132,34 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
   }, [model]);
 
   const pick = (c: EmotionCell) => { setCell(c); setOverride(null); };
-  const reset = () => { setCell(EMOTION_DEFAULT_CELL); setIntensity("moderate"); setOverride(null); setRegion(null); };
+  const reset = () => { setCell(EMOTION_DEFAULT_CELL); setIntensity("moderate"); setOverride(null); setRegion(null); setTargetDesc(null); };
+
+  // 手动框与人物 chip 二选一：画框即清 chip，选 chip 即清框（都指向「改哪张脸」）。
+  const onRegionChange = (r: EmotionRegion | null) => { setRegion(r); if (isValidEmotionRegion(r)) setTargetDesc(null); };
+  const runDetect = () => {
+    if (detect.isPending) return;
+    detect.mutate({ imageUrl: sourceUrl }, {
+      onSuccess: (r) => { setFaces(r.elements ?? []); if (!r.elements?.length) toast.info("未识别到可指定的人物/元素"); },
+      onError: (e) => toast.error("人脸识别失败：" + (e instanceof Error ? e.message : String(e))),
+    });
+  };
+  const pickFace = (f: { name: string; desc?: string }) => {
+    const key = [f.name, f.desc].filter(Boolean).join("，");
+    setTargetDesc((prev) => (prev === key ? null : key)); // 再点一次取消
+    setRegion(null);
+  };
+
+  // 「改哪张脸」的自然语言指代：手动框优先，其次人物 chip，都没有=全部/主体。
+  const focusPhrase = isValidEmotionRegion(region)
+    ? regionToLocationPhrase(region)
+    : (targetDesc ? emotionTargetPhrase(targetDesc) : "");
 
   const send = async () => {
     if (run.isPending || comfyGen.isPending) return;
     try {
       let url: string | undefined;
-      // 多人图选脸：把「只改框选这张脸、其他人不动」的空间约束前置进提示词
-      const finalPrompt = withEmotionRegion(promptText, region);
+      // 多人图选脸：把「只改这张脸、其他人不动」的约束前置进提示词（框选=方位 / chip=人物描述）
+      const finalPrompt = withEmotionFocus(promptText, focusPhrase);
       if (model === COMFY_LOCAL_MODEL) {
         // 本地自建：comfyui img2img（服务端 assertComfyuiAllowed 门控 + comfyui_image_gen 审计）
         const ckpt = loadComfyCkpt();
@@ -158,7 +182,8 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         url = (r as { url?: string }).url;
       }
       if (!url) throw new Error("模型未返回图片");
-      onApply(url);
+      // #336 批2：把情绪档写回节点，供下游视频节点把表情词自然注入提示词。
+      onApply(url, { appliedEmotion: toAppliedEmotion(cell, intensity) });
       toast.success("情绪调节已生成，原图已存入版本历史");
       onClose();
     } catch (e) { toast.error("情绪调节生成失败：" + (e instanceof Error ? e.message : String(e))); }
@@ -179,7 +204,7 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         <div style={{ display: "flex", gap: 18, alignItems: "stretch" }}>
           {/* 左：源图 + 表情脸预览 + 情绪定位 */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: 220, flexShrink: 0 }}>
-            <RegionSelect src={sourceUrl} region={region} onChange={setRegion} />
+            <RegionSelect src={sourceUrl} region={region} onChange={onRegionChange} />
             {/* 多人图选脸：框选目标脸（不框=全部/主体） */}
             <div style={{ display: "flex", alignItems: "center", gap: 6, width: 200, fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.4 }}>
               <ScanFace size={13} style={{ flexShrink: 0, color: isValidEmotionRegion(region) ? ACCENT : "var(--c-t4)" }} />
@@ -189,7 +214,35 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
                   <button onClick={() => setRegion(null)} style={{ marginLeft: "auto", ...chip() }}>清除</button>
                 </>
               ) : (
-                <span>多人图：在上图框选要调整表情的那张脸（不框=全部/主体）</span>
+                <span>多人图：框选或识别下方人物指定要调整表情的那张脸（不选=全部/主体）</span>
+              )}
+            </div>
+            {/* 人脸自动识别 chip（复用 AI 元素分析）：点选人物 = 指定改哪张脸（与手动框二选一） */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 5, width: 200 }}>
+              <button data-testid="emotion-detect" onClick={runDetect} disabled={detect.isPending}
+                style={{ ...chip(), justifyContent: "center", cursor: detect.isPending ? "wait" : "pointer" }}
+                title="用视觉模型识别图中人物，点选即锁定要调整表情的那张脸（多人图更省心）">
+                {detect.isPending ? <Loader2 size={11} className="animate-spin" /> : <Users size={11} />}
+                {detect.isPending ? "识别中…" : "识别人物"}
+              </button>
+              {faces.length > 0 && (
+                <div data-testid="emotion-faces" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {faces.map((f, i) => {
+                    const key = [f.name, f.desc].filter(Boolean).join("，");
+                    const active = targetDesc === key;
+                    return (
+                      <button key={f.name + i} data-testid={`emotion-face-chip-${i}`} onClick={() => pickFace(f)}
+                        title={f.desc || f.name} style={{ ...chip(active), fontSize: 10.5, padding: "3px 8px" }}>
+                        {f.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {targetDesc && (
+                <span data-testid="emotion-target" style={{ fontSize: 10.5, color: ACCENT, fontWeight: 600 }}>
+                  已锁定：{targetDesc}
+                </span>
               )}
             </div>
             <EmotionFace emoji={preview.emoji} size={150} />

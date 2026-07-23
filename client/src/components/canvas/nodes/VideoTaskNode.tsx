@@ -11,7 +11,7 @@ import { maxRefImagesForProvider } from "../../../../../shared/videoRefCaps";
 import { appendSubjectMapping, subjectOverflow } from "../../../../../shared/subjectRef";
 import { mergeCharactersIntoPrompt } from "../../../lib/characterPrompt";
 import { effectiveCharacterRefImages, effectiveSceneRefImages, effectiveCharacters, stripCharacterMentions, effectiveCharacterVideoRefs, effectiveCharacterAudioRefs } from "../../../lib/characterConditioning";
-import { connectedEffectPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
+import { connectedInjectedPrompts, appendEffectPrompts } from "../../../lib/effectPrompt";
 import { composeCharacterEffectPrompt } from "../../../lib/promptCompose";
 import { clampDurationForProvider } from "../../../lib/storyboardGen";
 import { detectUpstreamPrompt, detectUpstreamImageUrl, detectUpstreamStoryboardDuration, listUpstreamVideoSources, listUpstreamAudioSources, mentionedMediaUrls, stripMediaMentions } from "../../../lib/comfyWorkflowParams";
@@ -404,7 +404,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
     const stripped = stripMediaMentions(stripCharacterMentions(base, s.nodes), s.nodes);
     return appendEffectPrompts(
       mergeCharactersIntoPrompt(stripped, chars, 4000),
-      connectedEffectPrompts(id, s.edges, s.nodes),
+      connectedInjectedPrompts(id, s.edges, s.nodes),
     );
   });
   const hasCharInject = useCanvasStore((s) => effectiveCharactersCached(id, payload.prompt ?? "", s.edges, s.nodes).length > 0);
