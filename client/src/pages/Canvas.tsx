@@ -74,6 +74,7 @@ import { CanvasTips, resetCanvasTips } from "../components/canvas/CanvasTips";
 import { PerfHud } from "../components/canvas/PerfHud";
 import { ReturnToNodesHint } from "../components/canvas/ReturnToNodesHint";
 import { EmptyCanvasGuide } from "../components/canvas/EmptyCanvasGuide";
+import { WizardBar } from "../components/canvas/WizardBar";
 import { AiClientPanel } from "../components/canvas/AiClientPanel";
 import { useAiClient } from "../hooks/useAiClient";
 import { setBoxSelecting } from "../hooks/useBoxSelecting";
@@ -3311,6 +3312,8 @@ function CanvasInner({ projectId }: { projectId: number }) {
           <PerfHud />
           {/* 全局悬浮 AI 客户端（Cmd/Ctrl+J 呼出；会话同源于 ai_chat 节点）。 */}
           {!isPopout && isAuthenticated && <AiClientPanel />}
+          {/* 优化D 向导式推进条：顶部居中「规划→生成→装配→导出」进度 + 下一步提示（有节点才显示，可关闭）。 */}
+          {!isPopout && <WizardBar />}
           {/* 「返回节点」提示：视野里看不到任何节点时浮出，一键归位（对标 LibTV） */}
           <ReturnToNodesHint />
           {/* 空画布引导：双击提示 + 工作流入口卡（对标 LibTV；有节点即消失）。
