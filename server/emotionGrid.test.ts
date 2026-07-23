@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EMOTION_GRID, EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt, regionToLocationPhrase, isValidEmotionRegion, withEmotionRegion } from "../shared/emotionGrid";
+import { EMOTION_GRID, EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt, regionToLocationPhrase, isValidEmotionRegion, withEmotionRegion, emotionTargetPhrase, withEmotionFocus, toAppliedEmotion, emotionVideoPhrase } from "../shared/emotionGrid";
 import { buildImageEditInstruction, comfyDenoiseForOp, getImageEditOp } from "../shared/imageEdit";
 
 // #336 情绪调节：25 格情绪坐标表 + 提示词组装 + emotion 编辑操作接线。
@@ -106,5 +106,45 @@ describe("#336 多人图选脸（regionToLocationPhrase / withEmotionRegion）",
     expect(withBox).toContain("top-left");
     expect(withBox).toContain("leave every other person");
     expect(withBox.endsWith(base)).toBe(true);
+  });
+});
+
+describe("#336 批2 人脸 chip 定位（emotionTargetPhrase / withEmotionFocus）", () => {
+  it("emotionTargetPhrase：人物描述 → 自然语言指代；空描述 → 空串", () => {
+    expect(emotionTargetPhrase("黑袍剑客，背对镜头")).toBe('the person described as "黑袍剑客，背对镜头"');
+    expect(emotionTargetPhrase("  ")).toBe("");
+    expect(emotionTargetPhrase('引\n号"注入')).not.toContain('"注入'); // 清理换行/引号防破坏包裹
+  });
+
+  it("withEmotionFocus：给定聚焦短语 → 前置硬约束；空聚焦 → 原样", () => {
+    const base = buildEmotionPrompt(EMOTION_DEFAULT_CELL);
+    expect(withEmotionFocus(base, "")).toBe(base);
+    expect(withEmotionFocus(base, null)).toBe(base);
+    const f = withEmotionFocus(base, emotionTargetPhrase("角色1"));
+    expect(f).toContain('ONLY to the person described as "角色1"');
+    expect(f).toContain("leave every other person");
+    expect(f.endsWith(base)).toBe(true);
+  });
+
+  it("withEmotionRegion 与 withEmotionFocus 同源（框选走方位、chip 走人物，口径一致）", () => {
+    const base = buildEmotionPrompt(EMOTION_DEFAULT_CELL);
+    const box = { x: 0.05, y: 0.05, w: 0.3, h: 0.3 };
+    expect(withEmotionRegion(base, box)).toBe(withEmotionFocus(base, regionToLocationPhrase(box)));
+  });
+});
+
+describe("#336 批2 情绪注入视频（toAppliedEmotion / emotionVideoPhrase）", () => {
+  it("toAppliedEmotion：由格点+强度构造可写回节点的元数据", () => {
+    const ae = toAppliedEmotion(emotionCellAt(1, 3)!, "strong");
+    expect(ae).toEqual({ cellId: "r1c3", name: "强忍悲戚", en: "restrained grief", intensity: "strong" });
+  });
+
+  it("emotionVideoPhrase：含英文情绪短语、中文命名与强度描述；空/无 → 空串", () => {
+    const p = emotionVideoPhrase(toAppliedEmotion(emotionCellAt(1, 4)!, "moderate"));
+    expect(p).toContain("heart-stopping shock");
+    expect(p).toContain("心跳骤停");
+    expect(p).toContain("clearly visible and natural");
+    expect(emotionVideoPhrase(null)).toBe("");
+    expect(emotionVideoPhrase({ cellId: "x", name: "", en: "", intensity: "moderate" })).toBe("");
   });
 });

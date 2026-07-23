@@ -478,19 +478,22 @@ export const BaseNode = memo(function BaseNode({
   const [emotionEditorOpen, setEmotionEditorOpen] = useState(false); // #336 情绪调节
   // #103 快剪覆盖所有视频节点：video_task 之外的类型由 BaseNode 统一渲染快剪条
   const [quickTrimOpen, setQuickTrimOpen] = useState(false);
-  const applyEditedImage = useCallback((url: string) => {
+  // #336 批2：extra 用于情绪编辑器把 appliedEmotion 元数据一并写回（供下游视频提示词注入）。
+  // 未传 extra（多角度/打光等其它编辑）显式清 appliedEmotion，避免旧表情标记陈旧误注入视频。
+  const applyEditedImage = useCallback((url: string, extra?: Record<string, unknown>) => {
     const st = useCanvasStore.getState();
+    const meta = { appliedEmotion: undefined as unknown, ...(extra ?? {}) };
     switch (nodeType) {
-      case "image_edit": st.updateNodeData(id, { outputUrl: url }); break;
+      case "image_edit": st.updateNodeData(id, { outputUrl: url, ...meta }); break;
       case "comfyui_workflow": {
         const p = st.nodes.find((n) => n.id === id)?.data.payload as Record<string, unknown> | undefined;
         const urls = Array.isArray(p?.outputUrls) ? [...(p!.outputUrls as string[])] : [];
         urls[0] = url;
-        st.updateNodeData(id, { outputUrls: urls });
+        st.updateNodeData(id, { outputUrls: urls, ...meta });
         break;
       }
-      case "asset": st.updateNodeData(id, { url }); break;
-      default: st.updateNodeData(id, { imageUrl: url });
+      case "asset": st.updateNodeData(id, { url, ...meta }); break;
+      default: st.updateNodeData(id, { imageUrl: url, ...meta });
     }
   }, [id, nodeType]);
 

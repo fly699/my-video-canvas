@@ -1,4 +1,5 @@
 // ── Shared Types ─────────────────────────────────────────────────────────────
+import type { AppliedEmotion } from "./emotionGrid";
 
 export type NodeType =
   | "script"
@@ -523,6 +524,8 @@ export interface ImageGenNodeData {
   markRefs?: MarkRef[];
   imageUrl?: string;
   imageStorageKey?: string;
+  /** #336 批2 情绪调节：应用后的情绪档，供下游视频节点把表情词注入提示词（整图重生成时清空）。 */
+  appliedEmotion?: AppliedEmotion;
   /** 真 3D（Tripo3D）已生成的模型——重开免费复用。 */
   model3d?: Model3DResult;
   model?: ImageGenModel;

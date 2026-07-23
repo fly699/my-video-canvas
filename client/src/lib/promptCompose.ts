@@ -10,7 +10,7 @@
 import { effectiveCharacters, stripCharacterMentions } from "./characterConditioning";
 import { stripMediaMentions } from "./comfyWorkflowParams";
 import { mergeCharactersIntoPrompt } from "./characterPrompt";
-import { connectedEffectPrompts, appendEffectPrompts } from "./effectPrompt";
+import { connectedInjectedPrompts, appendEffectPrompts } from "./effectPrompt";
 
 type MiniNode = { id: string; data: { nodeType: string; payload?: unknown; title?: string }; position?: { x: number; y: number } };
 type MiniEdge = { source: string; target: string };
@@ -27,7 +27,7 @@ export function composeCharacterEffectPrompt(
   const chars = effectiveCharacters(id, rawPrompt, edges, nodes);
   return appendEffectPrompts(
     mergeCharactersIntoPrompt(stripMediaMentions(stripCharacterMentions(rawPrompt, nodes), nodes), chars, maxLen),
-    connectedEffectPrompts(id, edges, nodes),
+    connectedInjectedPrompts(id, edges, nodes),
     maxLen,
   );
 }

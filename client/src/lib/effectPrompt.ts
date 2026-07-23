@@ -4,6 +4,8 @@
 // only way to use it was a manual copy button. These helpers let image_gen / video_task
 // APPEND (augment, never replace) connected post_process effect prompts at submit time.
 
+import { emotionVideoPhrase, type AppliedEmotion } from "../../../shared/emotionGrid";
+
 type EffectNode = { id: string; data: { nodeType: string; payload?: unknown } };
 type EffectEdge = { source: string; target: string };
 
@@ -20,6 +22,27 @@ export function connectedEffectPrompts(targetId: string, edges: EffectEdge[], no
     if (gp && !seen.has(gp)) { seen.add(gp); out.push(gp); }
   }
   return out;
+}
+
+/** #336 批2 情绪词注入：从每个连线上游「已应用情绪」的图片节点（payload.appliedEmotion）
+ *  取出精炼表情短语，按 edge 顺序去重。让由该首帧图生成的视频自然携带同一表情。 */
+export function connectedEmotionPhrases(targetId: string, edges: EffectEdge[], nodes: EffectNode[]): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const e of edges) {
+    if (e.target !== targetId) continue;
+    const src = byId.get(e.source);
+    const ae = (src?.data.payload as { appliedEmotion?: AppliedEmotion } | undefined)?.appliedEmotion;
+    const phrase = emotionVideoPhrase(ae);
+    if (phrase && !seen.has(phrase)) { seen.add(phrase); out.push(phrase); }
+  }
+  return out;
+}
+
+/** 视频提示词的全部「连线注入词」= 后处理效果 + 上游情绪表情，单一口径供 display/submit/runner 共用。 */
+export function connectedInjectedPrompts(targetId: string, edges: EffectEdge[], nodes: EffectNode[]): string[] {
+  return [...connectedEffectPrompts(targetId, edges, nodes), ...connectedEmotionPhrases(targetId, edges, nodes)];
 }
 
 /** Append effect prompts to a base prompt (comma-joined). Optionally clamp to a server

@@ -130,8 +130,48 @@ export function isValidEmotionRegion(box: EmotionRegion | null | undefined): box
   return !!box && box.w > 0.04 && box.h > 0.04;
 }
 
+/** 人脸 chip（复用 analyzeImageElements 的人物语义标签）→ 目标脸的自然语言指代。
+ *  与框选（regionToLocationPhrase 出方位）殊途同归：图像编辑模型吃的是自然语言而非坐标，
+ *  按人物描述定位往往比方位更精准。空描述返回空串（不聚焦）。 */
+export function emotionTargetPhrase(desc: string): string {
+  const d = (desc || "").trim().replace(/["\n]/g, " ").slice(0, 60);
+  return d ? `the person described as "${d}"` : "";
+}
+
+/** 通用聚焦包裹：给定「只改这个人」的自然语言指代，前置「其他人不动」硬约束；空=原样。纯函数。 */
+export function withEmotionFocus(emotionPrompt: string, focus: string | null | undefined): string {
+  const f = (focus ?? "").trim();
+  if (!f) return emotionPrompt;
+  return `Apply the change ONLY to ${f}; leave every other person's face and expression completely unchanged. ${emotionPrompt}`;
+}
+
 /** 选了脸 → 在情绪提示词前加「只改这张脸、其他人不动」的空间约束；没选 → 原样。纯函数。 */
 export function withEmotionRegion(emotionPrompt: string, box: EmotionRegion | null | undefined): string {
-  if (!isValidEmotionRegion(box)) return emotionPrompt;
-  return `Apply the change ONLY to ${regionToLocationPhrase(box)}; leave every other person's face and expression completely unchanged. ${emotionPrompt}`;
+  return isValidEmotionRegion(box) ? withEmotionFocus(emotionPrompt, regionToLocationPhrase(box)) : emotionPrompt;
+}
+
+// ── 情绪元数据（应用后写回图片节点，供下游视频提示词注入 / 复现） ──────────────────
+/** 情绪应用记录：写回图片节点 payload.appliedEmotion，下游视频节点据此把表情词带进 prompt。 */
+export interface AppliedEmotion {
+  /** 格点 id（r{row}c{col}），可复现网格选中态 */
+  cellId: string;
+  /** 四字中文命名 */
+  name: string;
+  /** 英文情绪短语 */
+  en: string;
+  /** 强度档 */
+  intensity: EmotionIntensity;
+}
+
+/** 由所选格 + 强度构造要写回节点的情绪元数据。 */
+export function toAppliedEmotion(cell: EmotionCell, intensity: EmotionIntensity): AppliedEmotion {
+  return { cellId: cell.id, name: cell.name, en: cell.en, intensity };
+}
+
+/** 情绪词注入视频提示词用的短语（比 buildEmotionPrompt 精炼，让镜头动态中自然携带该表情）。
+ *  下游视频节点从上游「已应用情绪」的图片节点读出并追加到正向提示词。 */
+export function emotionVideoPhrase(applied: AppliedEmotion | null | undefined): string {
+  if (!applied?.en) return "";
+  const lv = EMOTION_INTENSITIES.find((i) => i.value === applied.intensity) ?? EMOTION_INTENSITIES[1];
+  return `the character carries a ${applied.en} (${applied.name}) expression, ${lv.en}`;
 }
