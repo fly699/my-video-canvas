@@ -69,6 +69,14 @@ export const IMAGE_EDIT_OPS: ImageEditOpSpec[] = [
     needsMask: false, needsPrompt: false, needsAspect: true,
     promptPlaceholder: "可选：补充构图意图，如「主体居中留白」",
   },
+  {
+    // #336 情绪调节（LibTV「人像质感调节 › 情绪调节」）：只改人物面部表情，
+    // 身份/发型/服装/姿势/构图/光线严格不变。配套 25 格情绪坐标编辑器（shared/emotionGrid.ts）。
+    id: "emotion", label: "情绪调节", icon: "Smile",
+    desc: "只改人物面部表情为目标情绪，其余全部不变",
+    needsMask: false, needsPrompt: true, needsAspect: false,
+    promptPlaceholder: "描述目标情绪表情，如「强忍悲戚：眉头紧蹙，眼含泪光，嘴角下抿」",
+  },
 ];
 
 export function getImageEditOp(id?: ImageEditOp | string): ImageEditOpSpec | undefined {
@@ -137,6 +145,7 @@ export function comfyDenoiseForOp(op: ImageEditOp): number {
   switch (op) {
     case "upscale": return 0.35;   // enhance only — structure must not drift
     case "relight": return 0.55;   // keep structure, change light
+    case "emotion": return 0.45;   // face-only change — identity/pose must hold
     case "reangle": return 0.7;    // camera move = big structural change, keep identity/style
     case "reframe": return 0.5;
     case "remove_bg": return 0.6;
@@ -172,6 +181,8 @@ export function buildImageEditInstruction(
       return `Re-render the exact same subject and scene from a different camera angle${extra ? `:${extra}` : ""}. Keep the subject's identity, outfit, environment, lighting mood and overall style strictly identical — only the camera position, viewing angle and framing change.`;
     case "reframe":
       return `Recompose and reframe the image${aspect ? ` to a ${aspect} aspect ratio` : ""}, keeping the main subject well composed and naturally extending or filling the edges as needed.${extra}`;
+    case "emotion":
+      return `Change ONLY the character's facial expression to${extra || " a natural calm expression"}. Keep the person's identity, facial structure, hairstyle, clothing, pose, body position, camera framing, composition, lighting, background and overall style strictly identical — nothing changes except the facial expression itself (eyes, eyebrows, mouth and the natural micro-details that come with the emotion).`;
     default:
       return `Edit the image.${extra}`;
   }

@@ -3371,7 +3371,7 @@ export const imageEditRouter = router({
   run: protectedProcedure
     .input(z.object({
       sourceImageUrl: mediaUrlSchema,
-      operation: z.enum(["remove_bg", "outpaint", "inpaint", "erase", "relight", "reframe", "upscale", "reangle"]),
+      operation: z.enum(["remove_bg", "outpaint", "inpaint", "erase", "relight", "reframe", "upscale", "reangle", "emotion"]),
       // Edit-capable model (validated against the shared allow-list). Empty → default.
       model: z.string().max(64).optional(),
       prompt: z.string().max(1000).optional(),

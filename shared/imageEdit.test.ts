@@ -12,10 +12,11 @@ import {
 import { IMAGE_GEN_MODELS, type ImageEditOp } from "./types";
 
 describe("IMAGE_EDIT_OPS catalog", () => {
-  it("covers the 8 documented operations with unique ids", () => {
+  it("covers the 9 documented operations with unique ids", () => {
     const ids = IMAGE_EDIT_OPS.map((o) => o.id).sort();
-    expect(ids).toEqual(["erase", "inpaint", "outpaint", "reangle", "reframe", "relight", "remove_bg", "upscale"]);
-    expect(new Set(ids).size).toBe(8);
+    // #336 新增 emotion（情绪调节：只改人物面部表情）
+    expect(ids).toEqual(["emotion", "erase", "inpaint", "outpaint", "reangle", "reframe", "relight", "remove_bg", "upscale"]);
+    expect(new Set(ids).size).toBe(9);
   });
   it("flags which ops need prompt / aspect / mask", () => {
     expect(getImageEditOp("inpaint")?.needsPrompt).toBe(true);

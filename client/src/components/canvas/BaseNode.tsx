@@ -24,7 +24,7 @@ import { StudioCommandBar, STUDIO_COMMAND_BAR_TYPES } from "./studio/StudioComma
 import { useLightbox } from "./studio/Lightbox";
 import {
   Trash2, Copy, GripVertical, Check, X, Loader2, FileText, AlertTriangle, Pin, Pencil, Share2, Play, RefreshCw, Layers, Download, ChevronDown, ChevronUp, Maximize2, Lock,
-  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser, Columns2, Link2,
+  Scissors, Sun, Crop, Expand, Film, Captions, Wand2, Combine, Video, Sparkles, Grid3X3, LayoutGrid, Music2, CircleSlash, Rotate3d, Boxes, Focus, Eraser, Columns2, Link2, Smile,
 } from "lucide-react";
 import { getGridPreset, buildGridPrompt } from "../../../../shared/grid";
 import { parseRecoverableTask, stripRecoverableMarker } from "../../lib/recoverableError";
@@ -54,6 +54,8 @@ const STUDIO_PRO_BODY_TYPES = new Set<NodeType>(["ai_chat", "super_agent"]);
 // #72 LibTV 多角度/打光全功能编辑器（全模式）：懒加载，仅在打开时拉取代码。
 const MultiAngleEditorLazy = lazy(() => import("./editors/AngleRelightEditors").then((m) => ({ default: m.MultiAngleEditor })));
 const RelightEditorLazy = lazy(() => import("./editors/AngleRelightEditors").then((m) => ({ default: m.RelightEditor })));
+// #336 情绪调节编辑器（LibTV「人像质感调节 › 情绪调节」）：25 格情绪坐标 + 表情脸预览
+const EmotionEditorLazy = lazy(() => import("./editors/EmotionEditor").then((m) => ({ default: m.EmotionEditor })));
 
 // #73 纳管：工具箱宫格管线（多机位九宫格/连贯分镜/剧情推演/三视图/表情表/±5s推演）
 // 此前一律走服务端默认模型且无计价显示（隐形付费点）。补模型选择（记忆到 localStorage）
@@ -473,6 +475,7 @@ export const BaseNode = memo(function BaseNode({
   // 会自动把旧图押入版本历史），字段按 nodeType 与 resultImageUrl 的读取口径一致。
   const [angleEditorOpen, setAngleEditorOpen] = useState(false);
   const [relightEditorOpen, setRelightEditorOpen] = useState(false);
+  const [emotionEditorOpen, setEmotionEditorOpen] = useState(false); // #336 情绪调节
   // #103 快剪覆盖所有视频节点：video_task 之外的类型由 BaseNode 统一渲染快剪条
   const [quickTrimOpen, setQuickTrimOpen] = useState(false);
   const applyEditedImage = useCallback((url: string) => {
@@ -1222,6 +1225,16 @@ export const BaseNode = memo(function BaseNode({
                   style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
                 >
                   <Sun size={12} /> 打光
+                </button>
+                {/* #336 情绪调节：LibTV 式 25 格情绪坐标编辑器（激动↔平静 × 亲近↔疏离 + 表情脸预览），
+                    只改人物表情、其余不变，结果入版本历史 */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setEmotionEditorOpen(true); }}
+                  title="情绪调节（25 格情绪坐标 + 表情预览，只改人物面部表情，结果入版本历史）"
+                  className="studio-toolbtn flex items-center gap-1 h-7 px-2 rounded-lg"
+                  style={{ background: "var(--c-surface)", color: "var(--c-t1)", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                >
+                  <Smile size={12} /> 情绪
                 </button>
                 {/* 阶段四 4.1 工具箱：模板化操作套件（全部复用 宫格生成→切分 / 单图外推 管线） */}
                 <span style={{ position: "relative", display: "inline-flex" }}>
@@ -2175,6 +2188,11 @@ export const BaseNode = memo(function BaseNode({
         <Suspense fallback={null}>
           <RelightEditorLazy sourceUrl={resultImageUrl} nodeId={id} projectId={projectId ?? 0}
             onApply={applyEditedImage} onClose={() => setRelightEditorOpen(false)} />
+        </Suspense>, document.body)}
+      {emotionEditorOpen && resultImageUrl && createPortal(
+        <Suspense fallback={null}>
+          <EmotionEditorLazy sourceUrl={resultImageUrl} nodeId={id} projectId={projectId ?? 0}
+            onApply={applyEditedImage} onClose={() => setEmotionEditorOpen(false)} />
         </Suspense>, document.body)}
 
       {/* #103 快剪条（video_task 之外的视频节点；确认走 clip.trimVideo，按类型写回结果字段）。
