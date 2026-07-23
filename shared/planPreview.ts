@@ -118,6 +118,24 @@ export function previewableEdges(ops: AgentOperation[]): EdgePreview[] {
   return out;
 }
 
+/** 把一批 operations 转成可读的镜头表大纲文本（含镜号/景别/时长/提示词/台词 + 连线），
+ *  供「复制编排」一键拷贝给外部记录/交接。纯函数。 */
+export function planOutline(ops: AgentOperation[]): string {
+  const rows = previewableCreates(ops);
+  const edges = previewableEdges(ops);
+  const lines = [`镜头表（${rows.length} 个节点）`];
+  for (const r of rows) {
+    const scene = r.sceneNumber !== undefined ? `镜${r.sceneNumber} ` : "";
+    const meta = [r.shotType, r.duration !== undefined ? `${r.duration}s` : ""].filter(Boolean).join(" ");
+    lines.push(`- ${scene}${r.title}${meta ? `（${meta}）` : ""}${r.promptText ? `：${r.promptText}` : ""}${r.dialogue ? ` 💬${r.dialogue}` : ""}`);
+  }
+  if (edges.length) {
+    lines.push("连线：");
+    for (const e of edges) lines.push(`- ${e.from} → ${e.to}`);
+  }
+  return lines.join("\n");
+}
+
 /** 把预览行导出为 CSV 文本（表头中文、逐字段转义），供「导出镜头表」下载。纯函数。 */
 export function shotRowsToCsv(rows: ShotPreviewRow[]): string {
   const esc = (v: unknown): string => {

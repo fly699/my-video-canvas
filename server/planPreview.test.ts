@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges } from "../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline } from "../shared/planPreview";
 import type { AgentOperation } from "../shared/types";
 
 // 优化B 镜头表预览卡：预览行提取 + 勾选式落地筛选（纯函数）。
@@ -134,6 +134,27 @@ describe("previewableEdges", () => {
 
   it("无连线 → 空数组", () => {
     expect(previewableEdges([create("i1", "image_gen", {}, "镜1图")])).toEqual([]);
+  });
+});
+
+describe("planOutline", () => {
+  it("生成可读大纲：标题行 + 逐镜（镜号/景别/时长/提示词/台词）+ 连线", () => {
+    const ops: AgentOperation[] = [
+      create("s1", "storyboard", { sceneNumber: 1, shotType: "WS", duration: 4, promptText: "白天开场", dialogue: "陈默：出发" }),
+      create("v1", "video_task", {}, "镜1视频"),
+      connect("s1", "v1"),
+    ];
+    const out = planOutline(ops);
+    expect(out.split("\n")[0]).toBe("镜头表（2 个节点）");
+    expect(out).toContain("- 镜1 分镜（WS 4s）：白天开场 💬陈默：出发");
+    expect(out).toContain("连线：");
+    expect(out).toContain("- 分镜 → 镜1视频");
+  });
+
+  it("无连线时不输出「连线：」段", () => {
+    const out = planOutline([create("i1", "image_gen", { prompt: "一只猫" }, "图1")]);
+    expect(out).toContain("- 图1：一只猫");
+    expect(out).not.toContain("连线：");
   });
 });
 

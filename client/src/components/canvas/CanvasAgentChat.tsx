@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
-import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic, Download } from "lucide-react";
+import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic, Download, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations, ensureAliasNums, buildNodeDetailText } from "@/lib/agentApply";
@@ -26,7 +26,8 @@ import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 // #305 语音口令：统一语音输入 hook（Web Speech 主路径 + 服务端 whisper 兜底），与 AI 客户端/聊天室同源。
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, type ShotPreviewRow } from "../../../../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, type ShotPreviewRow } from "../../../../shared/planPreview";
+import { copyTextWithToast } from "../../lib/clipboard";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
 import { estimateOpsBudget, budgetLabel, countCloudGenOps } from "../../lib/agentBudget";
@@ -1596,6 +1597,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                   <button data-testid="save-orchestration" onClick={() => saveOrchestration(t.planOps!)} title="把这次规划的节点结构存为「编排模板」，以后一句话复用"
                     style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>
                     <BookOpen size={10} /> 存为编排模板
+                  </button>
+                ) : null}
+                {t.planOps?.length ? (
+                  <button data-testid="copy-outline" onClick={() => void copyTextWithToast(planOutline(t.planOps!), "已复制镜头表大纲")} title="把这次编排复制为文本镜头表大纲（便于外部记录/交接）"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>
+                    <Copy size={10} /> 复制大纲
                   </button>
                 ) : null}
               </div>
