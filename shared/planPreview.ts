@@ -55,6 +55,28 @@ export function previewableCreates(ops: AgentOperation[]): ShotPreviewRow[] {
   return [...withScene, ...rest];
 }
 
+/** 预览行排序（不改选择逻辑，仅调显示顺序）：default=原序（分镜按镜号）、
+ *  duration=按时长升序（无时长排后）、type=按节点类型中文名。均稳定排序。 */
+export type ShotSortMode = "default" | "duration" | "type";
+export function sortPreviewRows(rows: ShotPreviewRow[], mode: ShotSortMode): ShotPreviewRow[] {
+  if (mode === "default") return rows;
+  const idx = new Map(rows.map((r, i) => [r, i] as const)); // 稳定排序的原序回退
+  const keyed = [...rows];
+  if (mode === "duration") {
+    keyed.sort((a, b) => {
+      const da = a.duration ?? Infinity, db = b.duration ?? Infinity;
+      return da !== db ? da - db : idx.get(a)! - idx.get(b)!;
+    });
+  } else { // type
+    keyed.sort((a, b) => {
+      const la = TYPE_LABEL[a.nodeType] ?? a.nodeType, lb = TYPE_LABEL[b.nodeType] ?? b.nodeType;
+      const c = la.localeCompare(lb, "zh");
+      return c !== 0 ? c : idx.get(a)! - idx.get(b)!;
+    });
+  }
+  return keyed;
+}
+
 /** 按取消勾选集（deselected = 不落地的 tempId）筛掉操作：去掉被取消的 create +
  *  任何 sourceRef/targetRef 指向它们的 connect/update/delete。纯函数。
  *  canvas/group/align 等全局动作不按 tempId 剔除（缺失成员由 applyAgentOperations 容错）。 */

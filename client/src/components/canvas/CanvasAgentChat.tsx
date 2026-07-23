@@ -26,7 +26,7 @@ import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 // #305 语音口令：统一语音输入 hook（Web Speech 主路径 + 服务端 whisper 兜底），与 AI 客户端/聊天室同源。
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, type ShotPreviewRow } from "../../../../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows, type ShotPreviewRow, type ShotSortMode } from "../../../../shared/planPreview";
 import { copyTextWithToast } from "../../lib/clipboard";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
@@ -922,6 +922,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 预算护栏：暂存超上限、待用户二次确认的规划结果。
   const [budgetPending, setBudgetPending] = useState<{ r: AgentChatResult; count: number } | null>(null);
   const [showCostDetail, setShowCostDetail] = useState(false); // 预览卡成本明细展开态
+  const [previewSort, setPreviewSort] = useState<ShotSortMode>("default"); // 预览卡镜头排序
   const applyChatResult = (r: AgentChatResult, opts?: { skipPreview?: boolean; skipBudget?: boolean }): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
     // previewPlan 开启 + 有可勾选的 create 节点 → 先渲染预览卡，等用户「落地所选」再进入下面的落地逻辑。
     if (!opts?.skipPreview && quickPrefs.previewPlan && previewableCreates((r.operations ?? []) as AgentOperation[]).length > 0) {
@@ -1942,7 +1943,13 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           <button data-testid="plan-preview-all" onClick={() => setPreviewDeselected(new Set())} style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}>全选</button>
           <button data-testid="plan-preview-none" onClick={() => setPreviewDeselected(new Set(previewRows.map((row) => row.tempId)))} style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}>全不选</button>
           <button data-testid="plan-preview-export" onClick={exportShotList} title="导出为 CSV 镜头表" style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}><Download size={11} />导出镜头表</button>
-          <span style={{ marginLeft: "auto" }}>共 {previewRows.length} 个节点</span>
+          <select data-testid="plan-preview-sort" value={previewSort} onChange={(e) => setPreviewSort(e.target.value as ShotSortMode)} title="镜头排序（仅调显示顺序，不影响勾选）"
+            style={{ marginLeft: "auto", padding: "3px 6px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}>
+            <option value="default">默认排序</option>
+            <option value="duration">按时长</option>
+            <option value="type">按类型</option>
+          </select>
+          <span>共 {previewRows.length} 个节点</span>
         </div>
         <div data-testid="plan-preview-meta" style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 8px", fontSize: 11, flexWrap: "wrap" }}>
           <span data-testid="plan-preview-cost" style={{ color: "var(--c-t3)" }}>💰 预计消耗：{previewCostLabel || "本批无云端计费"}</span>
@@ -1979,7 +1986,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           </div>
         )}
         <div className="nowheel" style={{ flex: 1, overflowY: "auto", padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-          {previewRows.map((row) => {
+          {sortPreviewRows(previewRows, previewSort).map((row) => {
             const on = !previewDeselected.has(row.tempId);
             return (
               <label key={row.tempId} data-testid={`plan-preview-row-${row.tempId}`} data-on={on || undefined}

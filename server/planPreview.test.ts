@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline } from "../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows } from "../shared/planPreview";
 import type { AgentOperation } from "../shared/types";
 
 // 优化B 镜头表预览卡：预览行提取 + 勾选式落地筛选（纯函数）。
@@ -111,6 +111,26 @@ describe("planContinuityWarnings", () => {
     const w = planContinuityWarnings(rows);
     expect(w.i1).toContain("提示词过简，建议补充画面细节");
     expect(w.wf).toBeUndefined();
+  });
+});
+
+describe("sortPreviewRows", () => {
+  const rows = previewableCreates([
+    create("s1", "video_task", { duration: 8 }, "视频A"),
+    create("s2", "image_gen", { duration: 3 }, "图B"),
+    create("s3", "character", {}, "角色C"), // 无时长
+  ]);
+  it("default → 原样返回", () => {
+    expect(sortPreviewRows(rows, "default")).toBe(rows);
+  });
+  it("duration → 按时长升序，无时长排最后", () => {
+    expect(sortPreviewRows(rows, "duration").map((r) => r.tempId)).toEqual(["s2", "s1", "s3"]);
+  });
+  it("type → 按节点类型中文名排序（稳定）", () => {
+    // 视频/图像/角色 → 中文名「视频」「图像」「角色」按 zh localeCompare 排
+    const order = sortPreviewRows(rows, "type").map((r) => r.nodeType);
+    expect(new Set(order)).toEqual(new Set(["video_task", "image_gen", "character"]));
+    expect(order).toHaveLength(3);
   });
 });
 
