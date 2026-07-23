@@ -8,13 +8,16 @@ import * as db from "../db";
 //       canvasAgentPresets / canvasAgentQuick / canvasAgentModel —— #249 画布助手
 //       快捷设置预设（≤12 套）/ 当前快捷设置 / 规划模型选择，随账号跨设备持久化
 //       （localStorage 仅作本地缓存与首次迁移源，服务端值优先）。
-const ALLOWED_KEYS = ["connectMenuOrder", "uiStyle", "canvasAgentPresets", "canvasAgentQuick", "canvasAgentModel"] as const;
+const ALLOWED_KEYS = ["connectMenuOrder", "uiStyle", "canvasAgentPresets", "canvasAgentQuick", "canvasAgentModel", "canvasAgentOrchestrations"] as const;
 const keySchema = z.enum(ALLOWED_KEYS);
 const MAX_VALUE_JSON = 8_000;
 // 预设最多 12 套 × 每套 ~1KB 快捷设置，8KB 默认上限不够——按 key 放宽。
+// canvasAgentOrchestrations —— 画布助手「编排模板」（保存一次满意规划的 operations 快照，
+// 一句话复用），每套含整批 ops、体积更大，放宽到 128KB（客户端另限最多 20 套 + 单套 op 数）。
 const MAX_BY_KEY: Partial<Record<(typeof ALLOWED_KEYS)[number], number>> = {
   canvasAgentPresets: 48_000,
   canvasAgentQuick: 16_000,
+  canvasAgentOrchestrations: 128_000,
 };
 
 export const userPrefsRouter = router({

@@ -27,6 +27,7 @@ import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
 import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, type ShotPreviewRow } from "../../../../shared/planPreview";
+import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { estimateOpsBudget, budgetLabel } from "../../lib/agentBudget";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
@@ -37,7 +38,7 @@ import { formatStreamPreview } from "@/lib/streamPreviewFormat";
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
  *  已对齐聊天助手：模板人设、@角色 引用、/ 调技能（本机 Claude 桥接，MCP 亦自动可用）、撤销本次改动。
  *  结构性操作自动落地且不花钱；「运行/生成」仍需在节点上点运行（防误烧额度）。 */
-type Turn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; dropped?: string[]; error?: boolean; createdIds?: string[]; undone?: boolean };
+type Turn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; dropped?: string[]; error?: boolean; createdIds?: string[]; undone?: boolean; planOps?: AgentOperation[] };
 
 const accent = "oklch(0.70 0.20 310)";
 const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
@@ -327,6 +328,46 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setQuickPrefs({ ...QP_DEFAULT, ...p.prefs });
     toast.success(`已调取预设「${p.name}」`);
   };
+  // 优化③ 编排模板库：保存/复用一次满意规划的可重放 ops（userPrefs KV，随账号跨设备）。
+  const [orchTemplates, setOrchTemplates] = useState<OrchestrationTemplate[]>(() => {
+    try { const s = localStorage.getItem("avc:canvasAgent:orchestrations"); if (s) return JSON.parse(s) as OrchestrationTemplate[]; } catch { /* ignore */ }
+    return [];
+  });
+  const orchPref = trpc.userPrefs.get.useQuery({ key: "canvasAgentOrchestrations" }, { staleTime: Infinity, refetchOnWindowFocus: false });
+  const orchSnap = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!orchPref.isSuccess) return;
+    const v = orchPref.data.value;
+    if (Array.isArray(v)) { orchSnap.current = JSON.stringify(v); setOrchTemplates(v as OrchestrationTemplate[]); }
+    else if (orchTemplates.length) { orchSnap.current = JSON.stringify(orchTemplates); prefsSetMut.mutate({ key: "canvasAgentOrchestrations", value: orchTemplates }); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orchPref.isSuccess]);
+  useEffect(() => {
+    try { localStorage.setItem("avc:canvasAgent:orchestrations", JSON.stringify(orchTemplates)); } catch { /* quota */ }
+    const j = JSON.stringify(orchTemplates);
+    if (!orchPref.isSuccess || j === orchSnap.current) return;
+    const t = setTimeout(() => { orchSnap.current = j; prefsSetMut.mutate({ key: "canvasAgentOrchestrations", value: orchTemplates }); }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orchTemplates]);
+  const [showOrch, setShowOrch] = useState(false);
+  const [renamingOrch, setRenamingOrch] = useState<string | null>(null);
+  const saveOrchestration = (ops: AgentOperation[]) => {
+    if (orchTemplates.length >= MAX_ORCHESTRATIONS) { toast.error(`编排模板最多 ${MAX_ORCHESTRATIONS} 套（删掉不用的再存）`); return; }
+    const replay = extractReplayableOps(ops);
+    const { creates, connects } = orchestrationSummary(replay);
+    if (!creates) { toast.error("这次规划没有可复用的建节点操作"); return; }
+    const id = `orch_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+    setOrchTemplates((p) => [...p, { id, name: `编排${p.length + 1}（${creates}节点）`, createdAt: Date.now(), ops: replay }]);
+    setRenamingOrch(id);
+    toast.success(`已存为编排模板（${creates} 节点 · ${connects} 连线）`);
+  };
+  const applyOrchestration = (t: OrchestrationTemplate) => {
+    setShowOrch(false);
+    // 走同一落地路径（previewPlan 开则先弹预览卡）——tempId 由 applyAgentOperations 内部重映射，跨项目安全。
+    void applyChatResult({ reply: `已套用编排模板「${t.name}」`, operations: t.ops, droppedCount: 0 } as unknown as AgentChatResult);
+  };
+  const deleteOrchestration = (id: string) => setOrchTemplates((p) => p.filter((x) => x.id !== id));
   // 徽标 = 与出厂默认不同的改动数（0 = 全默认不显示）。泛型按键集合统计，新增设置字段
   // 自动纳入——旧手写枚举「默认真值也算 + 漏数新字段」的双重失真见 quickPrefsCount.ts 注释。
   const qpActiveCount = countDiffFromDefaults(QP_DEFAULT as unknown as Record<string, unknown>, quickPrefs as unknown as Record<string, unknown>);
@@ -953,7 +994,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       else refs.forEach((ref) => void batchSaveLibrary(ref));
     }
     const failed = applyFailMsg || undefined;
-    setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, dropped: droppedReasons.length ? droppedReasons : undefined, createdIds: createdIds.length ? createdIds : undefined }]);
+    // 优化③：本回合可复用的编排 ops（仅内存、不入库——sanitizeTurnsForSave 白名单不含 planOps），
+    // 供「存为编排模板」按钮就地保存该次规划结构。
+    const planOps = ops.length && canSaveOrchestration(ops) ? ops : undefined;
+    setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, dropped: droppedReasons.length ? droppedReasons : undefined, createdIds: createdIds.length ? createdIds : undefined, planOps }]);
     return { apply: applyRes, fetchIds: [] };
   };
 
@@ -1199,10 +1243,47 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             border: `1px solid ${showQuick || qpActiveCount ? accent : "var(--c-bd2)"}`, background: showQuick || qpActiveCount ? accentSoft : "var(--c-surface)", color: showQuick || qpActiveCount ? accent : "var(--c-t3)" }}>
           <SlidersHorizontal size={11} /> 快速设置{qpActiveCount > 0 ? ` · ${qpActiveCount}` : ""}
         </button>
+        <button data-testid="orch-toggle" onClick={() => setShowOrch((v) => !v)} title="编排模板：把满意的规划节点结构存起来，以后一键复用"
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+            border: `1px solid ${showOrch ? accent : "var(--c-bd2)"}`, background: showOrch ? accentSoft : "var(--c-surface)", color: showOrch ? accent : "var(--c-t3)" }}>
+          <BookOpen size={11} /> 编排{orchTemplates.length ? ` · ${orchTemplates.length}` : ""}
+        </button>
         {focusCount > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: accent }}><Focus size={11} /> 已聚焦 {focusCount} 个选中节点</span>}
         {isClaudeLocal && bridgeSkills.enabled && bridgeSkills.skills.length > 0 && <span style={{ color: "var(--c-t4)" }}>· 输入 <strong style={{ color: accent }}>/</strong> 选技能</span>}
         {(charsQuery.data?.length ?? 0) > 0 && <span style={{ color: "var(--c-t4)" }}>· <strong style={{ color: accent }}>@</strong> 引用角色</span>}
       </div>
+
+      {/* 优化③ 编排模板面板：列出已存编排，一键应用（走同一落地/预览路径）/重命名/删除。 */}
+      {showOrch && (
+        <div data-testid="orch-panel" className="nowheel" style={{ margin: "0 2px 6px", border: "1px solid var(--c-bd2)", borderRadius: 10, background: "var(--c-surface)", padding: 8, maxHeight: 240, overflowY: "auto" }}>
+          <div style={{ fontSize: 11, color: "var(--c-t3)", marginBottom: 6 }}>把满意的规划「存为编排模板」（回复下方按钮），以后在这里一键复用整套节点结构。最多 {MAX_ORCHESTRATIONS} 套。</div>
+          {orchTemplates.length === 0 ? (
+            <div style={{ fontSize: 11, color: "var(--c-t4)", padding: "6px 2px" }}>还没有编排模板。规划落地后点回复下方的「存为编排模板」即可保存。</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {orchTemplates.map((t) => {
+                const s = orchestrationSummary(t.ops);
+                return (
+                  <div key={t.id} data-testid={`orch-row-${t.id}`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 7px", borderRadius: 8, background: "var(--c-base)", border: "1px solid var(--c-bd1)" }}>
+                    {renamingOrch === t.id ? (
+                      <input autoFocus defaultValue={t.name} onBlur={(e) => { const v = e.target.value.trim(); if (v) setOrchTemplates((p) => p.map((x) => x.id === t.id ? { ...x, name: v } : x)); setRenamingOrch(null); }}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setRenamingOrch(null); }}
+                        style={{ flex: 1, minWidth: 0, fontSize: 11.5, padding: "2px 5px", borderRadius: 5, border: `1px solid ${accent}`, background: "var(--c-surface)", color: "var(--c-t1)" }} />
+                    ) : (
+                      <button onClick={() => setRenamingOrch(t.id)} title="点击重命名" style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "text", color: "var(--c-t1)", fontSize: 11.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</button>
+                    )}
+                    <span style={{ fontSize: 10, color: "var(--c-t4)", flexShrink: 0 }}>{s.creates}节点·{s.connects}线</span>
+                    <button data-testid="orch-apply" onClick={() => applyOrchestration(t)} title="套用这套编排（在当前画布重建整套节点结构）"
+                      style={{ flexShrink: 0, fontSize: 10.5, color: accent, background: accentSoft, border: `1px solid ${accent}`, borderRadius: 6, padding: "2px 9px", cursor: "pointer" }}>应用</button>
+                    <button data-testid="orch-del" onClick={() => deleteOrchestration(t.id)} title="删除此编排模板"
+                      style={{ flexShrink: 0, width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--c-t4)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, cursor: "pointer" }}><X size={11} /></button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 快速设置面板：偏好注入助手规划（agent.chat 的 prefs 约束 + 落地 aspect），持久化 */}
       {showQuick && (() => {
@@ -1454,6 +1535,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                   </button>
                 )}
                 {t.undone && <span style={{ color: "var(--c-t4)" }}>· 已撤销新建</span>}
+                {t.planOps?.length ? (
+                  <button data-testid="save-orchestration" onClick={() => saveOrchestration(t.planOps!)} title="把这次规划的节点结构存为「编排模板」，以后一句话复用"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>
+                    <BookOpen size={10} /> 存为编排模板
+                  </button>
+                ) : null}
               </div>
             )}
             {t.failed && (
