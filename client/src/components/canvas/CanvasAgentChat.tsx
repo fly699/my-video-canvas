@@ -923,6 +923,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [budgetPending, setBudgetPending] = useState<{ r: AgentChatResult; count: number } | null>(null);
   const [showCostDetail, setShowCostDetail] = useState(false); // 预览卡成本明细展开态
   const [previewSort, setPreviewSort] = useState<ShotSortMode>("default"); // 预览卡镜头排序
+  const [previewOnlyWarn, setPreviewOnlyWarn] = useState(false); // 预览卡「只看告警镜」过滤（仅调显示，不改勾选）
   const applyChatResult = (r: AgentChatResult, opts?: { skipPreview?: boolean; skipBudget?: boolean }): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
     // previewPlan 开启 + 有可勾选的 create 节点 → 先渲染预览卡，等用户「落地所选」再进入下面的落地逻辑。
     if (!opts?.skipPreview && quickPrefs.previewPlan && previewableCreates((r.operations ?? []) as AgentOperation[]).length > 0) {
@@ -1981,9 +1982,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             <span data-testid="plan-preview-duration" style={{ color: "var(--c-t3)" }} title="所选各视频镜时长合计（估算成片长度，未设时长的镜未计入）">🎬 约 {previewTotalDuration}s 成片</span>
           )}
           {previewWarnCount > 0 && (
-            <span data-testid="plan-preview-warncount" style={{ display: "flex", alignItems: "center", gap: 3, color: "oklch(0.75 0.15 75)" }}>
-              <AlertTriangle size={11} />{previewWarnCount} 个镜头有连续性提示
-            </span>
+            <button data-testid="plan-preview-warncount" onClick={() => setPreviewOnlyWarn((v) => !v)}
+              title={previewOnlyWarn ? "点击显示全部镜头" : "点击只看有连续性提示的镜头（快速定位待修）"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, cursor: "pointer", padding: "1px 7px", borderRadius: 6,
+                color: "oklch(0.75 0.15 75)", background: previewOnlyWarn ? "oklch(0.75 0.15 75 / 0.16)" : "none", border: `1px solid ${previewOnlyWarn ? "oklch(0.75 0.15 75 / 0.5)" : "transparent"}` }}>
+              <AlertTriangle size={11} />{previewWarnCount} 个镜头有连续性提示{previewOnlyWarn ? "（只看告警）" : ""}
+            </button>
           )}
         </div>
         {showCostDetail && previewCostBreakdown.length > 0 && (
@@ -2009,7 +2013,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           </div>
         )}
         <div className="nowheel" style={{ flex: 1, overflowY: "auto", padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-          {sortPreviewRows(previewRows, previewSort).map((row) => {
+          {sortPreviewRows(previewRows, previewSort)
+            .filter((row) => !previewOnlyWarn || previewWarnCount === 0 || (previewWarnings[row.tempId]?.length ?? 0) > 0)
+            .map((row) => {
             const on = !previewDeselected.has(row.tempId);
             return (
               <label key={row.tempId} data-testid={`plan-preview-row-${row.tempId}`} data-on={on || undefined}
