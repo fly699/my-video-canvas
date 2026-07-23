@@ -47,7 +47,7 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; previewPlan: boolean; budgetGuard: boolean; budgetMax: number; autoGroup: boolean; summaryMode: string; streamEcho: boolean; expertMode: boolean };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; previewPlan: boolean; budgetGuard: boolean; budgetMax: number; autoGroup: boolean; autoTidy: boolean; summaryMode: string; streamEcho: boolean; expertMode: boolean };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
 const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, // #259 selfCheck 默认开：#258 真模型 A/B 实证质量提升（自查后主动补齐角色一致性管线），
 // 且注入方式是「# 输出要求 末尾纯追加一条规则」——与 #145 对白语种硬规则同风险级（已有
@@ -56,7 +56,7 @@ const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec
 autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, emotionDispatch: false, previewPlan: false,
 // 优化 预算护栏（默认关）：开启后规划落地前若「云端计费生成节点数」超过 budgetMax 弹二次确认。
 // 老账号预设快照无这两键 → 展开 QP_DEFAULT 时回落默认（关 + 20），行为与升级前一致。
-budgetGuard: false, budgetMax: 20, autoGroup: false, summaryMode: "compressed",
+budgetGuard: false, budgetMax: 20, autoGroup: false, autoTidy: false, summaryMode: "compressed",
 // #306 流式回显（默认关）：仅本机桥接模型（claude-local*）生效——生成中的文字实时回显在等待
 // 行下方；云端模型/关闭时自动走原有非流式（服务端三重门控，零回归）。旧账号预设快照没有此
 // 键 → 展开合并回落 false，行为与升级前一致。
@@ -993,6 +993,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       if (quickPrefs.autoPortrait && createdIds.length) void autoPortraits(createdIds);
       // #225 外观锚点自动压缩（默认开）：后台跑，不阻塞对话。
       if (quickPrefs.anchorCompress && createdIds.length) void autoAnchors(createdIds);
+      // 落地后自动整理布局（开关，默认关）：把本次新建的节点按网格整齐排布、避免重叠。
+      // 复用 store.arrangeNodes（只动指定节点、跳过群组）；放在自动编组【之前】——先排好再编组。
+      if (quickPrefs.autoTidy && createdIds.length >= 2) {
+        const n = useCanvasStore.getState().arrangeNodes(createdIds, "grid");
+        if (n > 0) applied = [applied, "已整理布局"].filter(Boolean).join(" · ");
+      }
       // 落地后自动编组（开关，默认关）：把本次新建的节点包进一个带标签的群组，大编排保持整洁。
       // 复用 store.groupSelected（不足 2 个自动返回 null 不建组）；已存在的复用/接线节点不纳入。
       if (quickPrefs.autoGroup && createdIds.length >= 2) {
@@ -1495,7 +1501,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             </div>
             {secHead("自动增强")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["autoPortrait", "自动定妆照/场景图", "规划落地后，自动为本轮新建、还没有参考图的角色/场景节点按其描述生成主参考图：人物→「全身正面素背景」定妆照（3:4）、场景→空镜概念图（16:9）——运行工作流前即已锁脸/锁场景，无需逐个手动生成。生成期间节点顶部显示进度条。使用上方锁定的图像模型（未锁定则用系统默认），每个节点计一次生图费用。已有参考图的（如从库代入）自动跳过。"], ["anchorCompress", "外观锚点压缩（默认开）", "规划落地后，自动把本轮新建人物角色的外貌/服装/标志描述压缩成 15-30 字「外观锚点短语」写入角色卡——之后所有下游节点的提示词注入用「名字，身份，锚点」替代全量字段：省 token、跨镜头措辞恒定更利一致性。全量字段原样保留；在角色卡上可随时点小按钮切回未压缩的全量注入。每个角色一次极小的文本 LLM 调用；已有锚点的角色自动跳过。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"], ["leanPrompt", "按对话类型精简提示词（实验）", "开启后：本轮消息是明确的生产指令（不含「怎么/在哪/什么」等疑问特征）时，规划提示词省略约 600 字的「应用操作答疑」段——更短更快更省；带任何疑问特征或拿不准时自动保留全量，答疑能力不受影响。关闭时提示词与现状逐字一致。kie 网关用户建议先开着跑一轮确认效果。"], ["selfCheck", "输出前自查清单（默认开）", "要求助手在输出规划 JSON 前逐项自查——payload 字段都在节点目录内、每条视频提示词含五要素且动作量匹配时长、硬约束逐条核对、连线引用真实存在。长计划的一次成功率更高（真机 A/B 实证：自查后主动补齐角色一致性管线），代价是每轮响应略慢。关闭后提示词恢复与旧版逐字一致。"], ["emotionDispatch", "按剧情派发情绪（实验）", "开启后：规划时让助手按剧情为每个分镜/视频镜头的出镜人物指定贴切的面部情绪，写进该镜既有的提示词表情描写与对白语气里（情绪随剧情推进变化、不整片一个表情），无需你逐镜手调。只写进既有字段文本、不新增字段、不改结构。关闭时提示词与现状逐字一致。改动的是规划提示词，kie 网关用户建议先开着跑一轮确认效果。"], ["autoGroup", "落地后自动编组", "开启后：把本次规划新建的节点（≥2 个）自动包进一个带标签的群组容器「AI编排 · N节点」——大编排一键保持画布整洁、可整组移动/执行/折叠。复用的已有角色/仅接线的既有节点不纳入。关闭时（默认）不建组，与现状一致；建组后可随时右键解组。"]] as const).map(([k, label, tip]) => (
+              {([["addMusic", "自动配乐", ""], ["addSubtitle", "自动字幕", ""], ["autoPortrait", "自动定妆照/场景图", "规划落地后，自动为本轮新建、还没有参考图的角色/场景节点按其描述生成主参考图：人物→「全身正面素背景」定妆照（3:4）、场景→空镜概念图（16:9）——运行工作流前即已锁脸/锁场景，无需逐个手动生成。生成期间节点顶部显示进度条。使用上方锁定的图像模型（未锁定则用系统默认），每个节点计一次生图费用。已有参考图的（如从库代入）自动跳过。"], ["anchorCompress", "外观锚点压缩（默认开）", "规划落地后，自动把本轮新建人物角色的外貌/服装/标志描述压缩成 15-30 字「外观锚点短语」写入角色卡——之后所有下游节点的提示词注入用「名字，身份，锚点」替代全量字段：省 token、跨镜头措辞恒定更利一致性。全量字段原样保留；在角色卡上可随时点小按钮切回未压缩的全量注入。每个角色一次极小的文本 LLM 调用；已有锚点的角色自动跳过。"], ["autoQc", "生成后自动质检（图像）", "助手创建的图像节点生成完成后，自动用视觉模型质检结果图（与提示词的符合度 / 肢体畸形 / 黑屏 / 乱码水印等硬伤）。质检未过时带修正意见自动重新生成一次（仅一次，防循环）。会额外产生一次视觉分析调用与可能的一次重生成费用。质检模型与图像节点「标记」功能共用（在节点标记面板可换）。"], ["useModelSkills", "模型技能（提示词技法）", "开启后：把「模型技能库」（管理后台 → 模型 → 技能库）中为最终使用模型维护的提示词技法注入规划参考，助手按该模型的官方技法撰写提示词与参数。当前对上方锁定的图像/视频模型生效（锁定=最终使用模型确定）；未锁定的类别、该模型无技能条目、或技能被停用时不注入。关闭时与现状完全一致，不注入任何内容。"], ["useComfyMemory", "使用 ComfyUI 记忆体", "规划时注入你 ComfyUI 服务器已学的资源（模型/LoRA/节点）与工程智能体成功过的工作流经验，让助手按真实可用资源规划。关掉则本次不注入。"], ["leanPrompt", "按对话类型精简提示词（实验）", "开启后：本轮消息是明确的生产指令（不含「怎么/在哪/什么」等疑问特征）时，规划提示词省略约 600 字的「应用操作答疑」段——更短更快更省；带任何疑问特征或拿不准时自动保留全量，答疑能力不受影响。关闭时提示词与现状逐字一致。kie 网关用户建议先开着跑一轮确认效果。"], ["selfCheck", "输出前自查清单（默认开）", "要求助手在输出规划 JSON 前逐项自查——payload 字段都在节点目录内、每条视频提示词含五要素且动作量匹配时长、硬约束逐条核对、连线引用真实存在。长计划的一次成功率更高（真机 A/B 实证：自查后主动补齐角色一致性管线），代价是每轮响应略慢。关闭后提示词恢复与旧版逐字一致。"], ["emotionDispatch", "按剧情派发情绪（实验）", "开启后：规划时让助手按剧情为每个分镜/视频镜头的出镜人物指定贴切的面部情绪，写进该镜既有的提示词表情描写与对白语气里（情绪随剧情推进变化、不整片一个表情），无需你逐镜手调。只写进既有字段文本、不新增字段、不改结构。关闭时提示词与现状逐字一致。改动的是规划提示词，kie 网关用户建议先开着跑一轮确认效果。"], ["autoGroup", "落地后自动编组", "开启后：把本次规划新建的节点（≥2 个）自动包进一个带标签的群组容器「AI编排 · N节点」——大编排一键保持画布整洁、可整组移动/执行/折叠。复用的已有角色/仅接线的既有节点不纳入。关闭时（默认）不建组，与现状一致；建组后可随时右键解组。"], ["autoTidy", "落地后自动整理布局", "开启后：把本次规划新建的节点（≥2 个）自动按网格整齐排布、避免重叠——不动画布上其它既有节点。与「自动编组」同开时先排布再编组。关闭时（默认）保持助手原始落点，与现状一致；随时可用工具栏「整理布局」手动重排。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
