@@ -11,6 +11,15 @@ export function selfCheckRule(enabled?: boolean): string {
   return "\n- 【输出前自查（用户已开启）】提交前逐项核对，发现问题先改正再输出：① 每个 create/update 的 payload 字段名都在「可用节点目录」中该节点类型的字段列表内（有一个编造字段就整单不合格）；② 每条视频提示词（video_task/comfyui_video）都含五要素且动作量与镜头时长匹配；③ 上方「用户偏好/约束」里的每条【强制/硬约束】逐条核对已满足（模型/节点白名单/模板/排除分镜等）；④ 每个 connect 的 sourceRef/targetRef 都是本轮某 create 的 tempId 或画布摘要中真实存在的节点 id。自查只在内部进行，最终仍然只输出规定的 JSON 本体，不要输出自查过程。";
 }
 
+/** #336 批2 情绪派发：开启时追加到规则清单末尾的一条规则；关闭返回空串（提示词逐字不变）。
+ *  纯自然语言指引——让模型按剧情给每个分镜/视频镜头把人物情绪【写进既有 promptText/dialogue
+ *  的表情与语气描述】，不新增任何字段、不新增 op、不改 JSON 结构（wire-format 零改动）。
+ *  【wire-format 红线】与 selfCheckRule 同为「# 输出要求」清单【末尾纯追加行】，on 态效果需真机 kie A/B。 */
+export function emotionDispatchRule(enabled?: boolean): string {
+  if (!enabled) return "";
+  return "\n- 【按剧情派发情绪（用户已开启）】给每个分镜/视频镜头（storyboard / video_task / comfyui_video / 排除分镜工作流的 prompt 提示词节点）按当下剧情为出镜人物指定一个贴切的面部情绪，并把它自然地【写进该镜既有的 promptText/prompt 里的人物表情描写】（如 restrained grief 强忍悲戚 / calm composure 淡然自若 / explosive rage 怒不可遏 等，从「激动↔平静 × 亲近↔疏离」二维里挑），有台词的镜头再让 dialogue 的语气与该情绪一致。要求：情绪随剧情推进而变化、不要整片一个表情；只写进【既有字段的文本】，绝不新增 emotion 之类的新字段、不新增操作类型、不改变输出 JSON 结构；纯画面/无人物的镜头跳过。";
+}
+
 /** ⑦ 答疑段按需注入的判定：返回 true = 保留「应用操作答疑」段。
  *  保守策略（误判兜底 = 不会比现状差）：开关未开一律保留；开了也只在消息【不含任何
  *  疑问/求助特征】且长度足够明确时才省略——拿不准（空串/短句/带问号/含怎么如何等）一律保留。 */

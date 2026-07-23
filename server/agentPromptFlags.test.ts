@@ -1,7 +1,7 @@
 // #258 提示词开关批②守卫：两个开关默认关时必须零注入/零裁剪（提示词逐字一致的构造性保证），
 // 开启时的行为边界（保守裁剪、纯追加）也在此锁死。
 import { describe, it, expect } from "vitest";
-import { selfCheckRule, includeGuideRule } from "./_core/agentPromptFlags";
+import { selfCheckRule, includeGuideRule, emotionDispatchRule } from "./_core/agentPromptFlags";
 
 describe("selfCheckRule（⑧ 输出前自查）", () => {
   it("关闭/未传 → 空串（模板注入点为空，提示词逐字不变）", () => {
@@ -12,6 +12,20 @@ describe("selfCheckRule（⑧ 输出前自查）", () => {
     const r = selfCheckRule(true);
     expect(r.startsWith("\n- 【输出前自查")).toBe(true);
     expect(r).toContain("只输出规定的 JSON 本体");
+    expect(r.split("\n- ").length).toBe(2); // 恰好一条规则
+  });
+});
+
+describe("#336 批2 emotionDispatchRule（按剧情派发情绪，默认关）", () => {
+  it("关闭/未传 → 空串（模板注入点为空，提示词逐字不变=零回归）", () => {
+    expect(emotionDispatchRule(false)).toBe("");
+    expect(emotionDispatchRule(undefined)).toBe("");
+  });
+  it("开启 → 以换行开头的单条追加规则；明确禁止新增字段/改结构（守 wire-format）", () => {
+    const r = emotionDispatchRule(true);
+    expect(r.startsWith("\n- 【按剧情派发情绪")).toBe(true);
+    expect(r).toContain("绝不新增");
+    expect(r).toContain("不改变输出 JSON 结构");
     expect(r.split("\n- ").length).toBe(2); // 恰好一条规则
   });
 });
