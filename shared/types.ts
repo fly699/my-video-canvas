@@ -888,7 +888,7 @@ export interface PostProcessNodeData {
 // SAME generateImage pipeline image_gen/pose_control use, so it works wherever those
 // do. Distinct from comfyui_image (local ComfyUI inpaint) and post_process (a pure
 // prompt helper that produces no image).
-export type ImageEditOp = "remove_bg" | "outpaint" | "inpaint" | "erase" | "relight" | "reframe" | "upscale" | "reangle";
+export type ImageEditOp = "remove_bg" | "outpaint" | "inpaint" | "erase" | "relight" | "reframe" | "upscale" | "reangle" | "emotion";
 export interface ImageEditNodeData {
   operation?: ImageEditOp;
   /** cloud = Higgsfield/KIE/Poyo edit models; comfyui = local ComfyUI inpaint/img2img. */

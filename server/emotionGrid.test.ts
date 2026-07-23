@@ -1,0 +1,81 @@
+import { describe, it, expect } from "vitest";
+import { EMOTION_GRID, EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt } from "../shared/emotionGrid";
+import { buildImageEditInstruction, comfyDenoiseForOp, getImageEditOp } from "../shared/imageEdit";
+
+// #336 情绪调节：25 格情绪坐标表 + 提示词组装 + emotion 编辑操作接线。
+describe("#336 EMOTION_GRID（25 格情绪坐标表）", () => {
+  it("恰好 25 格，覆盖 5×5 每个行列组合", () => {
+    expect(EMOTION_GRID).toHaveLength(25);
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+      expect(emotionCellAt(r, c), `缺格 r${r}c${c}`).toBeTruthy();
+    }
+  });
+
+  it("id / 中文命名 全局唯一，命名为 4 字", () => {
+    expect(new Set(EMOTION_GRID.map((c) => c.id)).size).toBe(25);
+    expect(new Set(EMOTION_GRID.map((c) => c.name)).size).toBe(25);
+    for (const c of EMOTION_GRID) expect(c.name).toHaveLength(4);
+  });
+
+  it("锚点与 LibTV 实录对齐：中心=淡然自若、右上=心跳骤停、中上偏右=强忍悲戚、左下=积郁憋闷", () => {
+    expect(emotionCellAt(2, 2)!.name).toBe("淡然自若");
+    expect(EMOTION_DEFAULT_CELL.id).toBe("r2c2");
+    expect(emotionCellAt(1, 4)!.name).toBe("心跳骤停");
+    expect(emotionCellAt(1, 3)!.name).toBe("强忍悲戚");
+    expect(emotionCellAt(4, 0)!.name).toBe("积郁憋闷");
+  });
+
+  it("表情脸参数全部在合法区间（SVG 预览不越界）", () => {
+    for (const c of EMOTION_GRID) {
+      expect(c.face.browRaise).toBeGreaterThanOrEqual(0); expect(c.face.browRaise).toBeLessThanOrEqual(1);
+      expect(c.face.browAngle).toBeGreaterThanOrEqual(-1); expect(c.face.browAngle).toBeLessThanOrEqual(1);
+      expect(c.face.eyeOpen).toBeGreaterThanOrEqual(0.1); expect(c.face.eyeOpen).toBeLessThanOrEqual(1.4);
+      expect(c.face.mouthCurve).toBeGreaterThanOrEqual(-1); expect(c.face.mouthCurve).toBeLessThanOrEqual(1);
+      expect(c.face.mouthOpen).toBeGreaterThanOrEqual(0); expect(c.face.mouthOpen).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("唤醒度语义一致：激动行(0)平均睁眼/张嘴大于平静行(4)", () => {
+    const rowAvg = (r: number, k: "eyeOpen" | "mouthOpen") =>
+      EMOTION_GRID.filter((c) => c.row === r).reduce((s, c) => s + c.face[k], 0) / 5;
+    expect(rowAvg(0, "eyeOpen")).toBeGreaterThan(rowAvg(4, "eyeOpen"));
+    expect(rowAvg(0, "mouthOpen")).toBeGreaterThan(rowAvg(4, "mouthOpen"));
+  });
+
+  it("亲疏度语义一致：亲近列(0)平均嘴角弧度高于疏离列(4)（暖→冷）", () => {
+    const colAvg = (col: number) => EMOTION_GRID.filter((c) => c.col === col).reduce((s, c) => s + c.face.mouthCurve, 0) / 5;
+    expect(colAvg(0)).toBeGreaterThan(colAvg(4));
+  });
+});
+
+describe("#336 buildEmotionPrompt + emotion 编辑操作接线", () => {
+  it("提示词含英文情绪短语、中文命名与强度描述", () => {
+    const p = buildEmotionPrompt(emotionCellAt(1, 3)!, "strong");
+    expect(p).toContain("restrained grief");
+    expect(p).toContain("强忍悲戚");
+    expect(p).toContain("intense and dramatic");
+  });
+
+  it("默认强度为适中；三档强度描述互不相同", () => {
+    const cell = EMOTION_DEFAULT_CELL;
+    expect(buildEmotionPrompt(cell)).toBe(buildEmotionPrompt(cell, "moderate"));
+    const texts = EMOTION_INTENSITIES.map((i) => buildEmotionPrompt(cell, i.value));
+    expect(new Set(texts).size).toBe(3);
+  });
+
+  it("emotion 操作已入编辑目录：instruction 硬约束身份/姿势/构图不变", () => {
+    expect(getImageEditOp("emotion")?.label).toBe("情绪调节");
+    const ins = buildImageEditInstruction("emotion", buildEmotionPrompt(emotionCellAt(1, 4)!));
+    expect(ins).toContain("ONLY the character's facial expression");
+    expect(ins).toContain("heart-stopping shock");
+    expect(ins).toMatch(/identity/);
+    expect(ins).toMatch(/pose/);
+    expect(ins).toMatch(/lighting/);
+  });
+
+  it("emotion 的 ComfyUI denoise 介于 upscale 与 reangle 之间（改脸不漂移结构）", () => {
+    const d = comfyDenoiseForOp("emotion");
+    expect(d).toBeGreaterThan(comfyDenoiseForOp("upscale"));
+    expect(d).toBeLessThan(comfyDenoiseForOp("reangle"));
+  });
+});

@@ -11,7 +11,7 @@ import type { ImageEditNodeData, ImageEditOp } from "../../../../../shared/types
 import { IMAGE_EDIT_OPS, IMAGE_EDIT_MODEL_GROUPS, getImageEditOp, buildImageEditInstruction, comfyTemplateForOp, comfyDenoiseForOp } from "../../../../../shared/imageEdit";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, Cloud, Cpu, ArrowUp, SlidersHorizontal, type LucideIcon } from "lucide-react";
+import { Loader2, Download, RotateCcw, Sparkles, Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, Cloud, Cpu, ArrowUp, SlidersHorizontal, Smile, Camera, type LucideIcon } from "lucide-react";
 import { NodeTextArea, NodeInput } from "../NodeTextInput";
 import { HideWhenStudioFloating } from "../../../contexts/StudioFloatingContext";
 import { MaskCanvas } from "./MaskCanvas";
@@ -32,7 +32,7 @@ const IMAGE_EDIT_MODEL_OPTIONS: ModelPickerOption[] = [
   })),
 ];
 
-const OP_ICONS: Record<string, LucideIcon> = { Scissors, Maximize, Brush, Eraser, Lightbulb, Crop };
+const OP_ICONS: Record<string, LucideIcon> = { Scissors, Maximize, Brush, Eraser, Lightbulb, Crop, Sparkles, Camera, Smile };
 
 interface Props {
   id: string;
