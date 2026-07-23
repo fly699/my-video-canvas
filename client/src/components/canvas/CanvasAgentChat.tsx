@@ -1658,6 +1658,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                     <Copy size={10} /> 复制大纲
                   </button>
                 ) : null}
+                {t.planOps?.length ? (
+                  <button data-testid="copy-csv" onClick={() => void copyTextWithToast(shotRowsToCsv(previewableCreates(t.planOps!)), "已复制镜头表 CSV")} title="把这次编排复制为 CSV 镜头表（镜号/标题/类型/景别/时长/比例/提示词/台词，可直接粘进表格）"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>
+                    <Copy size={10} /> 复制CSV
+                  </button>
+                ) : null}
               </div>
             )}
             {t.failed && (
