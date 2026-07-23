@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows } from "../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows, sumVideoDuration } from "../shared/planPreview";
 import type { AgentOperation } from "../shared/types";
 
 // 优化B 镜头表预览卡：预览行提取 + 勾选式落地筛选（纯函数）。
@@ -131,6 +131,23 @@ describe("sortPreviewRows", () => {
     const order = sortPreviewRows(rows, "type").map((r) => r.nodeType);
     expect(new Set(order)).toEqual(new Set(["video_task", "image_gen", "character"]));
     expect(order).toHaveLength(3);
+  });
+});
+
+describe("sumVideoDuration", () => {
+  it("只累加 video_task 的有效时长（>0），忽略图/分镜与未设/异常时长", () => {
+    const rows = previewableCreates([
+      create("v1", "video_task", { duration: 5 }),
+      create("v2", "video_task", { duration: 8 }),
+      create("v3", "video_task", {}),                 // 未设时长 → 不计
+      create("v4", "video_task", { duration: 0 }),    // ≤0 → 不计
+      create("i1", "image_gen", { duration: 99 }),    // 非视频 → 不计
+    ]);
+    expect(sumVideoDuration(rows)).toBe(13);
+  });
+
+  it("无视频镜 → 0", () => {
+    expect(sumVideoDuration(previewableCreates([create("i1", "image_gen", { prompt: "一只猫" })]))).toBe(0);
   });
 });
 

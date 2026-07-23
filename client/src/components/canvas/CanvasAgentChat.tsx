@@ -26,7 +26,7 @@ import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 // #305 语音口令：统一语音输入 hook（Web Speech 主路径 + 服务端 whisper 兜底），与 AI 客户端/聊天室同源。
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows, type ShotPreviewRow, type ShotSortMode } from "../../../../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows, sumVideoDuration, type ShotPreviewRow, type ShotSortMode } from "../../../../shared/planPreview";
 import { copyTextWithToast } from "../../lib/clipboard";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
@@ -1926,6 +1926,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const previewCostLabel = planPreview ? budgetLabel(estimateOpsBudget(previewFilteredOps)) : "";
   const previewCostBreakdown = planPreview ? estimateOpsBudgetBreakdown(previewFilteredOps) : [];
   const previewEdges = planPreview ? previewableEdges(previewFilteredOps) : [];
+  const previewTotalDuration = planPreview ? sumVideoDuration(previewableCreates(previewFilteredOps)) : 0;
   const exportShotList = () => {
     const csv = shotRowsToCsv(previewRows);
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
@@ -1962,6 +1963,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
           {previewCostBreakdown.length > 0 && (
             <button data-testid="plan-preview-cost-toggle" onClick={() => setShowCostDetail((v) => !v)}
               style={{ fontSize: 10.5, color: accent, background: "none", border: "none", cursor: "pointer", padding: 0 }}>{showCostDetail ? "收起明细" : "明细"}</button>
+          )}
+          {previewTotalDuration > 0 && (
+            <span data-testid="plan-preview-duration" style={{ color: "var(--c-t3)" }} title="所选各视频镜时长合计（估算成片长度，未设时长的镜未计入）">🎬 约 {previewTotalDuration}s 成片</span>
           )}
           {previewWarnCount > 0 && (
             <span data-testid="plan-preview-warncount" style={{ display: "flex", alignItems: "center", gap: 3, color: "oklch(0.75 0.15 75)" }}>
