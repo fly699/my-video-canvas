@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv } from "../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges } from "../shared/planPreview";
 import type { AgentOperation } from "../shared/types";
 
 // 优化B 镜头表预览卡：预览行提取 + 勾选式落地筛选（纯函数）。
@@ -111,6 +111,29 @@ describe("planContinuityWarnings", () => {
     const w = planContinuityWarnings(rows);
     expect(w.i1).toContain("提示词过简，建议补充画面细节");
     expect(w.wf).toBeUndefined();
+  });
+});
+
+describe("previewableEdges", () => {
+  it("每条 connect 解析成 源标题→目标标题", () => {
+    const ops: AgentOperation[] = [
+      create("i1", "image_gen", {}, "镜1图"),
+      create("v1", "video_task", {}, "镜1视频"),
+      connect("i1", "v1"),
+    ];
+    expect(previewableEdges(ops)).toEqual([{ from: "镜1图", to: "镜1视频" }]);
+  });
+
+  it("无 title 回退类型中文名；跨批引用（非本批 create）回退显示 ref", () => {
+    const ops: AgentOperation[] = [
+      create("i1", "image_gen"),          // 无 title → 「图像」
+      connect("i1", "existingNode42"),    // 目标不在本批 → 显示 ref
+    ];
+    expect(previewableEdges(ops)).toEqual([{ from: "图像", to: "existingNode42" }]);
+  });
+
+  it("无连线 → 空数组", () => {
+    expect(previewableEdges([create("i1", "image_gen", {}, "镜1图")])).toEqual([]);
   });
 });
 
