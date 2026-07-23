@@ -13,6 +13,8 @@ export interface ShotPreviewRow {
   sceneNumber?: number;
   shotType?: string;
   duration?: number;
+  /** 画幅比例（aspectRatio → aspect），用于连续性「比例是否统一」检测。 */
+  aspect?: string;
   /** 提示词摘要（promptText → prompt → description）。 */
   promptText?: string;
   dialogue?: string;
@@ -43,6 +45,7 @@ export function previewableCreates(ops: AgentOperation[]): ShotPreviewRow[] {
       sceneNumber: num(p.sceneNumber),
       shotType: str(p.shotType),
       duration: num(p.duration),
+      aspect: str(p.aspectRatio) ?? str(p.aspect),
       promptText: str(p.promptText) ?? str(p.prompt) ?? str(p.description),
       dialogue: str(p.dialogue),
     };
@@ -63,4 +66,51 @@ export function filterPlanBySelection(ops: AgentOperation[], deselected: Readonl
     if ((o.op === "update" || o.op === "delete") && o.targetRef && deselected.has(o.targetRef)) return false;
     return true;
   });
+}
+
+// ── 优化① 连续性告警：落地前的纯规则体检（不调 LLM，逐行给可操作提示）。─────────────
+/** 需要提示词描述画面的节点类型（工作流靠图节点参数，不在此列）。 */
+const VISUAL_TYPES = new Set(["image_gen", "video_task", "storyboard", "comfyui_image", "comfyui_video"]);
+const MAX_REASONABLE_DURATION = 30; // 单镜超过 30s 视为偏长（多数模型上限内）
+const MIN_PROMPT_LEN = 6;           // 提示词短于此判「过简」
+
+/** 对预览行做连续性/质量体检，返回 { tempId: [告警文案…] }（只含有告警的行）。
+ *  规则：①比例混用（本批出现>1 种画幅 → 涉及行标注）②时长缺失/异常/偏长（仅视频镜）
+ *  ③提示词过简（画面类节点）。全部为纯规则，可穷尽单测。 */
+export function planContinuityWarnings(rows: ShotPreviewRow[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const push = (id: string, msg: string) => { (out[id] ??= []).push(msg); };
+  const aspects = new Set<string>();
+  for (const r of rows) if (r.aspect) aspects.add(r.aspect);
+  const mixedAspect = aspects.size > 1;
+  for (const r of rows) {
+    if (mixedAspect && r.aspect) push(r.tempId, `比例不统一（${r.aspect}）`);
+    if (r.nodeType === "video_task") {
+      if (r.duration === undefined) push(r.tempId, "未设时长（将用默认）");
+      else if (r.duration <= 0) push(r.tempId, "时长异常（≤0s）");
+      else if (r.duration > MAX_REASONABLE_DURATION) push(r.tempId, `时长偏长（${r.duration}s）`);
+    }
+    if (VISUAL_TYPES.has(r.nodeType)) {
+      const p = r.promptText?.trim() ?? "";
+      if (p.length < MIN_PROMPT_LEN) push(r.tempId, "提示词过简，建议补充画面细节");
+    }
+  }
+  return out;
+}
+
+/** 把预览行导出为 CSV 文本（表头中文、逐字段转义），供「导出镜头表」下载。纯函数。 */
+export function shotRowsToCsv(rows: ShotPreviewRow[]): string {
+  const esc = (v: unknown): string => {
+    const s = v === undefined || v === null ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = ["镜号", "标题", "类型", "景别", "时长(s)", "比例", "提示词", "台词"];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    lines.push([
+      r.sceneNumber ?? "", r.title, TYPE_LABEL[r.nodeType] ?? r.nodeType,
+      r.shotType ?? "", r.duration ?? "", r.aspect ?? "", r.promptText ?? "", r.dialogue ?? "",
+    ].map(esc).join(","));
+  }
+  return lines.join("\r\n");
 }

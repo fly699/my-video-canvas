@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
-import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic } from "lucide-react";
+import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic, Download } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations, ensureAliasNums, buildNodeDetailText } from "@/lib/agentApply";
@@ -26,7 +26,8 @@ import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 // #305 语音口令：统一语音输入 hook（Web Speech 主路径 + 服务端 whisper 兜底），与 AI 客户端/聊天室同源。
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
-import { previewableCreates, filterPlanBySelection, type ShotPreviewRow } from "../../../../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, type ShotPreviewRow } from "../../../../shared/planPreview";
+import { estimateOpsBudget, budgetLabel } from "../../lib/agentBudget";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
 import { countDiffFromDefaults } from "@/lib/quickPrefsCount";
@@ -1333,7 +1334,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             )}
             {secHead("规划流程")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["previewPlan", "落地前预览镜头表（可勾选）", "开启后：助手规划完不立即建节点，先弹一张镜头表预览卡，逐镜列出（镜号/景别/时长/提示词/台词），你勾选要落地的镜头 → 点「落地所选」才真正建节点，取消勾选的连同其连线一并不建。适合先审一遍再落地、或只要其中几镜。关闭时（默认）规划完直接全自动落地，与现状逐字一致。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["streamEcho", "流式回显（本机 / Poyo）", "开启后：用本机 Claude/GPT 订阅桥接模型、或 Poyo 路由的云端模型（GPT-5.2、Claude Sonnet 4.5 等，官方 SSE 契约）规划时，生成中的文字实时回显在等待行下方——大计划等 1~5 分钟不再干等黑盒。Poyo 流式若网关异常会自动回退非流式重试，结果不受影响；kie 模型无官方流式契约，自动走原有非流式。关闭时全链路与现状一致。"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["previewPlan", "落地前预览镜头表（可勾选）", "开启后：助手规划完不立即建节点，先弹一张镜头表预览卡，逐镜列出（镜号/景别/时长/提示词/台词），你勾选要落地的镜头 → 点「落地所选」才真正建节点，取消勾选的连同其连线一并不建。卡上还会实时显示本批「预计消耗积分」（随勾选变化）、逐镜标注连续性提示（比例不统一/时长异常/提示词过简），并可一键「导出镜头表」为 CSV。适合先审一遍再落地、或只要其中几镜。关闭时（默认）规划完直接全自动落地，与现状逐字一致。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["streamEcho", "流式回显（本机 / Poyo）", "开启后：用本机 Claude/GPT 订阅桥接模型、或 Poyo 路由的云端模型（GPT-5.2、Claude Sonnet 4.5 等，官方 SSE 契约）规划时，生成中的文字实时回显在等待行下方——大计划等 1~5 分钟不再干等黑盒。Poyo 流式若网关异常会自动回退非流式重试，结果不受影响；kie 模型无官方流式契约，自动走原有非流式。关闭时全链路与现状一致。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
@@ -1690,6 +1691,21 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const previewRows: ShotPreviewRow[] = planPreview ? previewableCreates((planPreview.operations ?? []) as AgentOperation[]) : [];
   const selectedCount = previewRows.filter((row) => !previewDeselected.has(row.tempId)).length;
   const toggleRow = (tempId: string) => setPreviewDeselected((prev) => { const n = new Set(prev); if (n.has(tempId)) n.delete(tempId); else n.add(tempId); return n; });
+  // 优化① 落地前体检：成本随勾选实时预估 + 连续性告警（逐行）+ 镜头表 CSV 导出。
+  const previewWarnings = planPreview ? planContinuityWarnings(previewRows) : {};
+  const previewWarnCount = Object.keys(previewWarnings).length;
+  const previewCostLabel = planPreview
+    ? budgetLabel(estimateOpsBudget(filterPlanBySelection((planPreview.operations ?? []) as AgentOperation[], previewDeselected)))
+    : "";
+  const exportShotList = () => {
+    const csv = shotRowsToCsv(previewRows);
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "镜头表.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   const previewModal = planPreview ? createPortal((
     <div data-testid="plan-preview" className="nodrag nowheel" onClick={cancelPlanPreview}
       style={{ position: "fixed", inset: 0, zIndex: 340, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0.05 0.007 260 / 0.7)", backdropFilter: "blur(6px)" }}>
@@ -1703,7 +1719,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", fontSize: 11, color: "var(--c-t3)" }}>
           <button data-testid="plan-preview-all" onClick={() => setPreviewDeselected(new Set())} style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}>全选</button>
           <button data-testid="plan-preview-none" onClick={() => setPreviewDeselected(new Set(previewRows.map((row) => row.tempId)))} style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}>全不选</button>
+          <button data-testid="plan-preview-export" onClick={exportShotList} title="导出为 CSV 镜头表" style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}><Download size={11} />导出镜头表</button>
           <span style={{ marginLeft: "auto" }}>共 {previewRows.length} 个节点</span>
+        </div>
+        <div data-testid="plan-preview-meta" style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 8px", fontSize: 11, flexWrap: "wrap" }}>
+          <span data-testid="plan-preview-cost" style={{ color: "var(--c-t3)" }}>💰 预计消耗：{previewCostLabel || "本批无云端计费"}</span>
+          {previewWarnCount > 0 && (
+            <span data-testid="plan-preview-warncount" style={{ display: "flex", alignItems: "center", gap: 3, color: "oklch(0.75 0.15 75)" }}>
+              <AlertTriangle size={11} />{previewWarnCount} 个镜头有连续性提示
+            </span>
+          )}
         </div>
         <div className="nowheel" style={{ flex: 1, overflowY: "auto", padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
           {previewRows.map((row) => {
@@ -1721,6 +1746,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                   </div>
                   {row.promptText && <div style={{ fontSize: 11, color: "var(--c-t3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{row.promptText}</div>}
                   {row.dialogue && <div style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 2, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>💬 {row.dialogue}</div>}
+                  {(previewWarnings[row.tempId] ?? []).map((w, i) => (
+                    <div key={i} data-testid="plan-preview-warn" style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "oklch(0.75 0.15 75)", marginTop: 2 }}>
+                      <AlertTriangle size={10} />{w}
+                    </div>
+                  ))}
                 </div>
               </label>
             );
