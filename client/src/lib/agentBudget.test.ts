@@ -1,9 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { estimateOpsBudget, estimateOpsBudgetBreakdown, budgetLabel } from "./agentBudget";
+import { estimateOpsBudget, estimateOpsBudgetBreakdown, budgetLabel, countCloudGenOps } from "./agentBudget";
 import type { AgentOperation } from "../../../shared/types";
 
 const create = (nodeType: string, payload?: Record<string, unknown>): AgentOperation =>
   ({ op: "create", nodeType, payload } as AgentOperation);
+
+describe("countCloudGenOps", () => {
+  it("只数 image_gen + video_task；comfyui_*/其它/连线不计", () => {
+    const ops: AgentOperation[] = [
+      create("image_gen"), create("image_gen"), create("video_task"),
+      create("comfyui_image"), create("character"), create("merge"),
+      { op: "connect", sourceRef: "a", targetRef: "b" } as AgentOperation,
+    ];
+    expect(countCloudGenOps(ops)).toBe(3);
+  });
+  it("空/无云端生成 → 0", () => {
+    expect(countCloudGenOps([])).toBe(0);
+    expect(countCloudGenOps([create("comfyui_video"), create("note")])).toBe(0);
+  });
+});
 
 describe("estimateOpsBudgetBreakdown", () => {
   it("空操作 → 空明细", () => {
