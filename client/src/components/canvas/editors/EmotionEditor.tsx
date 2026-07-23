@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { X, RotateCcw, Loader2, Send, Coins } from "lucide-react";
+import { X, RotateCcw, Loader2, Send, Coins, ScanFace } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { ModelPicker, type ModelPickerOption } from "../ModelPicker";
 import { IMAGE_EDIT_MODEL_GROUPS, DEFAULT_IMAGE_EDIT_MODEL, buildImageEditInstruction, comfyDenoiseForOp } from "../../../../../shared/imageEdit";
@@ -10,8 +10,8 @@ import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate"
 import { IMAGE_MODELS } from "../../../lib/models";
 import { sourceAspectRatio } from "../../../lib/imageAspect";
 import {
-  EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt,
-  type EmotionCell, type EmotionIntensity,
+  EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt, withEmotionRegion, isValidEmotionRegion,
+  type EmotionCell, type EmotionIntensity, type EmotionRegion,
 } from "../../../../../shared/emotionGrid";
 
 // #336 情绪调节编辑器（LibTV「人像质感调节 › 情绪调节」，全模式，从节点工具条进入）。
@@ -79,10 +79,41 @@ export function EmotionFace({ emoji, size = 150 }: { emoji: string; size?: numbe
   );
 }
 
+const ACCENT = "oklch(0.65 0.18 170)";
+
+/** 多人图选脸：在源图上拖框选中目标脸；框内高亮、框外压暗（聚光）。不框=全部/主体。 */
+function RegionSelect({ src, region, onChange }: { src: string; region: EmotionRegion | null; onChange: (r: EmotionRegion | null) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+  const at = (e: React.PointerEvent) => {
+    const r = ref.current!.getBoundingClientRect();
+    return { x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) };
+  };
+  const boxFrom = (a: { x: number; y: number }, b: { x: number; y: number }): EmotionRegion =>
+    ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) });
+  return (
+    <div ref={ref} data-testid="emotion-region-select"
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); const p = at(e); start.current = p; onChange({ x: p.x, y: p.y, w: 0, h: 0 }); }}
+      onPointerMove={(e) => { if (start.current) onChange(boxFrom(start.current, at(e))); }}
+      onPointerUp={(e) => { if (start.current) { const b = boxFrom(start.current, at(e)); start.current = null; onChange(isValidEmotionRegion(b) ? b : null); } }}
+      style={{ position: "relative", width: 200, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", background: "#000", cursor: "crosshair", userSelect: "none", touchAction: "none" }}>
+      <img src={src} alt="src" draggable={false} style={{ width: "100%", display: "block", maxHeight: 150, objectFit: "cover", pointerEvents: "none" }} />
+      {region && region.w > 0 && (
+        <div data-testid="emotion-region" style={{
+          position: "absolute", left: `${region.x * 100}%`, top: `${region.y * 100}%`, width: `${region.w * 100}%`, height: `${region.h * 100}%`,
+          border: `2px solid ${ACCENT}`, borderRadius: 3, boxShadow: "0 0 0 9999px oklch(0 0 0 / 0.42)", pointerEvents: "none",
+        }} />
+      )}
+    </div>
+  );
+}
+
 export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }: EmotionEditorProps) {
   const [cell, setCell] = useState<EmotionCell>(EMOTION_DEFAULT_CELL);
   const [hoverCell, setHoverCell] = useState<EmotionCell | null>(null);
   const [intensity, setIntensity] = useState<EmotionIntensity>("moderate");
+  const [region, setRegion] = useState<EmotionRegion | null>(null); // 多人图选脸（null=全部/主体）
   const [override, setOverride] = useState<string | null>(null);
   const [model, setModel] = useState(loadModel);
   const run = trpc.imageEdit.run.useMutation();
@@ -97,19 +128,21 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
   }, [model]);
 
   const pick = (c: EmotionCell) => { setCell(c); setOverride(null); };
-  const reset = () => { setCell(EMOTION_DEFAULT_CELL); setIntensity("moderate"); setOverride(null); };
+  const reset = () => { setCell(EMOTION_DEFAULT_CELL); setIntensity("moderate"); setOverride(null); setRegion(null); };
 
   const send = async () => {
     if (run.isPending || comfyGen.isPending) return;
     try {
       let url: string | undefined;
+      // 多人图选脸：把「只改框选这张脸、其他人不动」的空间约束前置进提示词
+      const finalPrompt = withEmotionRegion(promptText, region);
       if (model === COMFY_LOCAL_MODEL) {
         // 本地自建：comfyui img2img（服务端 assertComfyuiAllowed 门控 + comfyui_image_gen 审计）
         const ckpt = loadComfyCkpt();
         if (!ckpt) { toast.error("请先在下方选择本地 ComfyUI 的 checkpoint 模型"); return; }
         const r = await comfyGen.mutateAsync({
           nodeId, projectId, workflowTemplate: "img2img", ckpt, customBaseUrl: loadComfyBase() || undefined,
-          prompt: buildImageEditInstruction("emotion", promptText).slice(0, 2000),
+          prompt: buildImageEditInstruction("emotion", finalPrompt).slice(0, 2000),
           referenceImageUrl: sourceUrl, denoise: comfyDenoiseForOp("emotion"),
         });
         url = r.url;
@@ -118,7 +151,7 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         const aspect = await sourceAspectRatio(sourceUrl);
         const r = await run.mutateAsync({
           sourceImageUrl: sourceUrl, operation: "emotion", model: model || undefined,
-          prompt: promptText.slice(0, 900), estimatedCost: costLabel,
+          prompt: finalPrompt.slice(0, 900), estimatedCost: costLabel,
           ...(aspect ? { aspectRatio: aspect } : {}),
           ...(projectId ? { projectId } : {}),
         });
@@ -146,8 +179,18 @@ export function EmotionEditor({ sourceUrl, nodeId, projectId, onApply, onClose }
         <div style={{ display: "flex", gap: 18, alignItems: "stretch" }}>
           {/* 左：源图 + 表情脸预览 + 情绪定位 */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: 220, flexShrink: 0 }}>
-            <div style={{ position: "relative", width: 200, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", background: "#000" }}>
-              <img src={sourceUrl} alt="src" draggable={false} style={{ width: "100%", display: "block", maxHeight: 150, objectFit: "cover" }} />
+            <RegionSelect src={sourceUrl} region={region} onChange={setRegion} />
+            {/* 多人图选脸：框选目标脸（不框=全部/主体） */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, width: 200, fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.4 }}>
+              <ScanFace size={13} style={{ flexShrink: 0, color: isValidEmotionRegion(region) ? ACCENT : "var(--c-t4)" }} />
+              {isValidEmotionRegion(region) ? (
+                <>
+                  <span style={{ color: ACCENT, fontWeight: 600 }}>已选定这张脸</span>
+                  <button onClick={() => setRegion(null)} style={{ marginLeft: "auto", ...chip() }}>清除</button>
+                </>
+              ) : (
+                <span>多人图：在上图框选要调整表情的那张脸（不框=全部/主体）</span>
+              )}
             </div>
             <EmotionFace emoji={preview.emoji} size={150} />
             <div style={{ fontSize: 12, color: "var(--c-t3)" }} data-testid="emotion-name">

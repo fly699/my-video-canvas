@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EMOTION_GRID, EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt } from "../shared/emotionGrid";
+import { EMOTION_GRID, EMOTION_DEFAULT_CELL, EMOTION_INTENSITIES, buildEmotionPrompt, emotionCellAt, regionToLocationPhrase, isValidEmotionRegion, withEmotionRegion } from "../shared/emotionGrid";
 import { buildImageEditInstruction, comfyDenoiseForOp, getImageEditOp } from "../shared/imageEdit";
 
 // #336 情绪调节：25 格情绪坐标表 + 提示词组装 + emotion 编辑操作接线。
@@ -81,5 +81,30 @@ describe("#336 buildEmotionPrompt + emotion 编辑操作接线", () => {
     const d = comfyDenoiseForOp("emotion");
     expect(d).toBeGreaterThan(comfyDenoiseForOp("upscale"));
     expect(d).toBeLessThan(comfyDenoiseForOp("reangle"));
+  });
+});
+
+describe("#336 多人图选脸（regionToLocationPhrase / withEmotionRegion）", () => {
+  it("选框中心 → 方位短语（九宫格覆盖）", () => {
+    expect(regionToLocationPhrase({ x: 0.42, y: 0.42, w: 0.16, h: 0.16 })).toBe("the person in the center of the frame");
+    expect(regionToLocationPhrase({ x: 0.02, y: 0.02, w: 0.2, h: 0.2 })).toContain("top-left");
+    expect(regionToLocationPhrase({ x: 0.75, y: 0.75, w: 0.2, h: 0.2 })).toContain("bottom-right");
+    expect(regionToLocationPhrase({ x: 0.75, y: 0.42, w: 0.2, h: 0.16 })).toContain("right");
+  });
+
+  it("isValidEmotionRegion：太小的框（误触）不算选中", () => {
+    expect(isValidEmotionRegion({ x: 0.5, y: 0.5, w: 0.01, h: 0.01 })).toBe(false);
+    expect(isValidEmotionRegion(null)).toBe(false);
+    expect(isValidEmotionRegion({ x: 0.1, y: 0.1, w: 0.3, h: 0.3 })).toBe(true);
+  });
+
+  it("withEmotionRegion：选了脸 → 前置「只改这张、其他人不动」约束；没选 → 原样", () => {
+    const base = buildEmotionPrompt(EMOTION_DEFAULT_CELL);
+    expect(withEmotionRegion(base, null)).toBe(base);
+    const withBox = withEmotionRegion(base, { x: 0.05, y: 0.05, w: 0.3, h: 0.3 });
+    expect(withBox).toContain("ONLY");
+    expect(withBox).toContain("top-left");
+    expect(withBox).toContain("leave every other person");
+    expect(withBox.endsWith(base)).toBe(true);
   });
 });

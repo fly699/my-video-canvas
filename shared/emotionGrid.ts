@@ -109,3 +109,29 @@ export function buildEmotionPrompt(cell: EmotionCell, intensity: EmotionIntensit
   const level = EMOTION_INTENSITIES.find((i) => i.value === intensity) ?? EMOTION_INTENSITIES[1];
   return `"${cell.en}" (${cell.name}) — ${cell.desc}. The emotional expression should be ${level.en}.`;
 }
+
+// ── 多人图选脸 ────────────────────────────────────────────────────────────────
+/** 归一化选框（0..1，相对源图）。 */
+export interface EmotionRegion { x: number; y: number; w: number; h: number }
+
+/** 把选框中心映射成自然语言方位（图像编辑模型能理解的空间指代），用于多人图定位目标脸。
+ *  纯函数，可单测。中心区→"in the center of the frame"；否则"in the {top/bottom}-{left/right} area"。 */
+export function regionToLocationPhrase(box: EmotionRegion): string {
+  const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+  const h = cx < 0.37 ? "left" : cx > 0.63 ? "right" : "center";
+  const v = cy < 0.37 ? "top" : cy > 0.63 ? "bottom" : "middle";
+  if (h === "center" && v === "middle") return "the person in the center of the frame";
+  const parts = [v === "middle" ? "" : v, h === "center" ? "" : h].filter(Boolean).join("-");
+  return `the person located in the ${parts} area of the frame`;
+}
+
+/** 选框有效（够大才算真选中，防误触微小拖动）。 */
+export function isValidEmotionRegion(box: EmotionRegion | null | undefined): box is EmotionRegion {
+  return !!box && box.w > 0.04 && box.h > 0.04;
+}
+
+/** 选了脸 → 在情绪提示词前加「只改这张脸、其他人不动」的空间约束；没选 → 原样。纯函数。 */
+export function withEmotionRegion(emotionPrompt: string, box: EmotionRegion | null | undefined): string {
+  if (!isValidEmotionRegion(box)) return emotionPrompt;
+  return `Apply the change ONLY to ${regionToLocationPhrase(box)}; leave every other person's face and expression completely unchanged. ${emotionPrompt}`;
+}
