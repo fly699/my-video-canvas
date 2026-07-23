@@ -30,17 +30,29 @@ export interface EmotionCell {
   en: string;
   /** 英文表情细节描述（提示词正文） */
   desc: string;
+  /** 情绪徽章 emoji（预览用，彩色系统字体渲染，清晰易辨） */
+  emoji: string;
   face: EmotionFaceParams;
 }
 
 const C = (
   row: number, col: number, name: string, en: string, desc: string,
   browRaise: number, browAngle: number, eyeOpen: number, mouthCurve: number, mouthOpen: number,
-): EmotionCell => ({ id: `r${row}c${col}`, row, col, name, en, desc, face: { browRaise, browAngle, eyeOpen, mouthCurve, mouthOpen } });
+): Omit<EmotionCell, "emoji"> => ({ id: `r${row}c${col}`, row, col, name, en, desc, face: { browRaise, browAngle, eyeOpen, mouthCurve, mouthOpen } });
+
+/** 每格情绪徽章 emoji（按 id）。分层情绪较近者允许复用近似 emoji——精确语义由四字命名 +
+ *  坐标位置承载，emoji 只作快速视觉指引。 */
+const EMOJI: Record<string, string> = {
+  r0c0: "🤩", r0c1: "🥹", r0c2: "😤", r0c3: "😱", r0c4: "😡",
+  r1c0: "😄", r1c1: "😃", r1c2: "😏", r1c3: "🥺", r1c4: "😨",
+  r2c0: "😊", r2c1: "🙂", r2c2: "😐", r2c3: "🤔", r2c4: "😑",
+  r3c0: "🥰", r3c1: "😌", r3c2: "😶", r3c3: "😔", r3c4: "😞",
+  r4c0: "😒", r4c1: "😪", r4c2: "😶‍🌫️", r4c3: "😕", r4c4: "🥶",
+};
 
 /** 25 格情绪表：行=唤醒度（0 最激动 → 4 最平静），列=亲疏度（0 最亲近 → 4 最疏离）。
  *  锚点与 LibTV 实录对齐：中心=淡然自若；右上=心跳骤停；中上偏右=强忍悲戚；左下=积郁憋闷。 */
-export const EMOTION_GRID: EmotionCell[] = [
+const RAW_CELLS: Omit<EmotionCell, "emoji">[] = [
   // ── 行 0：激动 ──
   C(0, 0, "欣喜若狂", "ecstatic joy", "beaming open-mouthed laugh, eyes crinkled with delight, cheeks lifted", 0.8, 0.2, 0.55, 1, 0.9),
   C(0, 1, "喜极而泣", "tears of joy", "overwhelmed happy crying, brows pinched upward, trembling joyful smile with teary eyes", 0.6, 0.5, 0.45, 0.7, 0.5),
@@ -72,6 +84,8 @@ export const EMOTION_GRID: EmotionCell[] = [
   C(4, 3, "意兴阑珊", "listless indifference", "listless indifference, unfocused half-lidded eyes, faintly sagging mouth", 0.1, 0.2, 0.4, -0.2, 0),
   C(4, 4, "冷若冰霜", "icy frost", "glacial frozen expression, hard emotionless eyes, brows faintly lowered, lips set in a cold line", 0.05, -0.3, 0.6, -0.4, 0),
 ];
+
+export const EMOTION_GRID: EmotionCell[] = RAW_CELLS.map((c) => ({ ...c, emoji: EMOJI[c.id] ?? "🙂" }));
 
 /** 按行列取格（越界返回 undefined）。 */
 export function emotionCellAt(row: number, col: number): EmotionCell | undefined {

@@ -17,6 +17,10 @@ describe("#336 EMOTION_GRID（25 格情绪坐标表）", () => {
     for (const c of EMOTION_GRID) expect(c.name).toHaveLength(4);
   });
 
+  it("每格都有情绪徽章 emoji（预览用）", () => {
+    for (const c of EMOTION_GRID) expect(c.emoji.length).toBeGreaterThan(0);
+  });
+
   it("锚点与 LibTV 实录对齐：中心=淡然自若、右上=心跳骤停、中上偏右=强忍悲戚、左下=积郁憋闷", () => {
     expect(emotionCellAt(2, 2)!.name).toBe("淡然自若");
     expect(EMOTION_DEFAULT_CELL.id).toBe("r2c2");
