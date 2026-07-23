@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget, characterRunPlan, buildRunPlanItems, aggregateRunPlan, hasExistingRunOutput } from "./costEstimate";
+import { estimateVideoCost, estimateImageCost, estimateMusicCost, estimateTtsCost, costEstimateLabel, estimateCanvasBudget, estimateFilmSeconds, characterRunPlan, buildRunPlanItems, aggregateRunPlan, hasExistingRunOutput } from "./costEstimate";
 
 describe("estimateVideoCost", () => {
   it("按时长线性计费（poyo kling 2.1 std：6 cr/s）", () => {
@@ -280,6 +280,25 @@ describe("estimateCanvasBudget — 画布级预算汇总", () => {
     expect(b.unknownCount).toBe(0);
     expect(b.lines.some((l) => l.label.includes("定妆照"))).toBe(true);
     expect(b.lines.some((l) => l.label.includes("场景图"))).toBe(true);
+  });
+});
+
+describe("estimateFilmSeconds — 成片时长预估", () => {
+  const n = (type: string, payload: Record<string, unknown> = {}) => ({ data: { nodeType: type, payload } });
+  it("累加视频镜头 duration；显式时长不标 approx", () => {
+    const f = estimateFilmSeconds([n("video_task", { duration: 6 }), n("comfyui_video", { duration: 4 }), n("image_gen", {})]);
+    expect(f.seconds).toBe(10);
+    expect(f.shots).toBe(2);
+    expect(f.approx).toBe(false);
+  });
+  it("缺 duration → 按 provider 默认估、标 approx（grok=6 / veo=8 / 其它=5）", () => {
+    const f = estimateFilmSeconds([n("video_task", { provider: "kie_grok_i2v" }), n("video_task", { provider: "poyo_veo_fast_official" }), n("video_task", {})]);
+    expect(f.seconds).toBe(6 + 8 + 5);
+    expect(f.approx).toBe(true);
+  });
+  it("disabled 镜头不计；无视频节点 → 0 shots", () => {
+    expect(estimateFilmSeconds([n("video_task", { duration: 8, disabled: true })]).shots).toBe(0);
+    expect(estimateFilmSeconds([n("image_gen", {}), n("audio", {})]).seconds).toBe(0);
   });
 });
 

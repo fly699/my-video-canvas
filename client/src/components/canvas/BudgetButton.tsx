@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { Wallet, X, AlertTriangle, Server } from "lucide-react";
 import { useCanvasStore } from "../../hooks/useCanvasStore";
 import { trpc } from "@/lib/trpc";
-import { estimateCanvasBudget } from "../../lib/costEstimate";
+import { estimateCanvasBudget, estimateFilmSeconds } from "../../lib/costEstimate";
 import { resolveActiveNodeModel } from "../../contexts/NodeDefaultModelsContext";
 import { readProjectBudgetCap, writeProjectBudgetCap } from "../../lib/budgetCap";
 
@@ -44,6 +44,11 @@ export function BudgetButton({ orient = "h" }: { orient?: "h" | "v" }) {
       edges.map((e) => ({ source: e.source, target: e.target })), // 分镜有下游 image_gen 时不计价（与运行器同口径）
     ),
     [nodes, edges],
+  );
+  // 成片时长预估（所有视频镜头时长之和 ≈ 装配后成片总长）
+  const film = useMemo(
+    () => estimateFilmSeconds(nodes.map((n) => ({ data: { nodeType: n.data.nodeType, payload: n.data.payload as Record<string, unknown> } }))),
+    [nodes],
   );
 
   const tempKey = typeof localStorage !== "undefined" ? localStorage.getItem(KIE_TEMP_KEY) ?? "" : "";
@@ -125,6 +130,15 @@ export function BudgetButton({ orient = "h" }: { orient?: "h" | "v" }) {
 
           <Bar label="kie" used={budget.pt} total={kieAmount} unit="点" color={ACCENT} />
           <Bar label="Poyo" used={budget.cr} total={poyoAmount} unit="cr" color="oklch(0.66 0.18 250)" />
+
+          {/* 成片时长预估：视频镜头时长之和 ≈ 装配后成片总长 */}
+          {film.shots > 0 && (
+            <div data-testid="budget-film" style={{ display: "flex", alignItems: "baseline", gap: 6, margin: "2px 0 10px", padding: "6px 9px", borderRadius: 9, background: "var(--c-surface)", border: "1px solid var(--c-bd1)" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t1)" }}>成片时长</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT }}>{film.approx ? "≈" : ""}{fmt(film.seconds)} 秒</span>
+              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--c-t4)" }}>{film.shots} 个视频镜头</span>
+            </div>
+          )}
 
           {/* 项目预算上限（kie 点）*/}
           <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "10px 0", padding: "7px 9px", borderRadius: 9, background: "var(--c-surface)", border: `1px solid ${overCap ? RED + "55" : "var(--c-bd1)"}` }}>
