@@ -2055,6 +2055,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         <div style={{ fontSize: 12.5, color: "var(--c-t2)", marginTop: 10, lineHeight: 1.6 }}>
           本次规划将创建 <strong data-testid="budget-count" style={{ color: "var(--c-t1)" }}>{budgetPending.count}</strong> 个云端计费生成节点，超过你设置的上限 <strong style={{ color: "var(--c-t1)" }}>{quickPrefs.budgetMax}</strong>。落地后运行会产生相应费用。
         </div>
+        {(() => {
+          const costLabel = budgetLabel(estimateOpsBudget((budgetPending.r.operations ?? []) as AgentOperation[]));
+          return costLabel ? (
+            <div data-testid="budget-cost" style={{ fontSize: 12, color: "var(--c-t3)", marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+              💰 预计消耗：<strong style={{ color: "var(--c-t2)" }}>{costLabel}</strong>
+            </div>
+          ) : null;
+        })()}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16 }}>
           <button onClick={cancelBudget} style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 12.5 }}>取消落地</button>
           <button data-testid="budget-confirm" onClick={confirmBudget} style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: "oklch(0.75 0.15 75)", color: "#0b0d12", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>仍然落地</button>
