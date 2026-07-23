@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
-import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic, Download, Copy } from "lucide-react";
+import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic, Download, Copy, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations, ensureAliasNums, buildNodeDetailText } from "@/lib/agentApply";
@@ -28,7 +28,7 @@ import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
 import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, type ShotPreviewRow } from "../../../../shared/planPreview";
 import { copyTextWithToast } from "../../lib/clipboard";
-import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
+import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
 import { estimateOpsBudget, budgetLabel, countCloudGenOps } from "../../lib/agentBudget";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
@@ -373,6 +373,29 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     void applyChatResult({ reply: `已套用编排模板「${t.name}」`, operations: t.ops, droppedCount: 0 } as unknown as AgentChatResult);
   };
   const deleteOrchestration = (id: string) => setOrchTemplates((p) => p.filter((x) => x.id !== id));
+  // 导出「我的编排」为 JSON 文件（备份/跨账号分享）。
+  const exportOrchestrations = () => {
+    if (!orchTemplates.length) { toast.info("还没有可导出的编排模板"); return; }
+    const blob = new Blob([serializeOrchestrations(orchTemplates)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "编排模板.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const orchFileRef = useRef<HTMLInputElement | null>(null);
+  // 从 JSON 文件导入编排（合并到现有，容错跳过非法项，超上限截断）。
+  const importOrchestrations = async (file: File) => {
+    try {
+      const text = await file.text();
+      const genId = (i: number) => `orch_${Date.now().toString(36)}_${i}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+      const imported = parseOrchestrations(text, genId);
+      if (!imported.length) { toast.error("文件里没有可导入的编排模板"); return; }
+      setOrchTemplates((p) => [...p, ...imported].slice(0, MAX_ORCHESTRATIONS));
+      const dropped = Math.max(0, orchTemplates.length + imported.length - MAX_ORCHESTRATIONS);
+      toast.success(`已导入 ${imported.length} 套编排${dropped > 0 ? `（超过 ${MAX_ORCHESTRATIONS} 套上限，末尾 ${dropped} 套未纳入）` : ""}`);
+    } catch { toast.error("导入失败：文件无法读取"); }
+  };
   // 徽标 = 与出厂默认不同的改动数（0 = 全默认不显示）。泛型按键集合统计，新增设置字段
   // 自动纳入——旧手写枚举「默认真值也算 + 漏数新字段」的双重失真见 quickPrefsCount.ts 注释。
   const qpActiveCount = countDiffFromDefaults(QP_DEFAULT as unknown as Record<string, unknown>, quickPrefs as unknown as Record<string, unknown>);
@@ -1310,7 +1333,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               );
             })}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)", marginBottom: 4 }}>我的编排</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }}>我的编排</span>
+            <div style={{ flex: 1 }} />
+            <button data-testid="orch-export" onClick={exportOrchestrations} title="导出「我的编排」为 JSON 文件（备份/分享）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}><Download size={10} />导出</button>
+            <button data-testid="orch-import" onClick={() => orchFileRef.current?.click()} title="从 JSON 文件导入编排（合并到现有）"
+              style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}><Upload size={10} />导入</button>
+            <input ref={orchFileRef} data-testid="orch-import-file" type="file" accept="application/json,.json" style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void importOrchestrations(f); e.target.value = ""; }} />
+          </div>
           <div style={{ fontSize: 11, color: "var(--c-t3)", marginBottom: 6 }}>把满意的规划「存为编排模板」（回复下方按钮），以后在这里一键复用整套节点结构。最多 {MAX_ORCHESTRATIONS} 套。</div>
           {orchTemplates.length === 0 ? (
             <div style={{ fontSize: 11, color: "var(--c-t4)", padding: "6px 2px" }}>还没有编排模板。规划落地后点回复下方的「存为编排模板」即可保存。</div>
