@@ -424,6 +424,33 @@ export function estimateCanvasBudget(
   };
 }
 
+// ── 成片时长预估 ──────────────────────────────────────────────────────────
+// 画布上所有视频镜头（video_task / comfyui_video）时长之和 ≈ 装配后的成片总长。
+// duration 取节点 payload.duration；缺省按 provider 常见默认（Grok/Veo/Sora 系 6-8s，
+// 其余 5s）估，任一镜取了默认即标 approx。纯函数、framework-free，可单测。
+export type FilmDuration = { seconds: number; shots: number; approx: boolean };
+const defaultShotSeconds = (provider: string): number => {
+  const p = provider.toLowerCase();
+  if (/grok/.test(p)) return 6;
+  if (/veo|sora/.test(p)) return 8;
+  if (/hailuo/.test(p)) return 6;
+  return 5;
+};
+export function estimateFilmSeconds(nodes: BudgetNode[]): FilmDuration {
+  let seconds = 0, shots = 0, approx = false;
+  for (const n of nodes) {
+    const t = n.data.nodeType;
+    if (t !== "video_task" && t !== "comfyui_video") continue;
+    const p = (n.data.payload ?? {}) as Record<string, unknown>;
+    if (p.disabled === true) continue;
+    shots++;
+    const d = Number(p.duration);
+    if (Number.isFinite(d) && d > 0) { seconds += d; }
+    else { seconds += defaultShotSeconds(String(p.provider ?? "")); approx = true; }
+  }
+  return { seconds: Math.round(seconds * 10) / 10, shots, approx };
+}
+
 // ── #276 运行确认弹窗：逐节点运行计划明细 ──────────────────────────────────
 // 与 estimateCanvasBudget 的区别：那个是「整画布预算汇总」（含 audio 等运行器不执行
 // 的计费节点，供 BudgetButton/AgentNode 用）；这里是「本次运行会发生什么」的逐节点
