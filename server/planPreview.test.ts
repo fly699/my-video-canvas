@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { previewableCreates, filterPlanBySelection } from "../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv } from "../shared/planPreview";
 import type { AgentOperation } from "../shared/types";
 
 // 优化B 镜头表预览卡：预览行提取 + 勾选式落地筛选（纯函数）。
@@ -67,5 +67,70 @@ describe("filterPlanBySelection", () => {
     const out = filterPlanBySelection(ops, new Set(["v1"]));
     expect(out.some((o) => o.op === "connect")).toBe(false);
     expect(out.filter((o) => o.op === "create")).toHaveLength(2);
+  });
+});
+
+describe("planContinuityWarnings", () => {
+  it("画幅统一 + 提示词充分 + 时长正常 → 无告警", () => {
+    const rows = previewableCreates([
+      create("s1", "image_gen", { aspectRatio: "16:9", prompt: "白天开场，主角缓步走入广场" }),
+      create("v1", "video_task", { aspectRatio: "16:9", promptText: "镜头缓缓推进，主角回眸", duration: 6 }),
+    ]);
+    expect(planContinuityWarnings(rows)).toEqual({});
+  });
+
+  it("画幅混用 → 所有带比例的行标注「比例不统一」", () => {
+    const rows = previewableCreates([
+      create("s1", "image_gen", { aspectRatio: "16:9", prompt: "白天开场，主角缓步走入广场" }),
+      create("s2", "image_gen", { aspectRatio: "9:16", prompt: "夜晚雨中，主角撑伞独行街头" }),
+    ]);
+    const w = planContinuityWarnings(rows);
+    expect(w.s1).toContain("比例不统一（16:9）");
+    expect(w.s2).toContain("比例不统一（9:16）");
+  });
+
+  it("视频镜时长：缺失/≤0/偏长 分别告警；非视频不查时长", () => {
+    const rows = previewableCreates([
+      create("v1", "video_task", { promptText: "长镜推进，主角穿过人群走向站台" }),               // 缺时长
+      create("v2", "video_task", { promptText: "俯拍全景，城市灯火在夜色中渐次亮起", duration: 0 }),  // ≤0
+      create("v3", "video_task", { promptText: "手持跟拍，主角奔跑穿越狭窄巷道", duration: 45 }),     // 偏长
+      create("i1", "image_gen", { prompt: "一张写实风格的城市夜景照片，霓虹倒映" }),                 // 图不查时长
+    ]);
+    const w = planContinuityWarnings(rows);
+    expect(w.v1).toContain("未设时长（将用默认）");
+    expect(w.v2).toContain("时长异常（≤0s）");
+    expect(w.v3).toContain("时长偏长（45s）");
+    expect(w.i1).toBeUndefined();
+  });
+
+  it("画面类节点提示词过简 → 告警；工作流不查提示词", () => {
+    const rows = previewableCreates([
+      create("i1", "image_gen", { prompt: "猫" }),
+      create("wf", "comfyui_workflow", {}),
+    ]);
+    const w = planContinuityWarnings(rows);
+    expect(w.i1).toContain("提示词过简，建议补充画面细节");
+    expect(w.wf).toBeUndefined();
+  });
+});
+
+describe("shotRowsToCsv", () => {
+  it("表头 + 每行按镜号/标题/类型/景别/时长/比例/提示词/台词", () => {
+    const rows = previewableCreates([
+      create("s1", "storyboard", { sceneNumber: 1, shotType: "WS", duration: 4, aspectRatio: "16:9", promptText: "白天开场", dialogue: "陈默：出发" }),
+    ]);
+    const csv = shotRowsToCsv(rows);
+    const [header, line1] = csv.split("\r\n");
+    expect(header).toBe("镜号,标题,类型,景别,时长(s),比例,提示词,台词");
+    expect(line1).toBe("1,分镜,分镜,WS,4,16:9,白天开场,陈默：出发");
+  });
+
+  it("含逗号/引号/换行的字段按 CSV 规则转义", () => {
+    const rows = previewableCreates([
+      create("s1", "image_gen", { prompt: 'A, B "quoted"\n换行' }, "标题,含逗号"),
+    ]);
+    const line1 = shotRowsToCsv(rows).split("\r\n")[1];
+    expect(line1).toContain('"标题,含逗号"');
+    expect(line1).toContain('"A, B ""quoted""\n换行"');
   });
 });
