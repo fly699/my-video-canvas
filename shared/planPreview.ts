@@ -155,7 +155,8 @@ export function previewableEdges(ops: AgentOperation[]): EdgePreview[] {
 export function planOutline(ops: AgentOperation[]): string {
   const rows = previewableCreates(ops);
   const edges = previewableEdges(ops);
-  const lines = [`镜头表（${rows.length} 个节点）`];
+  const total = sumVideoDuration(rows);
+  const lines = [`镜头表（${rows.length} 个节点${total > 0 ? `，约 ${total}s 成片` : ""}）`];
   for (const r of rows) {
     const scene = r.sceneNumber !== undefined ? `镜${r.sceneNumber} ` : "";
     const meta = [r.shotType, r.duration !== undefined ? `${r.duration}s` : ""].filter(Boolean).join(" ");
