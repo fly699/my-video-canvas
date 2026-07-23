@@ -30,7 +30,7 @@ import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shot
 import { copyTextWithToast } from "../../lib/clipboard";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
-import { estimateOpsBudget, budgetLabel, countCloudGenOps } from "../../lib/agentBudget";
+import { estimateOpsBudget, budgetLabel, countCloudGenOps, estimateOpsBudgetBreakdown } from "../../lib/agentBudget";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
 import { countDiffFromDefaults } from "@/lib/quickPrefsCount";
@@ -921,6 +921,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const [previewDeselected, setPreviewDeselected] = useState<Set<string>>(new Set());
   // 预算护栏：暂存超上限、待用户二次确认的规划结果。
   const [budgetPending, setBudgetPending] = useState<{ r: AgentChatResult; count: number } | null>(null);
+  const [showCostDetail, setShowCostDetail] = useState(false); // 预览卡成本明细展开态
   const applyChatResult = (r: AgentChatResult, opts?: { skipPreview?: boolean; skipBudget?: boolean }): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
     // previewPlan 开启 + 有可勾选的 create 节点 → 先渲染预览卡，等用户「落地所选」再进入下面的落地逻辑。
     if (!opts?.skipPreview && quickPrefs.previewPlan && previewableCreates((r.operations ?? []) as AgentOperation[]).length > 0) {
@@ -1916,6 +1917,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   const previewWarnCount = Object.keys(previewWarnings).length;
   const previewFilteredOps = planPreview ? filterPlanBySelection((planPreview.operations ?? []) as AgentOperation[], previewDeselected) : [];
   const previewCostLabel = planPreview ? budgetLabel(estimateOpsBudget(previewFilteredOps)) : "";
+  const previewCostBreakdown = planPreview ? estimateOpsBudgetBreakdown(previewFilteredOps) : [];
   const previewEdges = planPreview ? previewableEdges(previewFilteredOps) : [];
   const exportShotList = () => {
     const csv = shotRowsToCsv(previewRows);
@@ -1944,12 +1946,28 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
         </div>
         <div data-testid="plan-preview-meta" style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 8px", fontSize: 11, flexWrap: "wrap" }}>
           <span data-testid="plan-preview-cost" style={{ color: "var(--c-t3)" }}>💰 预计消耗：{previewCostLabel || "本批无云端计费"}</span>
+          {previewCostBreakdown.length > 0 && (
+            <button data-testid="plan-preview-cost-toggle" onClick={() => setShowCostDetail((v) => !v)}
+              style={{ fontSize: 10.5, color: accent, background: "none", border: "none", cursor: "pointer", padding: 0 }}>{showCostDetail ? "收起明细" : "明细"}</button>
+          )}
           {previewWarnCount > 0 && (
             <span data-testid="plan-preview-warncount" style={{ display: "flex", alignItems: "center", gap: 3, color: "oklch(0.75 0.15 75)" }}>
               <AlertTriangle size={11} />{previewWarnCount} 个镜头有连续性提示
             </span>
           )}
         </div>
+        {showCostDetail && previewCostBreakdown.length > 0 && (
+          <div data-testid="plan-preview-cost-detail" style={{ padding: "0 16px 8px", fontSize: 10.5, color: "var(--c-t3)", display: "flex", flexDirection: "column", gap: 2 }}>
+            {previewCostBreakdown.map((b) => (
+              <div key={b.key} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.label} ×{b.count}</span>
+                <span style={{ flexShrink: 0, color: b.kind === "credits" ? "var(--c-t2)" : "var(--c-t4)" }}>
+                  {b.kind === "credits" ? `${b.totalCredits} credits` : b.kind === "local" ? "本地免费" : "按用量"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         {previewEdges.length > 0 && (
           <div data-testid="plan-preview-edges" style={{ padding: "0 16px 8px", fontSize: 10.5, color: "var(--c-t4)", display: "flex", flexWrap: "wrap", gap: "3px 10px" }}>
             <span style={{ color: "var(--c-t3)" }}>🔗 连线：</span>
