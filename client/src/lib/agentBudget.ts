@@ -52,6 +52,17 @@ export function estimateNodesBudget(
   return estimateOpsBudget(ops);
 }
 
+/** 本批会产生云端计费的生成节点数（image_gen + video_task；comfyui_* 走本机免费不计）。
+ *  预算护栏据此判断是否超上限——口径清晰可预估，不依赖各模型精确定价。 */
+export function countCloudGenOps(ops: AgentOperation[]): number {
+  let n = 0;
+  for (const op of ops) {
+    if (op.op !== "create") continue;
+    if (op.nodeType === "image_gen" || op.nodeType === "video_task") n++;
+  }
+  return n;
+}
+
 /** Compact one-line label, or "" when nothing costs anything. */
 export function budgetLabel(b: BudgetEstimate): string {
   const parts: string[] = [];

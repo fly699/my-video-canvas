@@ -29,7 +29,7 @@ import type { AgentOperation, CharacterNodeData } from "../../../../shared/types
 import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, type ShotPreviewRow } from "../../../../shared/planPreview";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
-import { estimateOpsBudget, budgetLabel } from "../../lib/agentBudget";
+import { estimateOpsBudget, budgetLabel, countCloudGenOps } from "../../lib/agentBudget";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
 import { countDiffFromDefaults } from "@/lib/quickPrefsCount";
@@ -46,13 +46,16 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; previewPlan: boolean; summaryMode: string; streamEcho: boolean; expertMode: boolean };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; previewPlan: boolean; budgetGuard: boolean; budgetMax: number; summaryMode: string; streamEcho: boolean; expertMode: boolean };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
 const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, // #259 selfCheck 默认开：#258 真模型 A/B 实证质量提升（自查后主动补齐角色一致性管线），
 // 且注入方式是「# 输出要求 末尾纯追加一条规则」——与 #145 对白语种硬规则同风险级（已有
 // 生产先例）。老用户存档里无 selfCheck 键 → 展开 QP_DEFAULT 时吃到新默认 true；随时可关。
 // leanPrompt 保持默认关（省 token 属锦上添花，等「规划质量」面板数据佐证后再评估转默认）。
-autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, emotionDispatch: false, previewPlan: false, summaryMode: "compressed",
+autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, emotionDispatch: false, previewPlan: false,
+// 优化 预算护栏（默认关）：开启后规划落地前若「云端计费生成节点数」超过 budgetMax 弹二次确认。
+// 老账号预设快照无这两键 → 展开 QP_DEFAULT 时回落默认（关 + 20），行为与升级前一致。
+budgetGuard: false, budgetMax: 20, summaryMode: "compressed",
 // #306 流式回显（默认关）：仅本机桥接模型（claude-local*）生效——生成中的文字实时回显在等待
 // 行下方；云端模型/关闭时自动走原有非流式（服务端三重门控，零回归）。旧账号预设快照没有此
 // 键 → 展开合并回落 false，行为与升级前一致。
@@ -892,11 +895,18 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 「落地所选」才真正建节点；关闭时（默认）直接全自动落地，逐字与旧版一致=零回归。
   const [planPreview, setPlanPreview] = useState<AgentChatResult | null>(null);
   const [previewDeselected, setPreviewDeselected] = useState<Set<string>>(new Set());
-  const applyChatResult = (r: AgentChatResult, opts?: { skipPreview?: boolean }): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
+  // 预算护栏：暂存超上限、待用户二次确认的规划结果。
+  const [budgetPending, setBudgetPending] = useState<{ r: AgentChatResult; count: number } | null>(null);
+  const applyChatResult = (r: AgentChatResult, opts?: { skipPreview?: boolean; skipBudget?: boolean }): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
     // previewPlan 开启 + 有可勾选的 create 节点 → 先渲染预览卡，等用户「落地所选」再进入下面的落地逻辑。
     if (!opts?.skipPreview && quickPrefs.previewPlan && previewableCreates((r.operations ?? []) as AgentOperation[]).length > 0) {
       setPlanPreview(r); setPreviewDeselected(new Set());
       return { apply: null, fetchIds: [] };
+    }
+    // 预算护栏（默认关）：开启后若本批云端计费生成节点数超上限，先弹二次确认，用户确认才落地。
+    if (!opts?.skipBudget && quickPrefs.budgetGuard) {
+      const cloudN = countCloudGenOps((r.operations ?? []) as AgentOperation[]);
+      if (cloudN > quickPrefs.budgetMax) { setBudgetPending({ r, count: cloudN }); return { apply: null, fetchIds: [] }; }
     }
     let applyRes: ReturnType<typeof applyAgentOperations> | null = null;
     // #260 附件即可引用：先把 {{refN}} 占位符替换成发送时登记的附件真实地址、并抽走
@@ -1001,6 +1011,10 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, dropped: droppedReasons.length ? droppedReasons : undefined, createdIds: createdIds.length ? createdIds : undefined, planOps }]);
     return { apply: applyRes, fetchIds: [] };
   };
+  // DEV 种子钩子在 mount 时注册，闭包会锁死首帧的 applyChatResult（读不到运行时改的 quickPrefs）。
+  // 用 ref 每次渲染指向最新实现，钩子调用 ref.current 即可拿到含最新开关的落地逻辑。
+  const applyChatResultRef = useRef(applyChatResult);
+  applyChatResultRef.current = applyChatResult;
 
   // 优化B：预览卡「落地所选」——按勾选筛掉不要的镜头（create + 引用它们的连线），再走同一落地逻辑。
   const confirmPlanPreview = () => {
@@ -1015,15 +1029,23 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setPlanPreview(null);
     setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划落地（未建任何节点）。可修改要求后重发。" }]);
   };
+  // 预算护栏：确认 → 跳过护栏直接落地；取消 → 不建任何节点。
+  const confirmBudget = () => { const pend = budgetPending; setBudgetPending(null); if (pend) applyChatResult(pend.r, { skipPreview: true, skipBudget: true }); };
+  const cancelBudget = () => {
+    setBudgetPending(null);
+    setTurns((p) => [...p, { role: "assistant", content: "已按预算护栏取消本次落地（未建任何节点）。可减少镜头或调高上限后重试。" }]);
+  };
   // DEV-only 真机测试种子：仅 Vite dev（import.meta.env.DEV）下注册，生产 build 自动剔除、零面。
   // 让 E2E 能在无 kie 时直接喂一份假规划结果触发预览卡（等价于 previewPlan 开启后规划完的态）。
   useEffect(() => {
     if (!import.meta.env.DEV) return;
-    const w = window as unknown as { __avcSeedPlan?: (r: AgentChatResult) => void; __avcSeedResult?: (r: AgentChatResult, userMsg?: string) => void };
+    const w = window as unknown as { __avcSeedPlan?: (r: AgentChatResult) => void; __avcSeedResult?: (r: AgentChatResult, userMsg?: string) => void; __avcSetPrefs?: (partial: Partial<QuickPrefs>) => void };
     w.__avcSeedPlan = (r) => { setPlanPreview(r); setPreviewDeselected(new Set()); };
-    // 优化④ 真机：直接把一份结果喂进落地路径（跳过预览卡），验证诊断卡 + 一键重试。
-    w.__avcSeedResult = (r, userMsg) => { if (userMsg) setTurns((p) => [...p, { role: "user", content: userMsg }]); void applyChatResult(r, { skipPreview: true }); };
-    return () => { delete (window as unknown as { __avcSeedPlan?: unknown; __avcSeedResult?: unknown }).__avcSeedPlan; delete (window as unknown as { __avcSeedResult?: unknown }).__avcSeedResult; };
+    // 优化④ 真机：直接把一份结果喂进落地路径（跳过预览卡），验证诊断卡 + 一键重试。走 ref 拿最新落地逻辑。
+    w.__avcSeedResult = (r, userMsg) => { if (userMsg) setTurns((p) => [...p, { role: "user", content: userMsg }]); void applyChatResultRef.current(r, { skipPreview: true }); };
+    // 预算护栏真机：直接改快捷设置（等价用户在面板勾开关/改上限），免走专业档 UI 路径。
+    w.__avcSetPrefs = (partial) => setQuickPrefs((p) => ({ ...p, ...partial }));
+    return () => { const g = window as unknown as Record<string, unknown>; delete g.__avcSeedPlan; delete g.__avcSeedResult; delete g.__avcSetPrefs; };
   }, []);
 
   // #251 跨进出画布续跑：挂载后查本项目是否有「进行中/已完成未取走」的规划任务
@@ -1449,11 +1471,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             )}
             {secHead("规划流程")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["previewPlan", "落地前预览镜头表（可勾选）", "开启后：助手规划完不立即建节点，先弹一张镜头表预览卡，逐镜列出（镜号/景别/时长/提示词/台词），你勾选要落地的镜头 → 点「落地所选」才真正建节点，取消勾选的连同其连线一并不建。卡上还会实时显示本批「预计消耗积分」（随勾选变化）、逐镜标注连续性提示（比例不统一/时长异常/提示词过简），并可一键「导出镜头表」为 CSV。适合先审一遍再落地、或只要其中几镜。关闭时（默认）规划完直接全自动落地，与现状逐字一致。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["streamEcho", "流式回显（本机 / Poyo）", "开启后：用本机 Claude/GPT 订阅桥接模型、或 Poyo 路由的云端模型（GPT-5.2、Claude Sonnet 4.5 等，官方 SSE 契约）规划时，生成中的文字实时回显在等待行下方——大计划等 1~5 分钟不再干等黑盒。Poyo 流式若网关异常会自动回退非流式重试，结果不受影响；kie 模型无官方流式契约，自动走原有非流式。关闭时全链路与现状一致。"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["previewPlan", "落地前预览镜头表（可勾选）", "开启后：助手规划完不立即建节点，先弹一张镜头表预览卡，逐镜列出（镜号/景别/时长/提示词/台词），你勾选要落地的镜头 → 点「落地所选」才真正建节点，取消勾选的连同其连线一并不建。卡上还会实时显示本批「预计消耗积分」（随勾选变化）、逐镜标注连续性提示（比例不统一/时长异常/提示词过简），并可一键「导出镜头表」为 CSV。适合先审一遍再落地、或只要其中几镜。关闭时（默认）规划完直接全自动落地，与现状逐字一致。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["streamEcho", "流式回显（本机 / Poyo）", "开启后：用本机 Claude/GPT 订阅桥接模型、或 Poyo 路由的云端模型（GPT-5.2、Claude Sonnet 4.5 等，官方 SSE 契约）规划时，生成中的文字实时回显在等待行下方——大计划等 1~5 分钟不再干等黑盒。Poyo 流式若网关异常会自动回退非流式重试，结果不受影响；kie 模型无官方流式契约，自动走原有非流式。关闭时全链路与现状一致。"], ["budgetGuard", "落地前预算护栏", "开启后：规划落地前若本批「云端计费生成节点数」（image_gen + video_task，ComfyUI 本机免费不计）超过右侧上限，弹二次确认，避免一键铺开一大批节点意外产生费用。确认「仍然落地」即照常建节点；关闭时（默认）不拦截，与现状一致。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
               ))}
+              {quickPrefs.budgetGuard && (
+                <label title="超过此数量的云端计费生成节点将触发二次确认" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--c-t2)" }}>
+                  上限
+                  <input data-testid="budget-max-input" type="number" min={1} max={999} value={quickPrefs.budgetMax}
+                    onChange={(e) => setQP({ budgetMax: Math.max(1, Math.min(999, Math.floor(Number(e.target.value) || 1))) })}
+                    style={{ width: 52, padding: "2px 6px", borderRadius: 6, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t1)", fontSize: 11.5 }} />
+                  个云端节点
+                </label>
+              )}
             </div>
             {secHead("自动增强")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
@@ -1904,5 +1935,24 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     </div>
   ), document.body) : null;
 
-  return createPortal(<>{collapsed ? ball : panel}{previewModal}</>, document.body);
+  // 预算护栏确认弹层：本批云端计费生成节点数超上限时弹出，确认才落地。
+  const budgetModal = budgetPending ? createPortal((
+    <div data-testid="budget-guard" className="nodrag nowheel" onClick={cancelBudget}
+      style={{ position: "fixed", inset: 0, zIndex: 342, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0.05 0.007 260 / 0.7)", backdropFilter: "blur(6px)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: "92vw", background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 14, boxShadow: "0 16px 48px oklch(0 0 0 / 0.5)", padding: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800, color: "oklch(0.75 0.15 75)" }}>
+          <AlertTriangle size={15} /> 超出预算护栏
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--c-t2)", marginTop: 10, lineHeight: 1.6 }}>
+          本次规划将创建 <strong data-testid="budget-count" style={{ color: "var(--c-t1)" }}>{budgetPending.count}</strong> 个云端计费生成节点，超过你设置的上限 <strong style={{ color: "var(--c-t1)" }}>{quickPrefs.budgetMax}</strong>。落地后运行会产生相应费用。
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16 }}>
+          <button onClick={cancelBudget} style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 12.5 }}>取消落地</button>
+          <button data-testid="budget-confirm" onClick={confirmBudget} style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: "oklch(0.75 0.15 75)", color: "#0b0d12", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>仍然落地</button>
+        </div>
+      </div>
+    </div>
+  ), document.body) : null;
+
+  return createPortal(<>{collapsed ? ball : panel}{previewModal}{budgetModal}</>, document.body);
 }
