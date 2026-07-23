@@ -26,6 +26,7 @@ import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 // #305 语音口令：统一语音输入 hook（Web Speech 主路径 + 服务端 whisper 兜底），与 AI 客户端/聊天室同源。
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
+import { previewableCreates, filterPlanBySelection, type ShotPreviewRow } from "../../../../shared/planPreview";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
 import { countDiffFromDefaults } from "@/lib/quickPrefsCount";
@@ -42,13 +43,13 @@ const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
 
 // 「快速设置」——把创作偏好注入助手规划（agent.chat 的 prefs 约束块 + 落地时的 aspect/模型/节点白名单）。
 // genNodes：允许智能体使用的生成节点类型（空=不限）；imageModel/videoProvider：指定生成模型（空=助手自选/节点默认）。
-type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; summaryMode: string; streamEcho: boolean; expertMode: boolean };
+type QuickPrefs = { aspect: string; style: string; durationSec: number; imageFirst: boolean; addMusic: boolean; addSubtitle: boolean; imageModel: string; videoProvider: string; genNodes: string[]; workflowTemplateIds: number[]; noStoryboard: boolean; dialogueLang: string; promptLang: string; useComfyMemory: boolean; coalesceShots: boolean; fastChat: boolean; autoQc: boolean; useModelSkills: boolean; interactive: boolean; autoPortrait: boolean; anchorCompress: boolean; transitionStyle: string; leanPrompt: boolean; selfCheck: boolean; emotionDispatch: boolean; previewPlan: boolean; summaryMode: string; streamEcho: boolean; expertMode: boolean };
 // 画布助手快速设置的出厂默认（用户改动后写入 localStorage 覆盖；此默认即「清缓存/新会话」的起点）。
 const QP_DEFAULT: QuickPrefs = { aspect: "16:9", style: "电影感", durationSec: 0, imageFirst: false, addMusic: false, addSubtitle: false, imageModel: "kie_gpt_image_2", videoProvider: "kie_grok_i2v", genNodes: [], workflowTemplateIds: [], noStoryboard: true, dialogueLang: "中文", promptLang: "", useComfyMemory: false, coalesceShots: false, fastChat: false, autoQc: false, useModelSkills: false, interactive: false, // #259 selfCheck 默认开：#258 真模型 A/B 实证质量提升（自查后主动补齐角色一致性管线），
 // 且注入方式是「# 输出要求 末尾纯追加一条规则」——与 #145 对白语种硬规则同风险级（已有
 // 生产先例）。老用户存档里无 selfCheck 键 → 展开 QP_DEFAULT 时吃到新默认 true；随时可关。
 // leanPrompt 保持默认关（省 token 属锦上添花，等「规划质量」面板数据佐证后再评估转默认）。
-autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, emotionDispatch: false, summaryMode: "compressed",
+autoPortrait: false, anchorCompress: true, transitionStyle: "", leanPrompt: false, selfCheck: true, emotionDispatch: false, previewPlan: false, summaryMode: "compressed",
 // #306 流式回显（默认关）：仅本机桥接模型（claude-local*）生效——生成中的文字实时回显在等待
 // 行下方；云端模型/关闭时自动走原有非流式（服务端三重门控，零回归）。旧账号预设快照没有此
 // 键 → 展开合并回落 false，行为与升级前一致。
@@ -833,7 +834,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
 
   // 规划结果统一落地（send 与 #251 跨会话恢复共用）：应用操作 → 追加助手回合 → 自动增强。
   // 恢复路径用的是「当前」quickPrefs（附件等一次性上下文只影响规划本身，结果应用不依赖）。
-  const applyChatResult = (r: AgentChatResult): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
+  // 优化B 镜头表预览卡（快捷设置 previewPlan 开启时）：规划落地前先弹镜头表卡逐镜勾选，
+  // 「落地所选」才真正建节点；关闭时（默认）直接全自动落地，逐字与旧版一致=零回归。
+  const [planPreview, setPlanPreview] = useState<AgentChatResult | null>(null);
+  const [previewDeselected, setPreviewDeselected] = useState<Set<string>>(new Set());
+  const applyChatResult = (r: AgentChatResult, opts?: { skipPreview?: boolean }): { apply: ReturnType<typeof applyAgentOperations> | null; fetchIds: string[] } => {
+    // previewPlan 开启 + 有可勾选的 create 节点 → 先渲染预览卡，等用户「落地所选」再进入下面的落地逻辑。
+    if (!opts?.skipPreview && quickPrefs.previewPlan && previewableCreates((r.operations ?? []) as AgentOperation[]).length > 0) {
+      setPlanPreview(r); setPreviewDeselected(new Set());
+      return { apply: null, fetchIds: [] };
+    }
     let applyRes: ReturnType<typeof applyAgentOperations> | null = null;
     // #260 附件即可引用：先把 {{refN}} 占位符替换成发送时登记的附件真实地址、并抽走
     // library 入库操作（applyAgentOperations 只认画布语义）。attachRefsRef 在 send() 时
@@ -934,6 +944,27 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
     return { apply: applyRes, fetchIds: [] };
   };
+
+  // 优化B：预览卡「落地所选」——按勾选筛掉不要的镜头（create + 引用它们的连线），再走同一落地逻辑。
+  const confirmPlanPreview = () => {
+    if (!planPreview) return;
+    const filtered = filterPlanBySelection((planPreview.operations ?? []) as AgentOperation[], previewDeselected);
+    const r = { ...planPreview, operations: filtered } as AgentChatResult;
+    setPlanPreview(null);
+    if (!filtered.some((o) => o.op === "create")) { toast.info("未勾选任何镜头，已取消落地"); setTurns((p) => [...p, { role: "assistant", content: "（未勾选任何镜头，本次不落地）" }]); return; }
+    applyChatResult(r, { skipPreview: true });
+  };
+  const cancelPlanPreview = () => {
+    setPlanPreview(null);
+    setTurns((p) => [...p, { role: "assistant", content: "已取消本次规划落地（未建任何节点）。可修改要求后重发。" }]);
+  };
+  // DEV-only 真机测试种子：仅 Vite dev（import.meta.env.DEV）下注册，生产 build 自动剔除、零面。
+  // 让 E2E 能在无 kie 时直接喂一份假规划结果触发预览卡（等价于 previewPlan 开启后规划完的态）。
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as { __avcSeedPlan?: (r: AgentChatResult) => void }).__avcSeedPlan = (r) => { setPlanPreview(r); setPreviewDeselected(new Set()); };
+    return () => { delete (window as unknown as { __avcSeedPlan?: unknown }).__avcSeedPlan; };
+  }, []);
 
   // #251 跨进出画布续跑：挂载后查本项目是否有「进行中/已完成未取走」的规划任务
   // （上次提交后退出画布，服务端任务仍在跑/已跑完）——有则自动恢复轮询并落地结果，
@@ -1302,7 +1333,7 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             )}
             {secHead("规划流程")}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5 }}>
-              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["streamEcho", "流式回显（本机 / Poyo）", "开启后：用本机 Claude/GPT 订阅桥接模型、或 Poyo 路由的云端模型（GPT-5.2、Claude Sonnet 4.5 等，官方 SSE 契约）规划时，生成中的文字实时回显在等待行下方——大计划等 1~5 分钟不再干等黑盒。Poyo 流式若网关异常会自动回退非流式重试，结果不受影响；kie 模型无官方流式契约，自动走原有非流式。关闭时全链路与现状一致。"]] as const).map(([k, label, tip]) => (
+              {([["imageFirst", "生图 → 再生视频", "每个镜头先生成一张首帧图，再图生视频——画面更可控、跨镜更一致。依赖视频模型支持首帧参考图：上方「视」下拉标注「🚫图」的纯文生模型不生效（会有警告提示）。"], ["noStoryboard", "排除分镜节点", "规划时不建 storyboard 分镜节点：镜头信息用 prompt 提示词节点承载（script → prompt → 生成节点）；违规创建会被直接拦截"], ["coalesceShots", "合并短镜（省次数）", "把连续、同场景且时长之和不超过所选视频模型单次上限（如 Grok 30s）的多个短镜头，合并为一个视频节点一次生成——减少生成次数、更省更快。仅合并画面连贯的镜头，遇转场/换场自动断开。会牺牲逐镜单独重生成的粒度。"], ["interactive", "交互式规划（逐步确认）", "复杂编排时开启：助手不再一次性出完整方案，而是分步提出决策点并给出编号选项（结构风格 → 镜头规格与模型 → 角色场景 → 确认落地），你点选项按钮或直接输入想法，一步步敲定后说「开始落地」才真正建节点。任意时刻说「不用问了直接做」立即按已确认信息落地。简单请求不受影响，仍然直接执行。"], ["previewPlan", "落地前预览镜头表（可勾选）", "开启后：助手规划完不立即建节点，先弹一张镜头表预览卡，逐镜列出（镜号/景别/时长/提示词/台词），你勾选要落地的镜头 → 点「落地所选」才真正建节点，取消勾选的连同其连线一并不建。适合先审一遍再落地、或只要其中几镜。关闭时（默认）规划完直接全自动落地，与现状逐字一致。"], ["fastChat", "简单问答免规划（更快）", "开启后：助手先用一次极短判断本轮是【闲聊/问答】还是【要动画布】——纯问答/闲聊直接短回答、跳过完整规划，简单问答快数倍、省一次大规划。判断偏保守：涉及做视频/加改节点一律走完整规划；带参考图时也走完整规划（行为与关掉时一致，不会更差）。"], ["streamEcho", "流式回显（本机 / Poyo）", "开启后：用本机 Claude/GPT 订阅桥接模型、或 Poyo 路由的云端模型（GPT-5.2、Claude Sonnet 4.5 等，官方 SSE 契约）规划时，生成中的文字实时回显在等待行下方——大计划等 1~5 分钟不再干等黑盒。Poyo 流式若网关异常会自动回退非流式重试，结果不受影响；kie 模型无官方流式契约，自动走原有非流式。关闭时全链路与现状一致。"]] as const).map(([k, label, tip]) => (
                 <label key={k} title={tip || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", color: "var(--c-t2)" }}>
                   <input type="checkbox" checked={!!quickPrefs[k]} onChange={(e) => setQP({ [k]: e.target.checked })} style={{ accentColor: accent }} /> {label}
                 </label>
@@ -1655,5 +1686,55 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     </>
   );
 
-  return createPortal(collapsed ? ball : panel, document.body);
+  // 优化B 镜头表预览卡：previewPlan 开启后规划完先弹此卡，逐镜勾选 → 「落地所选」才建节点。
+  const previewRows: ShotPreviewRow[] = planPreview ? previewableCreates((planPreview.operations ?? []) as AgentOperation[]) : [];
+  const selectedCount = previewRows.filter((row) => !previewDeselected.has(row.tempId)).length;
+  const toggleRow = (tempId: string) => setPreviewDeselected((prev) => { const n = new Set(prev); if (n.has(tempId)) n.delete(tempId); else n.add(tempId); return n; });
+  const previewModal = planPreview ? createPortal((
+    <div data-testid="plan-preview" className="nodrag nowheel" onClick={cancelPlanPreview}
+      style={{ position: "fixed", inset: 0, zIndex: 340, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0.05 0.007 260 / 0.7)", backdropFilter: "blur(6px)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 560, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column", background: "var(--c-base)", border: "1px solid var(--c-bd2)", borderRadius: 16, boxShadow: "0 16px 48px oklch(0 0 0 / 0.5)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: "1px solid var(--c-bd1)" }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: "var(--c-t1)" }}>🎬 镜头表预览</span>
+          <span style={{ fontSize: 11, color: "var(--c-t4)" }}>勾选要落地的节点，取消不想要的</span>
+          <div style={{ flex: 1 }} />
+          <button data-testid="plan-preview-close" onClick={cancelPlanPreview} style={{ width: 26, height: 26, borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer" }}><X size={13} /></button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", fontSize: 11, color: "var(--c-t3)" }}>
+          <button data-testid="plan-preview-all" onClick={() => setPreviewDeselected(new Set())} style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}>全选</button>
+          <button data-testid="plan-preview-none" onClick={() => setPreviewDeselected(new Set(previewRows.map((row) => row.tempId)))} style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 11 }}>全不选</button>
+          <span style={{ marginLeft: "auto" }}>共 {previewRows.length} 个节点</span>
+        </div>
+        <div className="nowheel" style={{ flex: 1, overflowY: "auto", padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+          {previewRows.map((row) => {
+            const on = !previewDeselected.has(row.tempId);
+            return (
+              <label key={row.tempId} data-testid={`plan-preview-row-${row.tempId}`} data-on={on || undefined}
+                style={{ display: "flex", gap: 9, padding: "8px 10px", borderRadius: 10, cursor: "pointer", background: on ? "var(--c-surface)" : "transparent", border: `1px solid ${on ? "var(--c-bd2)" : "transparent"}`, opacity: on ? 1 : 0.5 }}>
+                <input type="checkbox" checked={on} onChange={() => toggleRow(row.tempId)} style={{ marginTop: 2, accentColor: accent }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+                    {row.sceneNumber !== undefined && <span style={{ fontSize: 11, fontWeight: 800, color: accent }}>镜{row.sceneNumber}</span>}
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--c-t1)" }}>{row.title}</span>
+                    {row.shotType && <span style={{ fontSize: 10, color: "var(--c-t4)", padding: "1px 5px", borderRadius: 5, background: "var(--c-elevated)" }}>{row.shotType}</span>}
+                    {row.duration !== undefined && <span style={{ fontSize: 10, color: "var(--c-t4)" }}>{row.duration}s</span>}
+                  </div>
+                  {row.promptText && <div style={{ fontSize: 11, color: "var(--c-t3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{row.promptText}</div>}
+                  {row.dialogue && <div style={{ fontSize: 11, color: "var(--c-t4)", marginTop: 2, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>💬 {row.dialogue}</div>}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderTop: "1px solid var(--c-bd1)" }}>
+          <button onClick={cancelPlanPreview} style={{ padding: "8px 16px", borderRadius: 9, border: "1px solid var(--c-bd2)", background: "var(--c-surface)", color: "var(--c-t3)", cursor: "pointer", fontSize: 12.5 }}>取消</button>
+          <div style={{ flex: 1 }} />
+          <button data-testid="plan-preview-apply" onClick={confirmPlanPreview}
+            style={{ padding: "8px 20px", borderRadius: 9, border: "none", background: accent, color: "#0b0d12", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>落地所选（{selectedCount}）</button>
+        </div>
+      </div>
+    </div>
+  ), document.body) : null;
+
+  return createPortal(<>{collapsed ? ball : panel}{previewModal}</>, document.body);
 }
