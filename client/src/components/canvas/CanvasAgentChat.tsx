@@ -1627,6 +1627,12 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: accent, paddingLeft: 2 }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Plus size={10} /><Link2 size={10} /><Pencil size={10} /> 已应用：{t.applied}</span>
                 {t.createdIds?.length && !t.undone && (
+                  <button data-testid="focus-created" onClick={() => reactFlow.fitView({ nodes: t.createdIds!.map((id) => ({ id })), padding: 0.3, duration: 400, maxZoom: 1.5 })} title={`把视野框到本次新建的 ${t.createdIds.length} 个节点（大画布里落地节点在视口外时快速定位）`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>
+                    <Focus size={10} /> 聚焦本次
+                  </button>
+                )}
+                {t.createdIds?.length && !t.undone && (
                   <button onClick={() => undoTurn(i)} title={`移除本次 AI 新建的 ${t.createdIds.length} 个节点（被修改的既有节点不受影响，可再 Ctrl+Z 整体回退）`}
                     style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "var(--c-t3)", background: "none", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>
                     <CornerUpLeft size={10} /> 撤销新建
