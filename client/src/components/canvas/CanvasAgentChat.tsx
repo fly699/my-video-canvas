@@ -26,7 +26,7 @@ import { consumeAgentPrefill, AGENT_PREFILL_EVENT } from "@/lib/agentPrefill";
 // #305 语音口令：统一语音输入 hook（Web Speech 主路径 + 服务端 whisper 兜底），与 AI 客户端/聊天室同源。
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
-import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, type ShotPreviewRow } from "../../../../shared/planPreview";
+import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, type ShotPreviewRow } from "../../../../shared/planPreview";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
 import { estimateOpsBudget, budgetLabel, countCloudGenOps } from "../../lib/agentBudget";
@@ -1869,9 +1869,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 优化① 落地前体检：成本随勾选实时预估 + 连续性告警（逐行）+ 镜头表 CSV 导出。
   const previewWarnings = planPreview ? planContinuityWarnings(previewRows) : {};
   const previewWarnCount = Object.keys(previewWarnings).length;
-  const previewCostLabel = planPreview
-    ? budgetLabel(estimateOpsBudget(filterPlanBySelection((planPreview.operations ?? []) as AgentOperation[], previewDeselected)))
-    : "";
+  const previewFilteredOps = planPreview ? filterPlanBySelection((planPreview.operations ?? []) as AgentOperation[], previewDeselected) : [];
+  const previewCostLabel = planPreview ? budgetLabel(estimateOpsBudget(previewFilteredOps)) : "";
+  const previewEdges = planPreview ? previewableEdges(previewFilteredOps) : [];
   const exportShotList = () => {
     const csv = shotRowsToCsv(previewRows);
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
@@ -1905,6 +1905,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
             </span>
           )}
         </div>
+        {previewEdges.length > 0 && (
+          <div data-testid="plan-preview-edges" style={{ padding: "0 16px 8px", fontSize: 10.5, color: "var(--c-t4)", display: "flex", flexWrap: "wrap", gap: "3px 10px" }}>
+            <span style={{ color: "var(--c-t3)" }}>🔗 连线：</span>
+            {previewEdges.map((e, i) => (
+              <span key={i} data-testid="plan-preview-edge" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                {e.from}<Link2 size={9} />{e.to}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="nowheel" style={{ flex: 1, overflowY: "auto", padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
           {previewRows.map((row) => {
             const on = !previewDeselected.has(row.tempId);

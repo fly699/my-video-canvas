@@ -98,6 +98,26 @@ export function planContinuityWarnings(rows: ShotPreviewRow[]): Record<string, s
   return out;
 }
 
+/** 一条连线预览：源节点标题 → 目标节点标题（tempId 解析不到时回退显示 ref 本身）。 */
+export interface EdgePreview { from: string; to: string; }
+
+/** 从 operations 抽出「连线预览」：每条 connect 解析成 源标题→目标标题。
+ *  tempId → 标题映射用本批 create 的 title（同 previewableCreates 口径），跨批引用回退显示 ref。 */
+export function previewableEdges(ops: AgentOperation[]): EdgePreview[] {
+  const titleOf = new Map<string, string>();
+  for (const o of ops) {
+    if (o.op !== "create" || !o.tempId) continue;
+    const nt = o.nodeType ?? "";
+    titleOf.set(o.tempId, o.title || TYPE_LABEL[nt] || nt || "节点");
+  }
+  const out: EdgePreview[] = [];
+  for (const o of ops) {
+    if (o.op !== "connect" || !o.sourceRef || !o.targetRef) continue;
+    out.push({ from: titleOf.get(o.sourceRef) ?? o.sourceRef, to: titleOf.get(o.targetRef) ?? o.targetRef });
+  }
+  return out;
+}
+
 /** 把预览行导出为 CSV 文本（表头中文、逐字段转义），供「导出镜头表」下载。纯函数。 */
 export function shotRowsToCsv(rows: ShotPreviewRow[]): string {
   const esc = (v: unknown): string => {
