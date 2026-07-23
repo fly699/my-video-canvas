@@ -120,6 +120,16 @@ export function planContinuityWarnings(rows: ShotPreviewRow[]): Record<string, s
   return out;
 }
 
+/** 计划预计成片总时长（秒）：累加各 video_task 镜的有效 duration（>0），忽略未设/异常时长的镜。
+ *  仅统计真正产出视频片段的 video_task（图/分镜等不计入成片时长）。纯函数，供落地前估算成片长度。 */
+export function sumVideoDuration(rows: ShotPreviewRow[]): number {
+  let sum = 0;
+  for (const r of rows) {
+    if (r.nodeType === "video_task" && typeof r.duration === "number" && r.duration > 0) sum += r.duration;
+  }
+  return sum;
+}
+
 /** 一条连线预览：源节点标题 → 目标节点标题（tempId 解析不到时回退显示 ref 本身）。 */
 export interface EdgePreview { from: string; to: string; }
 
