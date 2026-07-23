@@ -1084,6 +1084,7 @@ export const agentRouter = router({
         content: z.string().max(20000),
         applied: z.string().max(4000).optional(),
         failed: z.string().max(4000).optional(),
+        dropped: z.array(z.string().max(200)).max(20).optional(),
         error: z.boolean().optional(),
         createdIds: z.array(z.string().max(64)).max(200).optional(),
         undone: z.boolean().optional(),

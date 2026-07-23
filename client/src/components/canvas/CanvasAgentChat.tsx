@@ -37,7 +37,7 @@ import { formatStreamPreview } from "@/lib/streamPreviewFormat";
  *  （agent.chat 规划 + buildGraphSummary 看实时画布 + applyAgentOperations 落地）。
  *  已对齐聊天助手：模板人设、@角色 引用、/ 调技能（本机 Claude 桥接，MCP 亦自动可用）、撤销本次改动。
  *  结构性操作自动落地且不花钱；「运行/生成」仍需在节点上点运行（防误烧额度）。 */
-type Turn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; error?: boolean; createdIds?: string[]; undone?: boolean };
+type Turn = { role: "user" | "assistant"; content: string; applied?: string; failed?: string; dropped?: string[]; error?: boolean; createdIds?: string[]; undone?: boolean };
 
 const accent = "oklch(0.70 0.20 310)";
 const accentSoft = "oklch(0.70 0.20 310 / 0.14)";
@@ -122,6 +122,7 @@ const sanitizeTurnsForSave = (ts: Turn[]) => ts.slice(-80).map((t) => ({
   content: t.content.slice(0, 20000),
   ...(t.applied ? { applied: t.applied.slice(0, 4000) } : {}),
   ...(t.failed ? { failed: t.failed.slice(0, 4000) } : {}),
+  ...(t.dropped?.length ? { dropped: t.dropped.slice(0, 20).map((x) => x.slice(0, 200)) } : {}),
   ...(t.error ? { error: true } : {}),
   ...(t.createdIds ? { createdIds: t.createdIds.slice(0, 200).map((x) => x.slice(0, 64)) } : {}),
   ...(t.undone ? { undone: true } : {}),
@@ -699,6 +700,16 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
     setTurns((p) => p.map((x, i) => (i === idx ? { ...x, undone: true } : x)));
   };
 
+  // 优化④ 一键重试规划：从该助手回合往前找最近的用户消息（去掉附件标签），原样重发。
+  // 附件本身已随上轮消费无法自动复原（走文本重规划），拒因已入库、下轮会自动规避同类错误。
+  const retryPlan = (assistantIdx: number) => {
+    if (busy) return;
+    let msg = "";
+    for (let i = assistantIdx - 1; i >= 0; i--) { if (turns[i].role === "user") { msg = turns[i].content.split("　📎")[0].trim(); break; } }
+    if (!msg) { toast.info("未找到可重试的原始指令"); return; }
+    void send(msg);
+  };
+
   // #227 角色自动定妆照 / #271 场景自动场景图：规划落地后，为本轮【新建】且【还没有
   // 参考图】的角色/场景节点，逐个按描述生成主参考图（fill-only，绝不覆盖已有图——角色
   // 库代入的定妆照优先）。串行执行防生图并发风暴；单个失败不阻断其余。fire-and-forget：
@@ -897,9 +908,9 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       // utils.client 的 tRPC 精确类型与最小接口结构兼容（仅取 editor 四端点的所需形状）。
       void runAnimaticFromCanvas(utils.client as unknown as AnimaticEditorClient, { aspect: quickPrefs.aspect || undefined });
     }
-    // 服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）——此前画布助手完全不展示，
-    // 用户只见「operations 静默变少」。合并进「未应用」提示，与客户端 apply 失败一并可见。
-    const droppedMsg = (r.droppedCount ?? 0) > 0 ? `服务端忽略 ${r.droppedCount} 项：${(r.dropped ?? []).slice(0, 3).join("；")}` : "";
+    // 优化④ 规划诊断透明化：服务端 sanitize 丢弃的操作（幻觉节点/非法字段/重复等）
+    // 从一行 failed 文字升级为可展开诊断卡 + 一键重试（见渲染处 t.dropped）。
+    const droppedReasons = (r.droppedCount ?? 0) > 0 ? (r.dropped ?? []) : [];
     let applied = "", applyFailMsg = "", createdIds: string[] = [];
     if (ops.length) {
       const anchor = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2 - 120, y: window.innerHeight / 2 - 120 });
@@ -941,8 +952,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
       if (saveLibOps.some((o) => !(o as AgentOperation).targetRef) || refs.length === 0) void batchSaveLibrary();
       else refs.forEach((ref) => void batchSaveLibrary(ref));
     }
-    const failed = [droppedMsg, applyFailMsg].filter(Boolean).join(" · ") || undefined;
-    setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, createdIds: createdIds.length ? createdIds : undefined }]);
+    const failed = applyFailMsg || undefined;
+    setTurns((p) => [...p, { role: "assistant", content: r.reply || (applied ? "已按你的要求改好画布。" : "（无改动）"), applied: applied || undefined, failed, dropped: droppedReasons.length ? droppedReasons : undefined, createdIds: createdIds.length ? createdIds : undefined }]);
     return { apply: applyRes, fetchIds: [] };
   };
 
@@ -963,8 +974,11 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   // 让 E2E 能在无 kie 时直接喂一份假规划结果触发预览卡（等价于 previewPlan 开启后规划完的态）。
   useEffect(() => {
     if (!import.meta.env.DEV) return;
-    (window as unknown as { __avcSeedPlan?: (r: AgentChatResult) => void }).__avcSeedPlan = (r) => { setPlanPreview(r); setPreviewDeselected(new Set()); };
-    return () => { delete (window as unknown as { __avcSeedPlan?: unknown }).__avcSeedPlan; };
+    const w = window as unknown as { __avcSeedPlan?: (r: AgentChatResult) => void; __avcSeedResult?: (r: AgentChatResult, userMsg?: string) => void };
+    w.__avcSeedPlan = (r) => { setPlanPreview(r); setPreviewDeselected(new Set()); };
+    // 优化④ 真机：直接把一份结果喂进落地路径（跳过预览卡），验证诊断卡 + 一键重试。
+    w.__avcSeedResult = (r, userMsg) => { if (userMsg) setTurns((p) => [...p, { role: "user", content: userMsg }]); void applyChatResult(r, { skipPreview: true }); };
+    return () => { delete (window as unknown as { __avcSeedPlan?: unknown; __avcSeedResult?: unknown }).__avcSeedPlan; delete (window as unknown as { __avcSeedResult?: unknown }).__avcSeedResult; };
   }, []);
 
   // #251 跨进出画布续跑：挂载后查本项目是否有「进行中/已完成未取走」的规划任务
@@ -1447,6 +1461,23 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 <AlertTriangle size={10} /> {t.failed}
               </div>
             )}
+            {/* 优化④ 规划诊断卡：服务端按目录/字段/模型清单拒绝的操作，逐条说明 + 一键重试。 */}
+            {t.dropped?.length ? (
+              <div data-testid="plan-diagnostic" style={{ fontSize: 10.5, color: "oklch(0.72 0.16 60)", background: "oklch(0.72 0.16 60 / 0.08)", border: "1px solid oklch(0.72 0.16 60 / 0.25)", borderRadius: 8, padding: "6px 9px", marginLeft: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700 }}>
+                  <AlertTriangle size={11} /> 本次有部分内容未落地（{t.dropped.length} 类原因）
+                </div>
+                <ul style={{ margin: "4px 0 0", paddingLeft: 16, lineHeight: 1.5 }}>
+                  {t.dropped.map((d, k) => <li key={k}>{d}</li>)}
+                </ul>
+                {t.role === "assistant" && (
+                  <button data-testid="plan-retry" onClick={() => retryPlan(i)} disabled={busy}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 10.5, color: "var(--c-t2)", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 9px", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
+                    <CornerUpLeft size={10} /> 重试规划
+                  </button>
+                )}
+              </div>
+            ) : null}
           </div>
         ))}
         {busy && (
