@@ -105,6 +105,13 @@ export function planContinuityWarnings(rows: ShotPreviewRow[]): Record<string, s
   const aspects = new Set<string>();
   for (const r of rows) if (r.aspect) aspects.add(r.aspect);
   const mixedAspect = aspects.size > 1;
+  // 提示词重复检测：画面类节点里，同一段（足够长的）提示词出现在 >1 镜 → 多半是复制粘贴忘改。
+  const promptCount = new Map<string, number>();
+  for (const r of rows) {
+    if (!VISUAL_TYPES.has(r.nodeType)) continue;
+    const p = r.promptText?.trim() ?? "";
+    if (p.length >= MIN_PROMPT_LEN) promptCount.set(p, (promptCount.get(p) ?? 0) + 1);
+  }
   for (const r of rows) {
     if (mixedAspect && r.aspect) push(r.tempId, `比例不统一（${r.aspect}）`);
     if (r.nodeType === "video_task") {
@@ -115,6 +122,7 @@ export function planContinuityWarnings(rows: ShotPreviewRow[]): Record<string, s
     if (VISUAL_TYPES.has(r.nodeType)) {
       const p = r.promptText?.trim() ?? "";
       if (p.length < MIN_PROMPT_LEN) push(r.tempId, "提示词过简，建议补充画面细节");
+      else if ((promptCount.get(p) ?? 0) > 1) push(r.tempId, "提示词与其它镜重复");
     }
   }
   return out;

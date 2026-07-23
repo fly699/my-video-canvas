@@ -103,6 +103,28 @@ describe("planContinuityWarnings", () => {
     expect(w.i1).toBeUndefined();
   });
 
+  it("提示词与其它镜完全相同 → 涉及镜标注「重复」；唯一提示词不标注", () => {
+    const rows = previewableCreates([
+      create("i1", "image_gen", { prompt: "雨夜街头追逐，霓虹映水面波光粼粼" }),
+      create("i2", "image_gen", { prompt: "雨夜街头追逐，霓虹映水面波光粼粼" }), // 与 i1 完全相同
+      create("i3", "image_gen", { prompt: "清晨山谷薄雾，阳光穿过树梢洒落" }),   // 唯一
+    ]);
+    const w = planContinuityWarnings(rows);
+    expect(w.i1).toContain("提示词与其它镜重复");
+    expect(w.i2).toContain("提示词与其它镜重复");
+    expect(w.i3 ?? []).not.toContain("提示词与其它镜重复");
+  });
+
+  it("过简提示词不误判为重复（多镜都过简只报过简）", () => {
+    const rows = previewableCreates([
+      create("i1", "image_gen", { prompt: "猫" }),
+      create("i2", "image_gen", { prompt: "猫" }),
+    ]);
+    const w = planContinuityWarnings(rows);
+    expect(w.i1).toContain("提示词过简，建议补充画面细节");
+    expect(w.i1 ?? []).not.toContain("提示词与其它镜重复");
+  });
+
   it("画面类节点提示词过简 → 告警；工作流不查提示词", () => {
     const rows = previewableCreates([
       create("i1", "image_gen", { prompt: "猫" }),
