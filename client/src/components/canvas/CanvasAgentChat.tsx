@@ -28,6 +28,7 @@ import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
 import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, type ShotPreviewRow } from "../../../../shared/planPreview";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
+import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
 import { estimateOpsBudget, budgetLabel } from "../../lib/agentBudget";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
 import { buildLibrarySaveInput } from "@/lib/characterLibrarySave";
@@ -1255,7 +1256,26 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
 
       {/* 优化③ 编排模板面板：列出已存编排，一键应用（走同一落地/预览路径）/重命名/删除。 */}
       {showOrch && (
-        <div data-testid="orch-panel" className="nowheel" style={{ margin: "0 2px 6px", border: "1px solid var(--c-bd2)", borderRadius: 10, background: "var(--c-surface)", padding: 8, maxHeight: 240, overflowY: "auto" }}>
+        <div data-testid="orch-panel" className="nowheel" style={{ margin: "0 2px 6px", border: "1px solid var(--c-bd2)", borderRadius: 10, background: "var(--c-surface)", padding: 8, maxHeight: 300, overflowY: "auto" }}>
+          {/* 官方种子模板：空画布一键铺开经典成片骨架，替换占位提示词即可开工。 */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)", marginBottom: 4 }}>官方模板 · 一键起片</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 10 }}>
+            {SEED_ORCHESTRATIONS.map((s) => {
+              const sum = orchestrationSummary(s.ops);
+              return (
+                <div key={s.id} data-testid={`orch-seed-${s.id}`} style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", borderRadius: 8, background: "var(--c-base)", border: "1px solid var(--c-bd1)" }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{s.icon}</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--c-t1)" }}>{s.name} <span style={{ fontSize: 10, fontWeight: 400, color: "var(--c-t4)" }}>{sum.creates}节点·{sum.connects}线</span></div>
+                    <div style={{ fontSize: 10.5, color: "var(--c-t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.desc}</div>
+                  </div>
+                  <button data-testid="orch-seed-apply" onClick={() => applyOrchestration(s)} title="一键在当前画布铺开这套骨架（之后替换占位提示词即可）"
+                    style={{ flexShrink: 0, fontSize: 10.5, color: accent, background: accentSoft, border: `1px solid ${accent}`, borderRadius: 6, padding: "3px 11px", cursor: "pointer", fontWeight: 600 }}>起片</button>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)", marginBottom: 4 }}>我的编排</div>
           <div style={{ fontSize: 11, color: "var(--c-t3)", marginBottom: 6 }}>把满意的规划「存为编排模板」（回复下方按钮），以后在这里一键复用整套节点结构。最多 {MAX_ORCHESTRATIONS} 套。</div>
           {orchTemplates.length === 0 ? (
             <div style={{ fontSize: 11, color: "var(--c-t4)", padding: "6px 2px" }}>还没有编排模板。规划落地后点回复下方的「存为编排模板」即可保存。</div>
