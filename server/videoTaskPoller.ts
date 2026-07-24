@@ -233,15 +233,16 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               }
             }
           } else if (isJimengVideoProvider(task.provider)) {
-            // #328 即梦 CLI：query_result 查状态；产物 URL 转存到本项目存储（同 poyo/kie）。
+            // #328/#333 即梦 CLI：query_result --download_dir 下载本地视频文件，
+            // checkJimengVideoStatus 内已上传到本项目存储并返回我方 URL，无需再转存。
             const upstream = await checkJimengVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
               if (urls.length > 0) {
-                const persistedList = await persistVideosOrFallback(urls, task.provider);
-                result = { status: "succeeded", resultVideoUrl: persistedList.join("\n") };
+                if (upstream.creditCount != null) console.log(`[jimeng] task ${task.id} 消耗即梦积分 ${upstream.creditCount}`);
+                result = { status: "succeeded", resultVideoUrl: urls.join("\n") };
               } else {
-                result = { status: "failed", errorMessage: "[CHARGED] 视频已在即梦生成完成，但本系统未识别 URL（积分已扣，请勿重试；可用 dreamina query_result 查看）" };
+                result = { status: "failed", errorMessage: "[CHARGED] 视频已在即梦生成完成，但下载/转存失败（积分已扣，请勿重试；可用 dreamina query_result --download_dir 手动取回）" };
               }
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };

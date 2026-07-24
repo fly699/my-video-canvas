@@ -49,39 +49,40 @@ describe("parseSubmitOutput（待真机校准的防御式）", () => {
   });
 });
 
-describe("parseQueryOutput（待真机校准的防御式）", () => {
-  it("成功 + JSON 里带视频 URL", () => {
-    const r = parseQueryOutput('{"gen_status":"success","video_url":"https://cdn.jimeng.com/v/abc.mp4"}');
-    expect(r.status).toBe("finished");
-    expect(r.resultVideoUrl).toBe("https://cdn.jimeng.com/v/abc.mp4");
+describe("parseQueryOutput（真机 JSON 已校准）", () => {
+  // 真机 query_result 输出样本（用户 Windows/WSL 实测）。
+  const REAL_SUCCESS = JSON.stringify({
+    submit_id: "ff0b73f2-c208-4bb4-81ed-64cb792d40ad",
+    gen_status: "success",
+    result_json: {
+      images: [],
+      videos: [{ path: "/home/kingtai/jm_out/ff0b73f2_video_1.mp4", fps: 24, width: 1280, height: 720, format: "mp4", duration: 5.042 }],
+    },
+    credit_count: 45,
+    queue_info: { queue_status: "Finish" },
   });
-  it("status=done + 多个 URL 去重收集", () => {
-    const out = '{"status":"done","results":[{"url":"https://a.com/1.mp4"},{"url":"https://a.com/2.mov"},{"url":"https://a.com/1.mp4"}]}';
+  it("success：finished + 本地路径 + 真实积分 credit_count", () => {
+    const r = parseQueryOutput(REAL_SUCCESS);
+    expect(r.status).toBe("finished");
+    expect(r.resultPaths).toEqual(["/home/kingtai/jm_out/ff0b73f2_video_1.mp4"]);
+    expect(r.creditCount).toBe(45);
+  });
+  it("多视频：收集全部 path", () => {
+    const out = JSON.stringify({ gen_status: "success", result_json: { videos: [{ path: "/a/1.mp4" }, { path: "/a/2.mp4" }] }, credit_count: 90 });
     const r = parseQueryOutput(out);
-    expect(r.status).toBe("finished");
-    expect(r.resultVideoUrls).toEqual(["https://a.com/1.mp4", "https://a.com/2.mov"]);
+    expect(r.resultPaths).toEqual(["/a/1.mp4", "/a/2.mp4"]);
+    expect(r.creditCount).toBe(90);
   });
-  it("失败状态 → failed + 错误信息", () => {
-    const r = parseQueryOutput('{"gen_status":"failed","message":"内容审核未通过"}');
+  it("fail：failed + fail_reason", () => {
+    const r = parseQueryOutput('{"gen_status":"fail","fail_reason":"内容审核未通过","credit_count":0}');
     expect(r.status).toBe("failed");
     expect(r.errorMessage).toContain("审核");
   });
-  it("在途状态（querying/running）→ running", () => {
-    expect(parseQueryOutput('{"status":"querying"}').status).toBe("running");
-    expect(parseQueryOutput('{"gen_status":"running"}').status).toBe("running");
-  });
-  it("无显式状态但已给 URL → 视作完成（防御）", () => {
-    const r = parseQueryOutput("下载地址：https://cdn.jimeng.com/final.mp4");
-    expect(r.status).toBe("finished");
-    expect(r.resultVideoUrl).toBe("https://cdn.jimeng.com/final.mp4");
+  it("querying → running", () => {
+    expect(parseQueryOutput('{"gen_status":"querying"}').status).toBe("running");
   });
   it("空/无信息 → running（下轮再查，不误判失败）", () => {
     expect(parseQueryOutput("").status).toBe("running");
     expect(parseQueryOutput("connecting...").status).toBe("running");
-  });
-  it("纯文本 success 关键字兜底", () => {
-    const r = parseQueryOutput("gen success! url=https://x.com/out.webm");
-    expect(r.status).toBe("finished");
-    expect(r.resultVideoUrl).toBe("https://x.com/out.webm");
   });
 });
