@@ -29,6 +29,7 @@ import type { AgentOperation, CharacterNodeData } from "../../../../shared/types
 import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows, sumVideoDuration, type ShotPreviewRow, type ShotSortMode } from "../../../../shared/planPreview";
 import { copyTextWithToast } from "../../lib/clipboard";
 import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
+import { buildPlanReport } from "../../../../shared/planReport";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
 import { estimateOpsBudget, budgetLabel, countCloudGenOps, estimateOpsBudgetBreakdown } from "../../lib/agentBudget";
 import { buildCharacterImagePrompt, characterImageAspect } from "@/lib/characterPortrait";
@@ -1681,12 +1682,20 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
                 <ul style={{ margin: "4px 0 0", paddingLeft: 16, lineHeight: 1.5 }}>
                   {t.dropped.map((d, k) => <li key={k}>{d}</li>)}
                 </ul>
-                {t.role === "assistant" && (
-                  <button data-testid="plan-retry" onClick={() => retryPlan(i)} disabled={busy}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 10.5, color: "var(--c-t2)", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 9px", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
-                    <CornerUpLeft size={10} /> 重试规划
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {t.role === "assistant" && (
+                    <button data-testid="plan-retry" onClick={() => retryPlan(i)} disabled={busy}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--c-t2)", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 9px", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
+                      <CornerUpLeft size={10} /> 重试规划
+                    </button>
+                  )}
+                  <button data-testid="plan-copy-report"
+                    onClick={() => void copyTextWithToast(buildPlanReport({ request: turns[i - 1]?.role === "user" ? turns[i - 1]?.content : undefined, reply: t.content, applied: t.applied, failed: t.failed, dropped: t.dropped, createdCount: t.createdIds?.length }), "已复制排查报告")}
+                    title="把本回合的请求/回复/落地情况/掉单原因汇成文本，便于反馈定位"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--c-t2)", background: "var(--c-surface)", border: "1px solid var(--c-bd2)", borderRadius: 6, padding: "2px 9px", cursor: "pointer" }}>
+                    <Copy size={10} /> 复制排查报告
                   </button>
-                )}
+                </div>
               </div>
             ) : null}
           </div>
