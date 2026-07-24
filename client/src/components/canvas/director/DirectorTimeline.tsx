@@ -3,9 +3,9 @@
 // playing 并负责 rAF 回放驱动与持久化；本组件只渲染轨道/子轨/关键帧◇/标尺/播放头，并回调
 // onSeek / onTogglePlay / onToggleLoop / onSelectTrack / onChange（时长/缩放等编辑）。
 import { useMemo, useRef, useState, useCallback } from "react";
-import { Play, Pause, Repeat, Maximize2, Diamond } from "lucide-react";
+import { Play, Pause, Repeat, Maximize2, Diamond, Plus } from "lucide-react";
 import type { DirectorTimeline, DirectorTrack } from "../../../../../shared/types";
-import { timelineTicks, trackKeyframeTimes, fmtTime, clamp } from "@/lib/directorTimeline";
+import { timelineTicks, trackKeyframeTimes, fmtTime, clamp, makeTrack } from "@/lib/directorTimeline";
 
 const LABEL_W = 132;   // 左侧轨道标签列宽
 const ROW_H = 26;      // 每条轨道行高
@@ -18,6 +18,8 @@ export interface DirectorTimelineProps {
   currentTime: number;
   playing: boolean;
   selectedId?: string;
+  /** 当前选中对象（用于「+ 为选中对象加轨道」）；无则不显示该按钮。 */
+  selectedTarget?: { id: string; kind: DirectorTrack["targetKind"] };
   /** 解析对象显示名（如「主角」「机位1」）；缺省用 kind+id。 */
   labelOf?: (track: DirectorTrack) => string;
   onSeek: (t: number) => void;
@@ -29,7 +31,7 @@ export interface DirectorTimelineProps {
 }
 
 export function DirectorTimeline({
-  timeline, currentTime, playing, selectedId, labelOf,
+  timeline, currentTime, playing, selectedId, selectedTarget, labelOf,
   onSeek, onTogglePlay, onToggleLoop, onSelectTrack, onChange,
 }: DirectorTimelineProps) {
   const [pxPerSec, setPxPerSec] = useState(80);
@@ -85,6 +87,13 @@ export function DirectorTimeline({
         <button onClick={fitWindow} title="适应窗口" style={{ ...btn, width: "auto", padding: "0 8px", gap: 4 }}>
           <Maximize2 className="w-3 h-3" /> 适应
         </button>
+        {selectedTarget && !timeline.tracks.some((t) => t.targetId === selectedTarget.id) && (
+          <button data-testid="tl-add-track" title="为当前选中对象新建动画轨道"
+            onClick={() => { onChange?.({ ...timeline, tracks: [...timeline.tracks, makeTrack(selectedTarget.id, selectedTarget.kind)] }); onSelectTrack?.(selectedTarget.id); }}
+            style={{ ...btn, width: "auto", padding: "0 8px", gap: 4, color: "oklch(0.75 0.16 150)", borderColor: "oklch(0.6 0.16 150 / 0.5)" }}>
+            <Plus className="w-3 h-3" /> 轨道
+          </button>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
           <span style={{ color: "var(--c-t3, #888)" }}>缩放</span>
           <input data-testid="tl-zoom" type="range" min={8} max={400} step={1} value={pxPerSec}
