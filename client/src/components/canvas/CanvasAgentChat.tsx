@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { createPortal } from "react-dom";
-import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic, Download, Copy, Upload } from "lucide-react";
+import { Sparkles, Send, Loader2, X, Plus, Link2, Pencil, AlertTriangle, CornerUpLeft, BookOpen, Focus, Paperclip, Image as ImageIcon, FileText, SlidersHorizontal, Mic, Download, Copy, Upload, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { buildGraphSummary, applyAgentOperations, ensureAliasNums, buildNodeDetailText } from "@/lib/agentApply";
@@ -28,7 +28,7 @@ import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { AgentOperation, CharacterNodeData } from "../../../../shared/types";
 import { previewableCreates, filterPlanBySelection, planContinuityWarnings, shotRowsToCsv, previewableEdges, planOutline, sortPreviewRows, sumVideoDuration, type ShotPreviewRow, type ShotSortMode } from "../../../../shared/planPreview";
 import { copyTextWithToast } from "../../lib/clipboard";
-import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
+import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, reorderOrch, MAX_ORCHESTRATIONS, type OrchestrationTemplate } from "../../../../shared/orchestration";
 import { buildPlanReport } from "../../../../shared/planReport";
 import { SEED_ORCHESTRATIONS } from "../../../../shared/seedOrchestrations";
 import { estimateOpsBudget, budgetLabel, countCloudGenOps, estimateOpsBudgetBreakdown } from "../../lib/agentBudget";
@@ -358,6 +358,8 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
   }, [orchTemplates]);
   const [showOrch, setShowOrch] = useState(false);
   const [renamingOrch, setRenamingOrch] = useState<string | null>(null);
+  const draggingOrchId = useRef<string | null>(null); // 编排模板拖拽排序：记住被拖起的 id（不用 dataTransfer，便于真机测试）
+  const [dragOverOrchId, setDragOverOrchId] = useState<string | null>(null);
   const saveOrchestration = (ops: AgentOperation[]) => {
     if (orchTemplates.length >= MAX_ORCHESTRATIONS) { toast.error(`编排模板最多 ${MAX_ORCHESTRATIONS} 套（删掉不用的再存）`); return; }
     const replay = extractReplayableOps(ops);
@@ -1362,7 +1364,14 @@ export function CanvasAgentChat({ projectId, onClose }: { projectId: number; onC
               {orchTemplates.map((t) => {
                 const s = orchestrationSummary(t.ops);
                 return (
-                  <div key={t.id} data-testid={`orch-row-${t.id}`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 7px", borderRadius: 8, background: "var(--c-base)", border: "1px solid var(--c-bd1)" }}>
+                  <div key={t.id} data-testid={`orch-row-${t.id}`} draggable
+                    onDragStart={(e) => { draggingOrchId.current = t.id; e.dataTransfer.effectAllowed = "move"; }}
+                    onDragOver={(e) => { if (draggingOrchId.current && draggingOrchId.current !== t.id) { e.preventDefault(); setDragOverOrchId(t.id); } }}
+                    onDragLeave={() => setDragOverOrchId((cur) => (cur === t.id ? null : cur))}
+                    onDrop={(e) => { e.preventDefault(); const from = draggingOrchId.current; draggingOrchId.current = null; setDragOverOrchId(null); if (from && from !== t.id) setOrchTemplates((p) => reorderOrch(p, from, t.id)); }}
+                    onDragEnd={() => { draggingOrchId.current = null; setDragOverOrchId(null); }}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 7px", borderRadius: 8, background: "var(--c-base)", border: `1px solid ${dragOverOrchId === t.id ? accent : "var(--c-bd1)"}` }}>
+                    <GripVertical size={12} style={{ flexShrink: 0, color: "var(--c-t4)", cursor: "grab" }} data-testid="orch-drag-handle" />
                     {renamingOrch === t.id ? (
                       <input autoFocus defaultValue={t.name} onBlur={(e) => { const v = e.target.value.trim(); if (v) setOrchTemplates((p) => p.map((x) => x.id === t.id ? { ...x, name: v } : x)); setRenamingOrch(null); }}
                         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setRenamingOrch(null); }}

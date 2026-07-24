@@ -38,6 +38,23 @@ export function canSaveOrchestration(ops: AgentOperation[]): boolean {
   return replay.some((o) => o.op === "create") && replay.length <= MAX_ORCH_OPS;
 }
 
+/** 拖拽排序：把 fromId 的编排移动到 toId 所在位置（插到 toId 原位）。纯函数。
+ *  fromId===toId、任一 id 不存在时原样返回（引用不变，便于 setState 短路）。 */
+export function reorderOrch<T extends { id: string }>(list: T[], fromId: string, toId: string): T[] {
+  if (fromId === toId) return list;
+  const fromIdx = list.findIndex((x) => x.id === fromId);
+  const toIdx = list.findIndex((x) => x.id === toId);
+  if (fromIdx < 0 || toIdx < 0) return list;
+  const next = list.slice();
+  const [moved] = next.splice(fromIdx, 1);
+  // 方向感知：往下拖插到目标【之后】、往上拖插到目标【之前】——与拖拽落点直觉一致。
+  let insertAt = next.findIndex((x) => x.id === toId);
+  if (insertAt < 0) return list;
+  if (fromIdx < toIdx) insertAt += 1;
+  next.splice(insertAt, 0, moved);
+  return next;
+}
+
 // ── 导入/导出：把「我的编排」备份成 JSON 或从 JSON 导入（跨账号/项目共享、备份）。──────
 /** 序列化编排模板列表为可下载的 JSON 文本（带版本号）。纯函数。 */
 export function serializeOrchestrations(list: OrchestrationTemplate[]): string {
