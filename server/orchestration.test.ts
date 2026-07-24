@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations } from "../shared/orchestration";
+import { extractReplayableOps, orchestrationSummary, canSaveOrchestration, serializeOrchestrations, parseOrchestrations, reorderOrch } from "../shared/orchestration";
 import type { OrchestrationTemplate } from "../shared/orchestration";
 import type { AgentOperation } from "../shared/types";
 
@@ -76,5 +76,23 @@ describe("serializeOrchestrations / parseOrchestrations", () => {
   it("非法 JSON → 空数组", () => {
     expect(parseOrchestrations("{not json", gid)).toEqual([]);
     expect(parseOrchestrations("42", gid)).toEqual([]);
+  });
+});
+
+describe("reorderOrch", () => {
+  const L = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+  it("下移：a 移到 c 位 → b,c,a,d 顺序", () => {
+    expect(reorderOrch(L, "a", "c").map((x) => x.id)).toEqual(["b", "c", "a", "d"]);
+  });
+  it("上移：d 移到 b 位 → a,d,b,c", () => {
+    expect(reorderOrch(L, "d", "b").map((x) => x.id)).toEqual(["a", "d", "b", "c"]);
+  });
+  it("相邻交换：a 移到 b 位 → b,a,c,d", () => {
+    expect(reorderOrch(L, "a", "b").map((x) => x.id)).toEqual(["b", "a", "c", "d"]);
+  });
+  it("from===to 或 id 不存在 → 原样返回（同一引用）", () => {
+    expect(reorderOrch(L, "a", "a")).toBe(L);
+    expect(reorderOrch(L, "x", "b")).toBe(L);
+    expect(reorderOrch(L, "a", "z")).toBe(L);
   });
 });
