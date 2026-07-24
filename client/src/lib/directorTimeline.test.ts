@@ -23,6 +23,13 @@ import {
   timelineTicks,
   trackKeyframeTimes,
   fmtTime,
+  hasKeyframeAt,
+  adjacentKeyframeTime,
+  toggleKeyframe,
+  setEasingAt,
+  easingAt,
+  updateTrackIn,
+  channelsForKind,
 } from "./directorTimeline";
 import type {
   DirectorChannel,
@@ -473,5 +480,97 @@ describe("fmtTime", () => {
     expect(fmtTime(65)).toBe("1:05.0");
     expect(fmtTime(0)).toBe("0:00.0");
     expect(fmtTime(-3)).toBe("0:00.0"); // 负数夹到 0
+  });
+});
+
+// ── 逐轴打帧 / 跳帧 / 缓动（批3）────────────────────────────────────────────
+describe("hasKeyframeAt / adjacentKeyframeTime", () => {
+  const kfs = [{ time: 0, value: 0 }, { time: 2, value: 1 }, { time: 5, value: 2 }];
+  it("hasKeyframeAt eps 容差", () => {
+    expect(hasKeyframeAt(kfs, 2)).toBe(true);
+    expect(hasKeyframeAt(kfs, 2.0005)).toBe(true);
+    expect(hasKeyframeAt(kfs, 3)).toBe(false);
+  });
+  it("adjacent 下一/上一帧", () => {
+    const times = [0, 2, 5];
+    expect(adjacentKeyframeTime(times, 2, 1)).toBe(5);
+    expect(adjacentKeyframeTime(times, 2, -1)).toBe(0);
+    expect(adjacentKeyframeTime(times, 5, 1)).toBeNull();
+    expect(adjacentKeyframeTime(times, 0, -1)).toBeNull();
+    expect(adjacentKeyframeTime(times, 3, 1)).toBe(5);
+    expect(adjacentKeyframeTime(times, 3, -1)).toBe(2);
+  });
+});
+
+describe("toggleKeyframe", () => {
+  const track: DirectorTrack = { targetId: "a", targetKind: "actor", channels: [] };
+  it("无帧 → 打帧（新建通道）", () => {
+    const r = toggleKeyframe(track, "position", "x", 1, 3);
+    const ch = r.channels.find((c) => c.prop === "position" && c.axis === "x")!;
+    expect(ch.keyframes).toEqual([{ time: 1, value: 3 }]);
+  });
+  it("有帧 → 删帧（空通道剔除）", () => {
+    const withKf = toggleKeyframe(track, "position", "x", 1, 3);
+    const r = toggleKeyframe(withKf, "position", "x", 1, 999);
+    expect(r.channels.length).toBe(0); // 删到空 → 通道剔除
+  });
+  it("标量通道 uniformScale（无 axis）", () => {
+    const r = toggleKeyframe(track, "uniformScale", undefined, 2, 1.5);
+    expect(r.channels[0].prop).toBe("uniformScale");
+    expect(r.channels[0].axis).toBeUndefined();
+  });
+});
+
+describe("setEasingAt / easingAt", () => {
+  const track: DirectorTrack = {
+    targetId: "a", targetKind: "actor",
+    channels: [
+      { prop: "position", axis: "x", keyframes: [{ time: 0, value: 0 }, { time: 2, value: 1 }] },
+      { prop: "position", axis: "y", keyframes: [{ time: 0, value: 0 }, { time: 2, value: 1 }] },
+    ],
+  };
+  it("跨通道套用 time=0 的段缓动", () => {
+    const bez: [number, number, number, number] = [0.42, 0, 0.58, 1];
+    const r = setEasingAt(track, 0, bez);
+    for (const c of r.channels) expect(c.keyframes[0].easing).toEqual(bez);
+    // time=2 的帧不受影响
+    for (const c of r.channels) expect(c.keyframes[1].easing).toBeUndefined();
+    expect(easingAt(r, 0)).toEqual(bez);
+  });
+  it("easingAt 无帧 → null；无 easing → 线性", () => {
+    expect(easingAt(track, 3)).toBeNull();
+    expect(easingAt(track, 0)).toEqual([0, 0, 1, 1]); // 未设 → LINEAR
+  });
+});
+
+describe("updateTrackIn", () => {
+  it("不存在则建轨道后应用 fn", () => {
+    const tl = { duration: 10, fps: 30, tracks: [] as DirectorTrack[] };
+    const r = updateTrackIn(tl, "cam1", "camera", (t) => toggleKeyframe(t, "fov", undefined, 1, 35));
+    expect(r.tracks.length).toBe(1);
+    expect(r.tracks[0].targetId).toBe("cam1");
+    expect(r.tracks[0].channels[0].prop).toBe("fov");
+  });
+  it("应用后变空轨道 → 剔除", () => {
+    const tl = {
+      duration: 10, fps: 30,
+      tracks: [{ targetId: "a", targetKind: "actor" as const, channels: [{ prop: "position" as const, axis: "x" as const, keyframes: [{ time: 1, value: 0 }] }] }],
+    };
+    const r = updateTrackIn(tl, "a", "actor", (t) => toggleKeyframe(t, "position", "x", 1, 0)); // 删掉唯一帧
+    expect(r.tracks.length).toBe(0);
+  });
+});
+
+describe("channelsForKind", () => {
+  it("角色：位置/旋转 各3轴 + 缩放标量 = 7", () => {
+    const chs = channelsForKind("actor");
+    expect(chs.length).toBe(7);
+    expect(chs.some((c) => c.prop === "uniformScale" && c.axis === undefined)).toBe(true);
+  });
+  it("相机：位置/焦点 各3轴 + fov 标量 = 7", () => {
+    const chs = channelsForKind("camera");
+    expect(chs.length).toBe(7);
+    expect(chs.some((c) => c.prop === "fov")).toBe(true);
+    expect(chs.some((c) => c.prop === "focus" && c.axis === "z")).toBe(true);
   });
 });
