@@ -17,11 +17,29 @@
 //   名兜底扫描 + 文本正则），拿到真实输出后收敛为确切键即可。
 
 import { spawn } from "node:child_process";
-import { writeFile, mkdtemp, rm } from "node:fs/promises";
+import { writeFile, readFile, readdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getJimengCliConfig } from "./jimengConfig";
-import { resolveToAbsoluteUrl } from "../storage";
+import { resolveToAbsoluteUrl, storagePut } from "../storage";
+
+// #333 即梦 CLI 产物是「本地文件」（query_result --download_dir 下载 <submit_id>_video_N.mp4），
+// 不是公网链接。Windows 原生 Node 经 `wsl` 调用时，传给 dreamina 的路径必须是 WSL 视角
+// （/mnt/c/...），而 Node 仍按 Windows 路径读文件。以下做双向兼容的路径处理。
+function usesWslPrefix(): boolean {
+  return /^wsl\s+/i.test(getJimengCliConfig().bin || "");
+}
+/** Windows 路径 → WSL 路径（仅当经 wsl 调用且形如 C:\...）。默认 WSL 把 C 盘挂在 /mnt/c。 */
+function toWslPathIfNeeded(p: string): string {
+  if (!usesWslPrefix()) return p;
+  const m = /^([A-Za-z]):[\\/](.*)$/.exec(p);
+  if (!m) return p;
+  return `/mnt/${m[1].toLowerCase()}/${m[2].replace(/\\/g, "/")}`;
+}
+function mimeForVideo(name: string): string {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  return ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : ext === "m4v" ? "video/x-m4v" : "video/mp4";
+}
 
 // ── provider 注册（video）──────────────────────────────────────────────────
 // UI provider value → 即梦 CLI 子命令 + 参考素材如何映射到 CLI flag。
@@ -238,21 +256,23 @@ export async function submitJimengVideo(opts: {
   try {
     const args: string[] = [spec.cmd, `--prompt=${opts.prompt}`];
 
+    // 参考素材下载到本机临时文件；经 wsl 调用时把路径转成 WSL 视角（/mnt/c/...）。
+    const dl = async (url: string, idx: number) => toWslPathIfNeeded(await downloadToTemp(url, workDir, idx));
     if (spec.refMode === "single") {
       if (!imgs[0]) throw new Error("图生视频需要一张输入图片，请连接上游图片或添加参考图");
-      args.push(`--image=${await downloadToTemp(imgs[0], workDir, 0)}`);
+      args.push(`--image=${await dl(imgs[0], 0)}`);
     } else if (spec.refMode === "frames") {
       if (!imgs[0]) throw new Error("首尾帧视频至少需要首帧图片");
-      args.push(`--first=${await downloadToTemp(imgs[0], workDir, 0)}`);
-      if (imgs[1]) args.push(`--last=${await downloadToTemp(imgs[1], workDir, 1)}`);
+      args.push(`--first=${await dl(imgs[0], 0)}`);
+      if (imgs[1]) args.push(`--last=${await dl(imgs[1], 1)}`);
     } else if (spec.refMode === "multi") {
       if (imgs.length < 2) throw new Error("多帧视频至少需要 2 张图片");
-      const paths = await Promise.all(imgs.map((u, i) => downloadToTemp(u, workDir, i)));
+      const paths = await Promise.all(imgs.map((u, i) => dl(u, i)));
       args.push(`--images=${paths.join(",")}`);
     } else if (spec.refMode === "multimodal") {
-      if (imgs[0]) args.push(`--image=${await downloadToTemp(imgs[0], workDir, 0)}`);
-      if (spec.takesVideo && vids[0]) args.push(`--video=${await downloadToTemp(vids[0], workDir, 100)}`);
-      if (spec.takesAudio && auds[0]) args.push(`--audio=${await downloadToTemp(auds[0], workDir, 200)}`);
+      if (imgs[0]) args.push(`--image=${await dl(imgs[0], 0)}`);
+      if (spec.takesVideo && vids[0]) args.push(`--video=${await dl(vids[0], 100)}`);
+      if (spec.takesAudio && auds[0]) args.push(`--audio=${await dl(auds[0], 200)}`);
     }
 
     // 透传允许的参数（按 flag 表；勿发未列出的键）。
@@ -316,10 +336,44 @@ export async function inspectJimengCli(): Promise<JimengInspectResult> {
 }
 
 // ── 查询 ────────────────────────────────────────────────────────────────────
+// 即梦产物是本地文件（query_result --download_dir 下载 <submit_id>_video_N.mp4），不是链接。
+// 故：带 --download_dir 查询 → 扫下载目录找视频文件 → 上传到本项目存储 → 返回我方 URL。
+// 无论 CLI 是否干净退出（可能下载后仍阻塞被 timeout），只要目录里出现视频文件即判成功。
 export async function checkJimengVideoStatus(externalTaskId: string): Promise<JimengTaskStatus> {
   if (!jimengEnabled()) throw new Error("即梦 CLI 未启用");
-  const r = await spawnDreamina(["query_result", `--submit_id=${externalTaskId}`], 30_000);
-  if (r.spawnError) throw new Error(`无法启动即梦 CLI：${r.spawnError}`);
-  if (r.timedOut) return { status: "running" }; // 查询超时按在途处理，下轮再查
-  return parseQueryOutput(r.stdout);
+  const dir = await mkdtemp(join(tmpdir(), "jimeng-q-"));
+  try {
+    const dlArg = toWslPathIfNeeded(dir);
+    const r = await spawnDreamina(["query_result", `--submit_id=${externalTaskId}`, `--download_dir=${dlArg}`], 120_000);
+    if (r.spawnError) throw new Error(`无法启动即梦 CLI：${r.spawnError}`);
+
+    // 扫下载目录：优先匹配本任务前缀，回退到任意视频文件。
+    const files = await readdir(dir).catch(() => [] as string[]);
+    const isVid = (f: string) => /\.(mp4|mov|webm|m4v)$/i.test(f);
+    let vids = files.filter((f) => isVid(f) && f.startsWith(externalTaskId));
+    if (vids.length === 0) vids = files.filter(isVid);
+    vids.sort();
+
+    if (vids.length > 0) {
+      const urls: string[] = [];
+      for (const f of vids) {
+        const buf = await readFile(join(dir, f));
+        // 半成品/截断兜底：<1KB 视作无效（曾遇 Ctrl+C 截断的 400KB 整块，这里只拦真空文件）。
+        if (buf.length < 1024) continue;
+        const { url } = await storagePut(`jimeng/${externalTaskId}/${f}`, buf, mimeForVideo(f));
+        urls.push(url);
+      }
+      if (urls.length > 0) return { status: "finished", resultVideoUrl: urls[0], resultVideoUrls: urls };
+    }
+
+    // 没抓到文件：看输出判失败/在途。timeout 或仍 querying → 在途下轮再查。
+    const out = `${r.stdout}\n${r.stderr}`;
+    if (/\b(fail|failed|error)\b/i.test(out) && !/querying|processing|pending|running/i.test(out)) {
+      const parsed = parseQueryOutput(r.stdout);
+      return { status: "failed", errorMessage: parsed.errorMessage ?? "即梦生成失败" };
+    }
+    return { status: "running" };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => { /* best-effort */ });
+  }
 }
