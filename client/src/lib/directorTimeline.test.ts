@@ -20,6 +20,9 @@ import {
   timelineToExportData,
   makeDefaultTimeline,
   makeTrack,
+  timelineTicks,
+  trackKeyframeTimes,
+  fmtTime,
 } from "./directorTimeline";
 import type {
   DirectorChannel,
@@ -423,5 +426,52 @@ describe("工厂", () => {
     const t = makeTrack("x", "prop");
     expect(t.targetKind).toBe("prop");
     expect(t.channels).toEqual([]);
+  });
+});
+
+// ── 时间线 UI 辅助（批2）────────────────────────────────────────────────────
+describe("timelineTicks", () => {
+  it("首刻度 0、末刻度=duration", () => {
+    const t = timelineTicks(10, 60);
+    expect(t[0]).toBe(0);
+    expect(t[t.length - 1]).toBe(10);
+  });
+  it("像素密度大 → 步长细（相邻主刻度 ≥minPx）", () => {
+    const t = timelineTicks(10, 200, 64); // 200px/s → 0.5s 步长满足 ≥64px
+    expect(t).toContain(0.5);
+  });
+  it("像素密度小 → 步长粗", () => {
+    const t = timelineTicks(60, 10, 64); // 10px/s → 需 ≥6.4s → 步长 10s
+    expect(t).toContain(10);
+    expect(t).not.toContain(0.5);
+  });
+  it("退化输入安全", () => {
+    expect(timelineTicks(0, 60)).toEqual([0]);
+    expect(timelineTicks(10, 0)).toEqual([0]);
+  });
+});
+
+describe("trackKeyframeTimes", () => {
+  it("聚合所有通道关键帧时间、去重升序", () => {
+    const track: DirectorTrack = {
+      targetId: "a", targetKind: "actor",
+      channels: [
+        { prop: "position", axis: "x", keyframes: [{ time: 0, value: 0 }, { time: 2, value: 1 }] },
+        { prop: "position", axis: "y", keyframes: [{ time: 2, value: 0 }, { time: 4, value: 1 }] },
+      ],
+    };
+    expect(trackKeyframeTimes(track)).toEqual([0, 2, 4]); // 2 去重
+  });
+  it("空轨道 → []", () => {
+    expect(trackKeyframeTimes(makeTrack("x", "prop"))).toEqual([]);
+  });
+});
+
+describe("fmtTime", () => {
+  it("mm:ss.d 格式", () => {
+    expect(fmtTime(7.49)).toBe("0:07.5");
+    expect(fmtTime(65)).toBe("1:05.0");
+    expect(fmtTime(0)).toBe("0:00.0");
+    expect(fmtTime(-3)).toBe("0:00.0"); // 负数夹到 0
   });
 });
