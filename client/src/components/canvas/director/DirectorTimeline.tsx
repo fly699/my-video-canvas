@@ -84,6 +84,14 @@ export function DirectorTimeline({
         <span data-testid="tl-time" style={{ fontFamily: "monospace", fontSize: 11, color: "var(--c-t2, #bbb)", minWidth: 92 }}>
           {fmtTime(currentTime)} / {fmtTime(dur)}
         </span>
+        {/* #342 总时长可设置（此前写死 10s，无法改）：改数字即调整时间线长度，关键帧保留绝对时间。 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }} title="时间线总时长（秒）——决定播放/导出的镜头长度">
+          <span style={{ color: "var(--c-t3, #888)" }}>时长</span>
+          <input data-testid="tl-duration" type="number" min={0.5} max={600} step={0.5} value={Number(dur.toFixed(2))}
+            onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v >= 0.5) onChange?.({ ...timeline, duration: Math.min(600, v) }); }}
+            style={{ width: 56, height: 22, fontSize: 11, textAlign: "center", background: "var(--c-input, #1c1d21)", border: "1px solid var(--c-bd2, #3a3a3a)", borderRadius: 6, color: "var(--c-t1, #eee)" }} />
+          <span style={{ color: "var(--c-t4, #666)" }}>s</span>
+        </div>
         <button onClick={fitWindow} title="适应窗口" style={{ ...btn, width: "auto", padding: "0 8px", gap: 4 }}>
           <Maximize2 className="w-3 h-3" /> 适应
         </button>

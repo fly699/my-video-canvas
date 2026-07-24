@@ -3,7 +3,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls, ContactShadows, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes, PersonStanding, Download, Crosshair } from "lucide-react";
+import { X, Camera, Plus, Trash2, RotateCcw, Eye, EyeOff, Loader2, Grid3x3, ChevronDown, Upload, Copy, Boxes, PersonStanding, Download, Crosshair, Undo2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useCanvasStore } from "../../../hooks/useCanvasStore";
 import { propagateControlMap } from "../../../lib/refImagePropagation";
@@ -340,12 +340,13 @@ function FlatBackground({ url }: { url: string }) {
 const FREE_CAM_POS: Vec3 = [4.6, 3.4, 6.8];
 const FREE_CAM_TARGET: Vec3 = [0, 0.9, 0];
 
-function CameraRig({ cam, onCommit, bind, locked, grab }: {
+function CameraRig({ cam, onCommit, bind, locked, grab, orbitEnabled = true }: {
   cam: { position: Vec3; target: Vec3; fov: number };
   onCommit: (pos: Vec3, target: Vec3) => void;
   bind: (h: CaptureHandle) => void;
   locked: boolean; // true=机位视角（吸附到活动机位；拖拽即瞄准该机位，松手提交）；false=导演视角（自由环绕，绝不写机位）
   grab: boolean;   // true=抓背景拖（反转水平拖拽方向，像 360 看图器）；false=绕主体转（标准 3D 环绕）
+  orbitEnabled?: boolean; // #342 false=绘制轨迹时关环绕，让地面拖拽用于手画线而非转相机
 }) {
   const { gl, scene, camera } = useThree();
   const orbit = useRef<OrbitImpl>(null);
@@ -386,7 +387,8 @@ function CameraRig({ cam, onCommit, bind, locked, grab }: {
       ref={orbit as never}
       makeDefault
       // #85 机位视角也开放环绕：透过机位拖拽即瞄准（松手提交回机位）；导演视角自由看
-      enabled
+      // #342 绘制轨迹时 orbitEnabled=false → 关环绕，地面拖拽用于手画线
+      enabled={orbitEnabled}
       // 关阻尼惯性：drei 默认 enableDamping，松手后相机还会滑行几帧，而 onEnd 在松手瞬间就提交，
       // 导致存下的机位落后于视觉最终位置（甩得越快偏差越大），破坏「所见即截图所得」。关掉即一致。
       enableDamping={false}
@@ -809,23 +811,32 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     });
   }, []);
 
-  // ── #341 角色运动轨迹绘制：选中角色 → 「绘制轨迹」→ 点击地面逐点加控制点 →
+  // ── #341/#342 角色运动轨迹绘制：选中角色 → 「绘制轨迹」→ 在地面【拖拽手画线】(或逐点点击) →
   //   「完成」写入该角色轨道 path（catmullrom · 朝向沿行进方向）+ clip=整条时间线，
-  //   播放即沿轨迹行走（sampleTransformAt 批1 已支持 path，此前一直缺创建入口）。
+  //   播放即沿轨迹行走。绘制中 OrbitControls 关闭（拖拽用于画线，不转相机）。
   const [pathDraw, setPathDraw] = useState<{ actorId: string; points: Vec3[] } | null>(null);
+  const pathDrawing = useRef(false); // 地面按住拖拽中（手画线）
   const startPathDraw = useCallback(() => {
     const a = sceneRef.current.actors.find((x) => x.id === selectedId && !x.groupId);
     if (!a) return;
-    // 起点 = 角色当前位置（路径从脚下出发），后续点击地面追加途经点。
+    // 起点 = 角色当前位置（路径从脚下出发），后续拖拽/点击地面追加途经点。
     setPathDraw({ actorId: a.id, points: [[a.position[0], a.position[1], a.position[2]]] });
     setPlaying(false);
   }, [selectedId]);
-  const addPathPoint = useCallback((wx: number, wz: number) => {
-    // 世界坐标 → 场景组局部坐标（与 placeActorAt 同换算，全景缩放/平移下落点仍踩点击处）。
+  // 世界坐标 → 场景组局部坐标（与 placeActorAt 同换算）。min>0 时仅当离上一点≥min(米)才追加（手画线抽稀）。
+  const addPathPoint = useCallback((wx: number, wz: number, minDist = 0) => {
     const s = sceneRef.current;
     const S = s.sceneScale ?? 1;
     const lx = (wx - (s.sceneOffsetX ?? 0)) / S, lz = (wz - (s.sceneOffsetZ ?? 0)) / S;
-    setPathDraw((p) => (p ? { ...p, points: [...p.points, [Number(lx.toFixed(2)), p.points[0][1], Number(lz.toFixed(2))]] } : p));
+    setPathDraw((p) => {
+      if (!p) return p;
+      const last = p.points[p.points.length - 1];
+      if (minDist > 0 && last && Math.hypot(lx - last[0], lz - last[2]) < minDist) return p;
+      return { ...p, points: [...p.points, [Number(lx.toFixed(2)), p.points[0][1], Number(lz.toFixed(2))]] };
+    });
+  }, []);
+  const undoLastPathPoint = useCallback(() => {
+    setPathDraw((p) => (p && p.points.length > 1 ? { ...p, points: p.points.slice(0, -1) } : p));
   }, []);
   const finishPathDraw = useCallback((commit: boolean) => {
     setPathDraw((p) => {
@@ -1816,9 +1827,9 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 rotation={[-Math.PI / 2, 0, 0]}
                 position={[0, -0.001, 0]}
                 onClick={(e) => {
+                  // #342 绘制态下加点已由 onPointerDown/Move 承担（单击=按下即加一点），这里只需吞掉点击、绝不取消选中。
+                  if (pathDraw) { e.stopPropagation(); return; }
                   if (e.delta > 5 || e.intersections[0]?.eventObject !== e.eventObject) return;
-                  // #341 轨迹绘制模式：单击地面 = 追加途经点（不取消选中）。
-                  if (pathDraw) { e.stopPropagation(); addPathPoint(e.point.x, e.point.z); return; }
                   setSelectedId(null); setSelectedGroupId(null); setSelectedLightId(null);
                 }}
                 onDoubleClick={(e) => {
@@ -1827,6 +1838,21 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   if (pathDraw) return; // 绘制中不放人偶
                   placeActorAt(e.point.x, e.point.z);
                 }}
+                // #342 手画线：绘制态在地面按住拖拽 → 连续采样落点（按距离抽稀 0.12m）。
+                //   OrbitControls 已被 orbitEnabled={!pathDraw} 关闭，故地面拖拽不会转相机。
+                onPointerDown={(e) => {
+                  if (!pathDraw) return;
+                  if (e.intersections[0]?.eventObject !== e.eventObject) return;
+                  e.stopPropagation();
+                  pathDrawing.current = true;
+                  addPathPoint(e.point.x, e.point.z, 0.12);
+                }}
+                onPointerMove={(e) => {
+                  if (!pathDraw || !pathDrawing.current) return;
+                  if (e.intersections[0]?.eventObject !== e.eventObject) return;
+                  addPathPoint(e.point.x, e.point.z, 0.12);
+                }}
+                onPointerUp={() => { if (pathDrawing.current) pathDrawing.current = false; }}
               >
                 <planeGeometry args={[600, 600]} />
                 <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -1975,7 +2001,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   非动画或导演视角 → 原样传 scene.camera（identity，零回归）。 */}
               <CameraRig
                 cam={viewMode === "camera" && activeCameraId && isAnimated(activeCameraId) ? displayCam(scene.camera) : scene.camera}
-                onCommit={onCommitCam} bind={bindCapture} locked={viewMode === "camera"} grab={dragMode === "grab"} />
+                onCommit={onCommitCam} bind={bindCapture} locked={viewMode === "camera"} grab={dragMode === "grab"} orbitEnabled={!pathDraw} />
             </Canvas>
             {/* 取景安全框（三分线） */}
             <div className="nodrag" style={{ position: "absolute", inset: 0, pointerEvents: "none", borderRadius: 4 }}>
@@ -2066,12 +2092,18 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                       </button>
                     )}
                     <p style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 6, lineHeight: 1.5 }}>
-                      {hasPath ? "该角色沿轨迹行走（朝向自动沿路径方向）。播放查看。" : "点「绘制轨迹」后在地面上依次点击落点，角色将沿曲线行走。"}
+                      {hasPath ? "该角色沿轨迹行走（朝向自动沿路径方向）。播放查看。" : "点「绘制轨迹」后在地面上按住拖拽手画一条线（或逐点点击），角色将沿曲线行走。"}
                     </p>
                   </>
                 ) : (
                   <>
-                    <div style={{ fontSize: 11, color: "oklch(0.8 0.14 150)", marginBottom: 6 }}>绘制中：地面点击加点（已 {pathDraw!.points.length} 点）</div>
+                    <div style={{ fontSize: 11, color: "oklch(0.8 0.14 150)", marginBottom: 6 }}>绘制中：地面按住拖拽手画线，或逐点点击（已 {pathDraw!.points.length} 点）</div>
+                    <div className="flex gap-2" style={{ marginBottom: 6 }}>
+                      <button onClick={undoLastPathPoint} disabled={pathDraw!.points.length < 2}
+                        style={{ ...headBtn(), flex: 1, justifyContent: "center", height: 28, opacity: pathDraw!.points.length < 2 ? 0.5 : 1 }}>
+                        <Undo2 size={12} /> 撤销上一点
+                      </button>
+                    </div>
                     <div className="flex gap-2">
                       <button onClick={() => finishPathDraw(true)} disabled={pathDraw!.points.length < 2}
                         style={{ ...headBtn(true), flex: 1, justifyContent: "center", height: 30, opacity: pathDraw!.points.length < 2 ? 0.5 : 1 }}>完成</button>
