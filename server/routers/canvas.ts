@@ -91,6 +91,7 @@ import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyu
 import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel, kieImageSupportsNegative, recheckKieImageTask } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo, detectOmnihumanSubjects } from "../_core/kieVideo";
+import { isJimengVideoProvider, submitJimengVideo } from "../_core/jimengCli";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
 import { isCustomLLMModel } from "../_core/customLlm";
@@ -898,6 +899,18 @@ export const videoTasksRouter = router({
               referenceAudioUrls: refAudios.length ? refAudios : undefined,
               maskUrls: input.maskUrls?.length ? input.maskUrls : undefined,
               negativePrompt: input.negativePrompt,
+              params: input.params as Record<string, unknown>,
+            });
+            externalTaskId = result.externalTaskId;
+          } else if (isJimengVideoProvider(input.provider)) {
+            // #328 即梦（dreamina）CLI 本机桥接：无云端 key（本机独立登录），与 poyo 同构。
+            const result = await submitJimengVideo({
+              provider: input.provider,
+              prompt: input.prompt,
+              referenceImageUrl: refList[0] ?? input.referenceImageUrl,
+              referenceImageUrls: refList.length > 1 ? refList : undefined,
+              referenceVideoUrls: refVideos.length > 0 ? refVideos : undefined,
+              referenceAudioUrls: refAudios.length > 0 ? refAudios : undefined,
               params: input.params as Record<string, unknown>,
             });
             externalTaskId = result.externalTaskId;

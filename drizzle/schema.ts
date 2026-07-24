@@ -889,6 +889,10 @@ export type TranscribeEndpointConfig = { url: string; apiKey: string; model: str
 // NULL 或 baseUrl 空=后台未配置→回退 env；非空=作为音频节点 VoxCPM 未填地址时的全站默认。
 // 仅存 baseUrl（Gradio 服务无 key/model：音色靠参考音频、端点名固定）。
 export type VoxcpmEndpointConfig = { baseUrl: string };
+// #328 管理员后台配置的「即梦（dreamina）CLI」本机桥接视频 provider（替代 JIMENG_CLI_* env）：
+// enabled=启用开关、bin=可执行文件路径（空=走 PATH 里的 `dreamina`）、sessionId=可选 session 隔离。
+// NULL=后台从未配置→回退 env；非 NULL=以本列为准（含 enabled:false，用于在后台显式关掉 env 已开的项）。
+export type JimengCliConfig = { enabled: boolean; bin: string; sessionId: string };
 export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   id: int("id").primaryKey(),
   disabledModels: json("disabledModels").$type<string[]>(),
@@ -908,6 +912,9 @@ export const modelToggleSettings = mysqlTable("model_toggle_settings", {
   // 管理员后台配置的本地 VoxCPM（Gradio TTS）全局默认地址（替代 VOXCPM_BASE_URL env）：{ baseUrl }。
   // NULL 或 baseUrl 空=后台未配置→回退 env；非空=音频节点 VoxCPM 未填地址时的全站默认。
   voxcpmEndpoint: json("voxcpmEndpoint").$type<VoxcpmEndpointConfig>(),
+  // #328 管理员后台配置的「即梦 CLI」本机桥接视频 provider（替代 JIMENG_CLI_* env）：{ enabled, bin, sessionId }。
+  // NULL=后台从未配置→回退 env；非 NULL=以本列为准（含 enabled:false）。
+  jimengCli: json("jimengCli").$type<JimengCliConfig>(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

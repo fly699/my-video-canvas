@@ -128,6 +128,10 @@ export const VIDEO_PROVIDERS = [
   "kie_wan_animate_move", "kie_wan_animate_replace",
   "kie_runway45",
   "kie_topaz_upscale", "kie_runway_aleph",
+  // ── #328 即梦（dreamina）CLI 本机桥接型视频 provider（routed via server/_core/jimengCli.ts）──
+  // 本机 CLI、异步任务制；参数枚举取自官方文档示例值，解析层待真机校准。
+  "jimeng_text2video", "jimeng_image2video", "jimeng_frames2video",
+  "jimeng_multiframe2video", "jimeng_multimodal2video",
 ] as const;
 export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
 export type VideoTaskStatus = "pending" | "processing" | "succeeded" | "failed";

@@ -90,6 +90,9 @@ export const ENV = {
   // either is unset the cloud toggle reports "未配置" and falls back to nothing.
   comfyuiCloudBaseUrl: process.env.COMFYUI_CLOUD_BASE_URL ?? "https://cloud.comfy.org",
   comfyuiCloudApiKey: process.env.COMFYUI_CLOUD_API_KEY ?? "",
+  // #328 即梦（dreamina）CLI 本机桥接的 env 兜底（JIMENG_CLI_ENABLED/BIN/SESSION）由
+  // server/_core/jimengConfig.ts 直接读取 process.env（DB 优先、env 兜底），此处不再镜像，
+  // 避免与后台 DB 配置双源不一致。
   // Google OAuth (standalone OpenID Connect). Both must be set to enable the
   // "使用 Google 登录" button. GOOGLE_REDIRECT_URI is optional — when unset the
   // callback URL is derived from the incoming request origin.

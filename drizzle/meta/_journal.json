@@ -638,6 +638,13 @@
       "when": 1784900300000,
       "tag": "0090_agent_chat_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "5",
+      "when": 1784900400000,
+      "tag": "0091_jimeng_cli_config",
+      "breakpoints": true
     }
   ]
 }

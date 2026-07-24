@@ -29,6 +29,8 @@ export const REQUIRES_REFERENCE_IMAGE = new Set<string>([
   "poyo_grok_video_15", "poyo_wan25_image",
   "poyo_kling_avatar2_std", "poyo_kling_avatar2_pro",
   "poyo_wan_animate_move", "poyo_wan_animate_replace",
+  // #328 即梦 CLI：图生/首尾帧/多帧均需图片输入
+  "jimeng_image2video", "jimeng_frames2video", "jimeng_multiframe2video",
 ]);
 
 export type ParamDef =
@@ -544,6 +546,37 @@ const POYO_WAN_ANIMATE_PARAMS: ParamDef[] = [
     options: [{ value: "480p", label: "480p" }, { value: "580p", label: "580p" }, { value: "720p", label: "720p" }] },
 ];
 
+// ── #328 即梦（dreamina）CLI 视频参数（本机桥接型）──────────────────────────
+// ⚠️ 待真机校准：以下枚举取自官方接入文档（589e97ff）的示例值——ratio 1:1/16:9、
+//   video_resolution 720p、duration 3/5、model_version seedance2.0fast。完整枚举
+//   （更多比例/分辨率/时长档/model_version 列表）需在装了 dreamina 的机器上跑
+//   `dreamina <子命令> -h` 确认后补齐；CLI flag 名见 server/_core/jimengCli.ts。
+const JIMENG_RATIO: ParamDef = {
+  type: "select", key: "ratio", label: "比例", default: "16:9",
+  options: [
+    { value: "16:9", label: "16:9 横屏" }, { value: "9:16", label: "9:16 竖屏" },
+    { value: "1:1", label: "1:1 方形" }, { value: "4:3", label: "4:3 标准" },
+    { value: "3:4", label: "3:4 竖屏" }, { value: "21:9", label: "21:9 超宽" },
+  ],
+};
+const JIMENG_VIDEO_RES: ParamDef = {
+  type: "select", key: "video_resolution", label: "分辨率", default: "720p",
+  options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }],
+};
+const JIMENG_DURATION: ParamDef = {
+  type: "select", key: "duration", label: "时长（秒）", default: 5,
+  options: [{ value: 3, label: "3 秒" }, { value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }],
+};
+const JIMENG_MODEL_VER: ParamDef = {
+  type: "select", key: "model_version", label: "模型版本", default: "seedance2.0fast",
+  options: [{ value: "seedance2.0fast", label: "Seedance 2.0 Fast" }],
+};
+const JIMENG_T2V_PARAMS: ParamDef[] = [JIMENG_RATIO, JIMENG_VIDEO_RES, JIMENG_DURATION];
+const JIMENG_I2V_PARAMS: ParamDef[] = [JIMENG_VIDEO_RES, JIMENG_DURATION];
+const JIMENG_FRAMES_PARAMS: ParamDef[] = [JIMENG_VIDEO_RES, JIMENG_DURATION, JIMENG_MODEL_VER];
+const JIMENG_MULTIFRAME_PARAMS: ParamDef[] = [JIMENG_DURATION];
+const JIMENG_MULTIMODAL_PARAMS: ParamDef[] = [JIMENG_DURATION, JIMENG_MODEL_VER];
+
 export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
     { type: "select", key: "aspect_ratio", label: "宽高比", default: "16:9",
@@ -718,6 +751,12 @@ export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   kie_runway45: KIE_RUNWAY_PARAMS,
   kie_topaz_upscale: KIE_TOPAZ_PARAMS,
   kie_runway_aleph: KIE_ALEPH_PARAMS,
+  // ── #328 即梦（dreamina）CLI 视频（本机桥接；枚举取自官方文档示例值，待真机 `-h` 校准）──
+  jimeng_text2video: JIMENG_T2V_PARAMS,
+  jimeng_image2video: JIMENG_I2V_PARAMS,
+  jimeng_frames2video: JIMENG_FRAMES_PARAMS,
+  jimeng_multiframe2video: JIMENG_MULTIFRAME_PARAMS,
+  jimeng_multimodal2video: JIMENG_MULTIMODAL_PARAMS,
   mock: [],
 };
 

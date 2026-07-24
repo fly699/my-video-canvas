@@ -15,6 +15,8 @@ import { invalidateModelTogglesCache } from "../_core/modelToggles";
 import { invalidateSystemDefaultModelsCache } from "../_core/systemDefaultModels";
 import { reloadSelfHostedConfig } from "../_core/selfHostedLlm";
 import { reloadBridgeMcpConfig } from "../_core/bridgeMcp";
+import { reloadJimengCliConfig } from "../_core/jimengConfig";
+import { inspectJimengCli } from "../_core/jimengCli";
 import { reloadSuperAgentConfig } from "../_core/superAgent/config";
 import { reloadTranscribeConfig } from "../_core/transcribeConfig";
 import { resolveTranscribeEndpoint } from "../_core/voiceTranscription";
@@ -1182,6 +1184,22 @@ export const adminRouter = router({
         }
         await db.setBridgeMcpConfig({ mcpConfig, skills: input.skills, strict: input.strict, permissionMode: input.permissionMode, allowedTools: input.allowedTools, workspace: input.workspace });
         await reloadBridgeMcpConfig(); // 立即热更新桥接增强参数缓存
+        return { success: true };
+      }),
+    // ── #328 即梦（dreamina）CLI 本机桥接视频 provider（admin）：替代 JIMENG_CLI_* env，
+    //   后台开关/路径即生效（无需重启）。启用后「即梦」分组的视频模型出现在选择器里。 ──
+    getJimengCli: adminProcedure.query(async () => (await db.getJimengCliConfigRaw()) ?? { enabled: false, bin: "", sessionId: "" }),
+    // 诊断：探测部署机上的 dreamina 是否已安装（version）+ 是否已登录（user_credit）。
+    inspectJimengCli: adminProcedure.query(async () => inspectJimengCli()),
+    setJimengCli: managerProc
+      .input(z.object({
+        enabled: z.boolean().default(false),
+        bin: z.string().trim().max(512).default(""),
+        sessionId: z.string().trim().max(120).default(""),
+      }))
+      .mutation(async ({ input }) => {
+        await db.setJimengCliConfig({ enabled: input.enabled, bin: input.bin, sessionId: input.sessionId });
+        await reloadJimengCliConfig(); // 立即热更新即梦 CLI 配置缓存
         return { success: true };
       }),
     // ── 工程智能体权限（admin）：替代 SUPER_AGENT_* env，后台开关即生效（无需重启）。
