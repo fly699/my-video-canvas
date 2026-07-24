@@ -8,6 +8,7 @@ import {
   getComfyGlobalGpuIndex,
   setComfyGlobalGpuIndex,
   getProjectsByUser,
+  listJimengPrices,
   getProjectsSharedWithUser,
   getProjectById,
   getProjectAccess,
@@ -190,6 +191,8 @@ export function collectNodeImageUrls(nodes: Array<{ data?: unknown }>): string[]
 }
 
 export const projectsRouter = router({
+  // #334 即梦实测计价库：客户端拉取灌入 costEstimate 注册表，用于节点显示真实积分。
+  jimengPricing: protectedProcedure.query(async () => listJimengPrices()),
   list: protectedProcedure.query(async ({ ctx }) => {
     const [owned, shared] = await Promise.all([
       getProjectsByUser(ctx.user.id),

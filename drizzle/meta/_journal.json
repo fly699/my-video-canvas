@@ -645,6 +645,13 @@
       "when": 1784900400000,
       "tag": "0091_jimeng_cli_config",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "5",
+      "when": 1784900500000,
+      "tag": "0092_jimeng_price_stats",
+      "breakpoints": true
     }
   ]
 }

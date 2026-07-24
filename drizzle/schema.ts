@@ -366,6 +366,29 @@ export const agentChatJobRows = mysqlTable("agent_chat_jobs", {
 
 export type AgentChatJobRow = typeof agentChatJobRows.$inferSelect;
 
+// ── #334 即梦实测积分自学习计价库 ──────────────────────────────────────────────
+// 独立持久化：每次即梦生成成功后按 credit_count 真实回显更新一行（按 signature 聚合
+// = provider|model_version|resolution|duration）。用过一次即得真实计价，供节点显示、
+// 核算与风控读取，与现有计价功能无缝衔接（estimateVideoCost 即梦分支读此表）。
+export const jimengPriceStats = mysqlTable("jimeng_price_stats", {
+  id: int("id").autoincrement().primaryKey(),
+  signature: varchar("signature", { length: 128 }).notNull(),
+  provider: varchar("provider", { length: 48 }).notNull(),
+  modelVersion: varchar("modelVersion", { length: 48 }).notNull().default(""),
+  resolution: varchar("resolution", { length: 16 }).notNull().default(""),
+  duration: int("duration").notNull().default(0),
+  lastCredit: int("lastCredit").notNull().default(0),
+  minCredit: int("minCredit").notNull().default(0),
+  maxCredit: int("maxCredit").notNull().default(0),
+  sampleCount: int("sampleCount").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  sigUniq: uniqueIndex("jimeng_price_stats_sig_uniq").on(t.signature),
+}));
+
+export type JimengPriceStatRow = typeof jimengPriceStats.$inferSelect;
+
 // ── ComfyUI stress-test persistence ───────────────────────────────────────────
 // History: one row per finished stress job (auto-saved by the core when a job
 // reaches completed/cancelled/failed). `result` is the full StressJobView

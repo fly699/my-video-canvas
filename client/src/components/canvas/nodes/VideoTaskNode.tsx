@@ -30,7 +30,7 @@ import { ModelPicker } from "../ModelPicker";
 import { confirmRegenerate } from "@/lib/confirmRegenerate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
 import { platformBadge, VIDEO_MODELS, modelGroupOrder } from "../../../lib/models";
-import { estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
+import { estimateVideoCost, costEstimateLabel, setObservedJimengPrices, observedJimengPriceVersion } from "../../../lib/costEstimate";
 import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
 import { ReferenceImageStrip, type StripItem } from "../ReferenceImageStrip";
@@ -936,11 +936,17 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   const params = payload.params ?? {};
   const presets = PROVIDER_PRESETS[payload.provider] ?? [];
 
+  // #334 即梦实测计价库：拉取灌入 costEstimate 注册表（真实 credit_count），供节点显示真实积分。
+  const { data: jimengPricing } = trpc.projects.jimengPricing.useQuery(undefined, { staleTime: 120_000 });
+  useEffect(() => { if (jimengPricing) setObservedJimengPrices(jimengPricing); }, [jimengPricing]);
+
   // 实时点数预估：模型或参数（时长/分辨率/音频等）一变即重算，显示在提交按钮上。
+  // 即梦读实测计价库——jimengPricing 到位后重算（observedJimengPriceVersion 入 deps）。
   const costLabel = useMemo(
     () => costEstimateLabel(estimateVideoCost(payload.provider, withParamDefaults(payload.provider, payload.params))),
-    [payload.provider, payload.params],
+    [payload.provider, payload.params, jimengPricing],
   );
+  void observedJimengPriceVersion;
 
   // 「参数」按钮文案：模型版本/比例/分辨率已内联到控制行，这里聚焦剩余参数（时长为主）。
   const inlineParamSummary = useMemo(() => {

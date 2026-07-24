@@ -125,7 +125,9 @@ import {
   type ModelSkill,
   agentChatJobRows,
   type AgentChatJobRow,
+  jimengPriceStats,
 } from "../drizzle/schema";
+import { jimengPriceSignature, type JimengPriceEntry } from "../shared/jimengPricing";
 import { ENV } from "./_core/env";
 import * as dev from "./_core/devStore";
 import { normalizeSystemDefaultModels } from "../shared/nodeDefaultModels";
@@ -1880,6 +1882,61 @@ export async function setJimengCliConfig(cfg: JimengCliConfig): Promise<void> {
   if (!db) { devModelToggleSettings.jimengCli = jimengCli; return; }
   await db.insert(modelToggleSettings).values({ id: 1, jimengCli })
     .onDuplicateKeyUpdate({ set: { jimengCli } });
+}
+
+// ── #334 即梦实测积分自学习计价库（独立持久化表 jimeng_price_stats）──────────────
+// dev/无 DB 时用进程内 Map（行为一致，重启丢失——与其它 dev 存储同）。
+const devJimengPrices = new Map<string, JimengPriceEntry>();
+
+/** 记录一次真实积分消耗（credit_count），按 signature 聚合更新（用过一次即得真实计价）。 */
+export async function recordJimengPrice(
+  provider: string,
+  params: Record<string, unknown> | null | undefined,
+  credit: number,
+): Promise<void> {
+  if (!provider || !(credit > 0)) return; // 无效积分不记
+  const signature = jimengPriceSignature(provider, params);
+  const modelVersion = String((params?.model_version ?? "") || "");
+  const resolution = String((params?.video_resolution ?? "") || "");
+  const durRaw = Number(params?.duration);
+  const duration = Number.isFinite(durRaw) && durRaw > 0 ? Math.round(durRaw) : 0;
+  const db = await getDb();
+  if (!db) {
+    const ex = devJimengPrices.get(signature);
+    devJimengPrices.set(signature, ex
+      ? { ...ex, lastCredit: credit, minCredit: Math.min(ex.minCredit, credit), maxCredit: Math.max(ex.maxCredit, credit), sampleCount: ex.sampleCount + 1, updatedAt: Date.now() }
+      : { signature, provider, modelVersion, resolution, duration, lastCredit: credit, minCredit: credit, maxCredit: credit, sampleCount: 1, updatedAt: Date.now() });
+    return;
+  }
+  const rows = await db.select().from(jimengPriceStats).where(eq(jimengPriceStats.signature, signature)).limit(1);
+  const ex = rows[0];
+  if (ex) {
+    await db.update(jimengPriceStats).set({
+      lastCredit: credit,
+      minCredit: Math.min(ex.minCredit, credit),
+      maxCredit: Math.max(ex.maxCredit, credit),
+      sampleCount: ex.sampleCount + 1,
+    }).where(eq(jimengPriceStats.signature, signature));
+  } else {
+    await db.insert(jimengPriceStats).values({
+      signature, provider, modelVersion, resolution, duration,
+      lastCredit: credit, minCredit: credit, maxCredit: credit, sampleCount: 1,
+    });
+  }
+}
+
+/** 读取全部即梦实测计价（供客户端显示 + 管理后台核算/风控）。 */
+export async function listJimengPrices(): Promise<JimengPriceEntry[]> {
+  const db = await getDb();
+  if (!db) return Array.from(devJimengPrices.values());
+  const rows = await db.select().from(jimengPriceStats);
+  return rows.map((r) => ({
+    signature: r.signature, provider: r.provider, modelVersion: r.modelVersion,
+    resolution: r.resolution, duration: r.duration,
+    lastCredit: r.lastCredit, minCredit: r.minCredit, maxCredit: r.maxCredit,
+    sampleCount: r.sampleCount,
+    updatedAt: r.updatedAt instanceof Date ? r.updatedAt.getTime() : Number(r.updatedAt) || 0,
+  }));
 }
 
 // ── ComfyUI 知识记忆体持久化（跨重启）。dev/无 DB 时返回 null / no-op：记忆体退化为纯进程内缓存，
