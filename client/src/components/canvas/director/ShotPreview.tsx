@@ -37,9 +37,21 @@ function LockCam({ cam }: { cam: { position: [number, number, number]; target: [
   return null;
 }
 
-export function ShotPreview({ scene }: { scene: DirectorScene }) {
+// #332 批5：回放/scrub 时的动画覆盖——机位位姿 + 各角色 TRS（由上层按时间线采样传入）。
+// 不传则退化为静态 scene.camera / a.position（与批5 前完全一致，零回归）。
+export type ShotActorOverride = { position: [number, number, number]; rotation: [number, number, number]; scale: number };
+export interface ShotPreviewProps {
+  scene: DirectorScene;
+  camOverride?: { position: [number, number, number]; target: [number, number, number]; fov: number };
+  actorOverrides?: Record<string, ShotActorOverride>;
+}
+
+export function ShotPreview({ scene, camOverride, actorOverrides }: ShotPreviewProps) {
   // #81 lite：第二 3D 视口是纯预览，降 dpr/关抗锯齿（取景内容与主视口锁定逻辑不变）。
   const perfLite = usePerfStore(selectPerfLite);
+  // #332 回放态机位（含 fov）——PIP 与主视口回放同步；无覆盖则用静态机位。
+  const liveCam = camOverride ?? { position: scene.camera.position, target: scene.camera.target, fov: scene.camera.fov };
+  const ovr = (id: string): ShotActorOverride | undefined => actorOverrides?.[id];
   const ar = aspectRatioValue(scene.aspectRatio);
   const w = 224, h = Math.max(80, Math.round(w / ar));
   const S = scene.sceneScale ?? 1;
@@ -52,9 +64,9 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
     <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 5, width: w, borderRadius: 10, overflow: "hidden", border: "1px solid var(--c-bd2)", boxShadow: "0 8px 28px oklch(0 0 0 / 0.6)", background: "#07090e" }}>
       <div style={{ height: h, position: "relative" }}>
         <Canvas dpr={perfLite ? 1 : [1, 1.5]} gl={{ antialias: !perfLite }} style={{ width: "100%", height: "100%" }}
-          camera={{ position: scene.camera.position, fov: scene.camera.fov, near: 0.1, far: 2000 }}>
+          camera={{ position: liveCam.position, fov: liveCam.fov, near: 0.1, far: 2000 }}>
           <color attach="background" args={[scene.background || (scene.panoramaUrl ? "#060608" : "#1a1d24")]} />
-          <LockCam cam={scene.camera} />
+          <LockCam cam={liveCam} />
           {scene.panoramaUrl && !scene.background && (
             <Suspense fallback={null}>
               <PanoramaSphere url={scene.panoramaUrl} yaw={scene.panoramaYaw ?? 0} pitch={scene.panoramaPitch ?? 0} roll={scene.panoramaRoll ?? 0} scale={scene.panoramaScale ?? 1} />
@@ -78,18 +90,26 @@ export function ShotPreview({ scene }: { scene: DirectorScene }) {
           <group position={[ox, oy, oz]} scale={S}>
             {groups.map((g) => (
               <group key={g.id} position={g.position} rotation={[g.rotation[0] * deg, g.rotation[1] * deg, g.rotation[2] * deg]} scale={g.scale}>
-                {scene.actors.filter((a) => a.groupId === g.id).map((a) => (
-                  <group key={a.id} position={a.position} rotation={[a.rotation[0] * deg, a.rotation[1] * deg, a.rotation[2] * deg]} scale={a.scale}>
-                    {a.glbUrl ? <GlbModel actor={a} selected={false} /> : <HumanModel actor={a} selected={false} />}
-                  </group>
-                ))}
+                {scene.actors.filter((a) => a.groupId === g.id).map((a) => {
+                  const o = ovr(a.id);
+                  const pos = o?.position ?? a.position, rot = o?.rotation ?? a.rotation, sc = o?.scale ?? a.scale;
+                  return (
+                    <group key={a.id} position={pos} rotation={[rot[0] * deg, rot[1] * deg, rot[2] * deg]} scale={sc}>
+                      {a.glbUrl ? <GlbModel actor={a} selected={false} /> : <HumanModel actor={a} selected={false} />}
+                    </group>
+                  );
+                })}
               </group>
             ))}
-            {scene.actors.filter((a) => !a.groupId).map((a) => (
-              <group key={a.id} position={a.position} rotation={[a.rotation[0] * deg, a.rotation[1] * deg, a.rotation[2] * deg]} scale={a.scale}>
-                {a.glbUrl ? <GlbModel actor={a} selected={false} /> : <HumanModel actor={a} selected={false} />}
-              </group>
-            ))}
+            {scene.actors.filter((a) => !a.groupId).map((a) => {
+              const o = ovr(a.id);
+              const pos = o?.position ?? a.position, rot = o?.rotation ?? a.rotation, sc = o?.scale ?? a.scale;
+              return (
+                <group key={a.id} position={pos} rotation={[rot[0] * deg, rot[1] * deg, rot[2] * deg]} scale={sc}>
+                  {a.glbUrl ? <GlbModel actor={a} selected={false} /> : <HumanModel actor={a} selected={false} />}
+                </group>
+              );
+            })}
           </group>
         </Canvas>
         {/* 取景三分线 */}

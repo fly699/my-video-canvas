@@ -343,6 +343,57 @@ describe("presetMoveToKeyframes", () => {
     const cy = chs.find((c) => c.axis === "y")!;
     expect(cy.keyframes[cy.keyframes.length - 1].value).toBeGreaterThan(cy.keyframes[0].value);
   });
+
+  // ── 批5 新增 5 种运镜 ──────────────────────────────────────────────────────
+  it("handheld：位置在原位附近抖动（确定性、幅度受限、x/y/z 三通道）", () => {
+    const amp = 0.06;
+    const chs = presetMoveToKeyframes("handheld", base, { duration: 2, steps: 20, amount: amp });
+    expect(chs.map((c) => c.axis).sort()).toEqual(["x", "y", "z"]);
+    for (const c of chs) {
+      const baseVal = c.axis === "x" ? 0 : c.axis === "y" ? 1.5 : 4;
+      for (const k of c.keyframes) expect(Math.abs(k.value - baseVal)).toBeLessThanOrEqual(amp + 1e-9);
+    }
+    // 确定性：同参数两次结果一致
+    const again = presetMoveToKeyframes("handheld", base, { duration: 2, steps: 20, amount: amp });
+    expect(again.find((c) => c.axis === "x")!.keyframes[3].value).toBe(chs.find((c) => c.axis === "x")!.keyframes[3].value);
+  });
+  it("whipPan：发焦点(focus)通道，绕机位水平扫过（半径保持，y 恒定）", () => {
+    const chs = presetMoveToKeyframes("whipPan", base, { duration: 1, steps: 16, amount: 90 });
+    expect(chs.every((c) => c.prop === "focus")).toBe(true);
+    const fx = chs.find((c) => c.axis === "x")!;
+    const fz = chs.find((c) => c.axis === "z")!;
+    const fy = chs.find((c) => c.axis === "y")!;
+    // 焦点绕机位(0,·,4)半径 = |target-cam| 水平分量 = 4
+    for (let i = 0; i < fx.keyframes.length; i++) {
+      const r = Math.hypot(fx.keyframes[i].value - 0, fz.keyframes[i].value - 4);
+      expect(near(r, 4, 1e-2)).toBe(true);
+    }
+    expect(fy.keyframes.every((k) => near(k.value, 1.5))).toBe(true);
+  });
+  it("dollyZoom：推近(z 更近) + 发 fov 通道且末端更宽", () => {
+    const chs = presetMoveToKeyframes("dollyZoom", { ...base, fov: 40 }, { duration: 2, amount: 0.5 });
+    const cz = chs.find((c) => c.prop === "position" && c.axis === "z")!;
+    expect(Math.abs(cz.keyframes[cz.keyframes.length - 1].value)).toBeLessThan(4); // 更近
+    const fov = chs.find((c) => c.prop === "fov")!;
+    expect(fov.keyframes[0].value).toBe(40);
+    expect(fov.keyframes[fov.keyframes.length - 1].value).toBeGreaterThan(40); // 推近→变宽
+  });
+  it("follow：机位与焦点同步侧移（position + focus 同 delta）", () => {
+    const chs = presetMoveToKeyframes("follow", base, { duration: 2, amount: 3 });
+    const px = chs.find((c) => c.prop === "position" && c.axis === "x")!;
+    const fx = chs.find((c) => c.prop === "focus" && c.axis === "x")!;
+    const posDelta = px.keyframes[1].value - px.keyframes[0].value;
+    const focDelta = fx.keyframes[1].value - fx.keyframes[0].value;
+    expect(near(Math.abs(posDelta), 3)).toBe(true);
+    expect(near(posDelta, focDelta)).toBe(true); // 构图保持
+  });
+  it("dive：俯冲——y 下降且水平推向注视点", () => {
+    const chs = presetMoveToKeyframes("dive", base, { duration: 2, amount: 1.5 });
+    const cy = chs.find((c) => c.axis === "y")!;
+    const cz = chs.find((c) => c.axis === "z")!;
+    expect(cy.keyframes[cy.keyframes.length - 1].value).toBeLessThan(cy.keyframes[0].value); // 下降
+    expect(Math.abs(cz.keyframes[cz.keyframes.length - 1].value)).toBeLessThan(4); // 推向 target
+  });
 });
 
 describe("applyPreset", () => {

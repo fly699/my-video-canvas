@@ -379,11 +379,34 @@ export type CameraPreset =
   | "dollyOut"  // 拉远
   | "crane"     // 升降
   | "truck"     // 横移
-  | "spiral";   // 螺旋上升
+  | "spiral"    // 螺旋上升
+  // #330→批5 扩充（超越 liblib 固定 7 种）：
+  | "handheld"  // 手持抖动（确定性多频抖动，非随机）
+  | "whipPan"   // 甩镜（焦点绕机位快速水平扫过）
+  | "dollyZoom" // 变焦推（希区柯克：推近同时 FOV 变宽保持主体大小）
+  | "follow"    // 跟随（机位+焦点同步侧移跟拍）
+  | "dive";     // 俯冲（下降并推向注视点）
+
+/** 12 种运镜预设的中文标签（UI 网格用；顺序即展示顺序）。 */
+export const CAMERA_PRESET_LABELS: { key: CameraPreset; label: string; icon: string }[] = [
+  { key: "orbit", label: "环绕", icon: "⟳" },
+  { key: "arc", label: "半弧", icon: "◜" },
+  { key: "dollyIn", label: "推近", icon: "⊕" },
+  { key: "dollyOut", label: "拉远", icon: "⊖" },
+  { key: "crane", label: "升降", icon: "↕" },
+  { key: "truck", label: "横移", icon: "↔" },
+  { key: "spiral", label: "螺旋上升", icon: "🌀" },
+  { key: "handheld", label: "手持抖动", icon: "〜" },
+  { key: "whipPan", label: "甩镜", icon: "⇢" },
+  { key: "dollyZoom", label: "变焦推", icon: "◎" },
+  { key: "follow", label: "跟随", icon: "⇉" },
+  { key: "dive", label: "俯冲", icon: "↘" },
+];
 
 export interface PresetBase {
   position: Vec3;   // 机位起点
   target: Vec3;     // 注视点
+  fov?: number;     // 当前视角（变焦推 dollyZoom 需要，用于算保持主体大小的目标 FOV）
 }
 
 export interface PresetOpts {
@@ -403,16 +426,23 @@ function scaleV(a: Vec3, s: number): Vec3 {
   return [a[0] * s, a[1] * s, a[2] * s];
 }
 
-function posChannelsFromSamples(
+function vecChannelsFromSamples(
+  prop: "position" | "focus",
   samples: { t: number; pos: Vec3 }[],
   easing: Bezier,
 ): DirectorChannel[] {
   const mk = (axisIdx: 0 | 1 | 2, axis: "x" | "y" | "z"): DirectorChannel => ({
-    prop: "position",
+    prop,
     axis,
     keyframes: samples.map((s) => ({ time: s.t, value: s.pos[axisIdx], easing })),
   });
   return [mk(0, "x"), mk(1, "y"), mk(2, "z")];
+}
+function posChannelsFromSamples(samples: { t: number; pos: Vec3 }[], easing: Bezier): DirectorChannel[] {
+  return vecChannelsFromSamples("position", samples, easing);
+}
+function focusChannelsFromSamples(samples: { t: number; pos: Vec3 }[], easing: Bezier): DirectorChannel[] {
+  return vecChannelsFromSamples("focus", samples, easing);
 }
 
 /**
@@ -479,6 +509,70 @@ export function presetMoveToKeyframes(
       const viewLen = Math.hypot(rel[0], rel[2]) || 1;
       const right: Vec3 = [rel[2] / viewLen, 0, -rel[0] / viewLen];
       return posChannelsFromSamples(twoPoint(add(base.position, scaleV(right, dist))), easing);
+    }
+    case "handheld": {
+      // 手持抖动：机位在原位附近多频正弦叠加抖动（确定性、无 Math.random，便于单测）。
+      const amp = opts.amount ?? 0.06;
+      const samples: { t: number; pos: Vec3 }[] = [];
+      for (let i = 0; i < steps; i++) {
+        const p = i / (steps - 1);
+        const ph = p * Math.PI * 2;
+        const jx = amp * (Math.sin(ph * 5) * 0.6 + Math.sin(ph * 11 + 1.3) * 0.4);
+        const jy = amp * (Math.sin(ph * 7 + 0.7) * 0.5 + Math.sin(ph * 13 + 2.1) * 0.5);
+        const jz = amp * 0.4 * Math.sin(ph * 9 + 0.3);
+        samples.push({ t: t0 + dur * p, pos: [base.position[0] + jx, base.position[1] + jy, base.position[2] + jz] });
+      }
+      return posChannelsFromSamples(samples, easing);
+    }
+    case "whipPan": {
+      // 甩镜：焦点绕机位在 XZ 平面快速水平扫过（amount 为扫掠角度，默认 60°）。
+      const sweep = ((opts.amount ?? 60) * Math.PI) / 180;
+      const relTgt = sub(base.target, base.position);
+      const r = Math.hypot(relTgt[0], relTgt[2]) || 1;
+      const a0 = Math.atan2(relTgt[0], relTgt[2]);
+      const samples: { t: number; pos: Vec3 }[] = [];
+      for (let i = 0; i < steps; i++) {
+        const p = i / (steps - 1);
+        const ang = a0 + sweep * p;
+        samples.push({ t: t0 + dur * p, pos: [base.position[0] + r * Math.sin(ang), base.target[1], base.position[2] + r * Math.cos(ang)] });
+      }
+      return focusChannelsFromSamples(samples, easing);
+    }
+    case "dollyZoom": {
+      // 变焦推（希区柯克 vertigo）：推近同时 FOV 变宽，保持主体大小、改透视。需 base.fov。
+      const amt = clamp(opts.amount ?? 0.5, 0.05, 0.9); // 靠近注视点比例
+      const end = add(base.target, scaleV(rel, 1 - amt));
+      const posCh = posChannelsFromSamples(twoPoint(end), easing);
+      const baseFov = base.fov ?? 50;
+      const baseHalf = Math.tan(((baseFov * Math.PI) / 180) / 2);
+      const endHalf = baseHalf / (1 - amt); // dist*tan(fov/2)=const ⇒ 推近后 fov 变宽
+      const endFov = clamp((2 * Math.atan(endHalf) * 180) / Math.PI, 8, 160);
+      const fovCh: DirectorChannel = {
+        prop: "fov",
+        keyframes: [{ time: t0, value: baseFov, easing }, { time: t0 + dur, value: endFov, easing }],
+      };
+      return [...posCh, fovCh];
+    }
+    case "follow": {
+      // 跟随/横移跟拍：机位与焦点同步侧移（右向量平移），保持构图。
+      const dist = opts.amount ?? 2;
+      const viewLen = Math.hypot(rel[0], rel[2]) || 1;
+      const right: Vec3 = [rel[2] / viewLen, 0, -rel[0] / viewLen];
+      const delta = scaleV(right, dist);
+      const posCh = posChannelsFromSamples(twoPoint(add(base.position, delta)), easing);
+      const focusCh = focusChannelsFromSamples(
+        [{ t: t0, pos: [...base.target] as Vec3 }, { t: t0 + dur, pos: add(base.target, delta) }],
+        easing,
+      );
+      return [...posCh, ...focusCh];
+    }
+    case "dive": {
+      // 俯冲：机位下降并推向注视点（升降 + 推近的合成）。
+      const drop = opts.amount ?? 1.5;
+      const forward = 0.5; // 水平推向注视点 50%
+      const horiz = add(base.target, scaleV(rel, 1 - forward));
+      const end: Vec3 = [horiz[0], base.position[1] - drop, horiz[2]];
+      return posChannelsFromSamples(twoPoint(end), easing);
     }
     default:
       return posChannelsFromSamples(twoPoint([...base.position] as Vec3), easing);
