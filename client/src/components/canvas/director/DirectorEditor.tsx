@@ -36,7 +36,8 @@ import { PanoramaSphere } from "./Panorama";
 import { ShotPreview } from "./ShotPreview";
 import { DirectorTimeline as DirectorTimelinePanel } from "./DirectorTimeline";
 import { DirectorKeyframePanel } from "./DirectorKeyframePanel";
-import { makeDefaultTimeline, makeTrack, sampleTransformAt } from "../../../lib/directorTimeline";
+import { DirectorCameraPresets } from "./DirectorCameraPresets";
+import { makeDefaultTimeline, makeTrack, sampleTransformAt, presetMoveToKeyframes, applyPreset, updateTrackIn, CAMERA_PRESET_LABELS, type CameraPreset } from "../../../lib/directorTimeline";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -527,6 +528,36 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     const s = sampleTransformAt(t, playbackTime, { position: c.position, focus: c.target, fov: c.fov });
     return { ...c, position: s.position, target: s.focus, fov: s.fov };
   }, [timeline, playbackTime]);
+  // #332 批5：把运镜预设合入「当前活动机位」的轨道（replace 覆盖同通道 / append 接末尾）。
+  // base 取该机位当前位姿（含 fov，供变焦推算保持主体大小的目标 FOV）；时长用时间线总时长。
+  const applyCameraPreset = useCallback((preset: CameraPreset, mode: "replace" | "append") => {
+    const camId = sceneRef.current.activeCameraId ?? sceneRef.current.camera?.id;
+    if (!camId) return;
+    const cam = sceneRef.current.camera;
+    const channels = presetMoveToKeyframes(
+      preset,
+      { position: cam.position, target: cam.target, fov: cam.fov },
+      { duration: Math.max(0.5, timelineRef.current.duration) },
+    );
+    setTimeline((tl) => updateTrackIn(tl, camId, "camera", (t) => applyPreset(t, channels, mode)));
+    setPlaying(false);
+    setPlaybackTime(0);
+    const label = CAMERA_PRESET_LABELS.find((p) => p.key === preset)?.label ?? preset;
+    toast.success(`已${mode === "replace" ? "应用" : "追加"}「${label}」运镜到当前机位`);
+  }, []);
+  // #332 批5：机位预览小窗（PIP）回放同步——活动机位有动画轨道时把回放位姿传给 ShotPreview；
+  // 有动画轨道的角色同理传其回放 TRS。无动画则传 undefined，PIP 退化为静态（零回归）。
+  const shotCamOverride = useMemo(() => {
+    const camId = scene.activeCameraId ?? scene.camera?.id;
+    if (!camId || !isAnimated(camId)) return undefined;
+    const c = displayCam(scene.camera);
+    return { position: c.position, target: c.target, fov: c.fov };
+  }, [scene.activeCameraId, scene.camera, isAnimated, displayCam]);
+  const shotActorOverrides = useMemo(() => {
+    const out: Record<string, { position: Vec3; rotation: Vec3; scale: number }> = {};
+    for (const a of scene.actors) if (isAnimated(a.id)) out[a.id] = displayActor(a);
+    return Object.keys(out).length ? out : undefined;
+  }, [scene.actors, isAnimated, displayActor]);
   const patchScene = useCallback((p: Partial<DirectorScene>) => setScene((s) => ({ ...s, ...p })), []);
   const patchActor = useCallback((id: string, p: Partial<DirectorActor>) => {
     setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.id === id ? { ...a, ...p } : a)) }));
@@ -1575,7 +1606,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             </div>
           )}
           {/* 机位画面实时预览小窗（模块3/25）：导演视角自由布局时，右下角实时显示当前机位取景 */}
-          {viewMode === "director" && <ShotPreview scene={scene} />}
+          {viewMode === "director" && <ShotPreview scene={scene} camOverride={shotCamOverride} actorOverrides={shotActorOverrides} />}
           <div style={{ width: frame.w, height: frame.h, position: "relative", boxShadow: "0 0 0 1px var(--c-bd2), 0 8px 40px oklch(0 0 0 / 0.6)" }}>
             <Canvas
               shadows
@@ -1840,6 +1871,12 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               </div>
             );
           })()}
+          {/* #332 批5：相机预设运镜（选中机位时显示；12 种 × 替换/追加） */}
+          {camSelected && (
+            <div style={panel}>
+              <DirectorCameraPresets onApply={applyCameraPreset} />
+            </div>
+          )}
           {camSelected ? (
             <div style={panel}>
               <div style={ttl}>机位参数</div>
