@@ -1862,7 +1862,12 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   }}
                 />
               )}
-              <CameraRig cam={scene.camera} onCommit={onCommitCam} bind={bindCapture} locked={viewMode === "camera"} grab={dragMode === "grab"} />
+              {/* #338 批8 修复：机位视角下若活动机位有运镜轨道，主相机须跟随回放逐帧位姿
+                  （此前只喂 PIP 小窗，主窗口一直用静态 scene.camera → 播放/scrub 主视角不动）。
+                  非动画或导演视角 → 原样传 scene.camera（identity，零回归）。 */}
+              <CameraRig
+                cam={viewMode === "camera" && activeCameraId && isAnimated(activeCameraId) ? displayCam(scene.camera) : scene.camera}
+                onCommit={onCommitCam} bind={bindCapture} locked={viewMode === "camera"} grab={dragMode === "grab"} />
             </Canvas>
             {/* 取景安全框（三分线） */}
             <div className="nodrag" style={{ position: "absolute", inset: 0, pointerEvents: "none", borderRadius: 4 }}>

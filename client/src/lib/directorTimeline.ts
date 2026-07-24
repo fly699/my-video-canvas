@@ -369,6 +369,10 @@ export function retimeTimeline(timeline: DirectorTimeline, newDuration: number):
       clip: tr.clip ? { start: tr.clip.start * factor, end: tr.clip.end * factor } : tr.clip,
       channels: tr.channels.map((c) => ({ ...c, keyframes: scaleKeyframes(c.keyframes, factor) })),
     })),
+    // #338 批8：多机位镜头序列切点也随重定时等比缩放，否则改总时长后切点错位/越界。
+    ...(timeline.shotSequence
+      ? { shotSequence: timeline.shotSequence.map((c) => ({ ...c, start: c.start * factor, end: c.end * factor })) }
+      : {}),
   };
 }
 

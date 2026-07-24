@@ -298,6 +298,14 @@ describe("retimeTimeline", () => {
     expect(r.tracks[0].channels[0].keyframes.map((k) => k.time)).toEqual([0, 5]);
     expect(r.tracks[0].clip).toEqual({ start: 1, end: 4 });
   });
+  it("#338 批8：多机位镜头序列切点随重定时等比缩放", () => {
+    const tl: DirectorTimeline = {
+      duration: 10, fps: 30, tracks: [],
+      shotSequence: [{ cameraId: "camA", start: 0, end: 4 }, { cameraId: "camB", start: 4, end: 10 }],
+    };
+    const r = retimeTimeline(tl, 5); // 减半
+    expect(r.shotSequence).toEqual([{ cameraId: "camA", start: 0, end: 2 }, { cameraId: "camB", start: 2, end: 5 }]);
+  });
 });
 
 // ── 运镜预设 ────────────────────────────────────────────────────────────────
