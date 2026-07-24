@@ -18,6 +18,9 @@ import {
   presetMoveToKeyframes,
   applyPreset,
   timelineToExportData,
+  normalizeShotSequence,
+  activeCutAt,
+  sequenceToProgram,
   makeDefaultTimeline,
   makeTrack,
   timelineTicks,
@@ -623,5 +626,94 @@ describe("channelsForKind", () => {
     expect(chs.length).toBe(7);
     expect(chs.some((c) => c.prop === "fov")).toBe(true);
     expect(chs.some((c) => c.prop === "focus" && c.axis === "z")).toBe(true);
+  });
+});
+
+// ── 多机位镜头序列（#338 批7）────────────────────────────────────────────────
+describe("多机位镜头序列 shotSequence → program", () => {
+  const scene: DirectorScene = {
+    actors: [],
+    camera: { id: "camA", name: "A", position: [0, 1, 5], target: [0, 1, 0], fov: 50 },
+    cameras: [
+      { id: "camA", name: "A", position: [0, 1, 5], target: [0, 1, 0], fov: 50 },
+      { id: "camB", name: "B", position: [5, 1, 0], target: [0, 1, 0], fov: 35 },
+    ],
+    aspectRatio: "16:9", background: "", groundVisible: true, labelsVisible: true,
+  };
+
+  it("normalizeShotSequence：夹取/丢非法/按 start 升序", () => {
+    const cuts = normalizeShotSequence([
+      { cameraId: "camB", start: 1, end: 2 },
+      { cameraId: "camA", start: -1, end: 1 },   // start 夹到 0
+      { cameraId: "camX", start: 3, end: 3 },     // end==start → 丢
+      { cameraId: "", start: 0, end: 1 },         // 无机位 → 丢
+    ], 2);
+    expect(cuts.map((c) => c.cameraId)).toEqual(["camA", "camB"]);
+    expect(cuts[0].start).toBe(0);
+  });
+
+  it("activeCutAt：命中段/空隙沿用上一段/早于首段用首段", () => {
+    const cuts = normalizeShotSequence([
+      { cameraId: "camA", start: 0, end: 1 },
+      { cameraId: "camB", start: 2, end: 3 },
+    ], 4);
+    expect(activeCutAt(cuts, 0.5)?.cameraId).toBe("camA");
+    expect(activeCutAt(cuts, 1.5)?.cameraId).toBe("camA"); // 空隙沿用上一段
+    expect(activeCutAt(cuts, 2.5)?.cameraId).toBe("camB");
+    expect(activeCutAt([], 1)).toBe(null);
+  });
+
+  it("sequenceToProgram：逐帧切机 + cut 标记 + 采样对应机位静态位姿", () => {
+    const timeline: DirectorTimeline = {
+      duration: 2, fps: 2, tracks: [],
+      shotSequence: [
+        { cameraId: "camA", start: 0, end: 1 },
+        { cameraId: "camB", start: 1, end: 2 },
+      ],
+    };
+    const prog = sequenceToProgram(timeline, scene)!;
+    expect(prog).not.toBe(null);
+    // frames=4 → 5 帧（t=0,0.5,1,1.5,2）
+    expect(prog.keyframes.length).toBe(5);
+    // 首帧 camA（cut=true）；t=1 切到 camB（cut=true）
+    expect(prog.keyframes[0].cameraId).toBe("camA");
+    expect(prog.keyframes[0].cut).toBe(true);
+    expect(prog.keyframes[2].cameraId).toBe("camB");
+    expect(prog.keyframes[2].cut).toBe(true);
+    expect(prog.keyframes[3].cut).toBe(false); // 同机位不再标 cut
+    // 切点表 2 处
+    expect(prog.cuts.map((c) => c.cameraId)).toEqual(["camA", "camB"]);
+    // camB 静态位姿采样正确
+    expect(nearVec(prog.keyframes[2].position, [5, 1, 0])).toBe(true);
+    expect(near(prog.keyframes[2].fov, 35)).toBe(true);
+  });
+
+  it("无 shotSequence → program 缺省；timelineToExportData 不含 program", () => {
+    const timeline: DirectorTimeline = { duration: 2, fps: 2, tracks: [] };
+    expect(sequenceToProgram(timeline, scene)).toBe(null);
+    expect(timelineToExportData(timeline, scene).program).toBeUndefined();
+  });
+
+  it("timelineToExportData：有 shotSequence 时挂上 program", () => {
+    const timeline: DirectorTimeline = {
+      duration: 1, fps: 2, tracks: [],
+      shotSequence: [{ cameraId: "camA", start: 0, end: 1 }],
+    };
+    const data = timelineToExportData(timeline, scene);
+    expect(data.program).toBeDefined();
+    expect(data.program!.keyframes.every((k) => k.cameraId === "camA")).toBe(true);
+  });
+
+  it("相机轨迹存在时 program 采样动画机位（非静态）", () => {
+    const timeline: DirectorTimeline = {
+      duration: 2, fps: 2,
+      tracks: [{
+        targetId: "camA", targetKind: "camera",
+        channels: [{ prop: "position", axis: "x", keyframes: [{ time: 0, value: 0 }, { time: 2, value: 4 }] }],
+      }],
+      shotSequence: [{ cameraId: "camA", start: 0, end: 2 }],
+    };
+    const prog = sequenceToProgram(timeline, scene)!;
+    expect(near(prog.keyframes[2].position[0], 2)).toBe(true); // t=1 → x=2（轨道插值）
   });
 });
