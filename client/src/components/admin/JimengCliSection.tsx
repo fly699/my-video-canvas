@@ -78,7 +78,13 @@ export function JimengCliSection() {
       </label>
 
       <label style={{ fontSize: 11, color: "var(--c-t2)", fontWeight: 700 }}>可执行文件路径（留空 = 走主机 PATH 里的 <code>dreamina</code>）
-        <input value={bin} onChange={(e) => setBin(e.target.value)} placeholder="dreamina（或绝对路径，如 /usr/local/bin/dreamina）" className="nodrag" style={{ ...box, marginTop: 4, fontFamily: "monospace" }} />
+        <input value={bin} onChange={(e) => setBin(e.target.value)} placeholder="dreamina / 绝对路径 / wsl dreamina" className="nodrag" style={{ ...box, marginTop: 4, fontFamily: "monospace" }} />
+        <span style={{ display: "block", fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, marginTop: 3 }}>
+          · Linux/macOS 服务器：留空即可（走 PATH）。<br />
+          · <b>Windows 服务器（本平台 Node 原生运行）</b>：即梦 CLI 装在 WSL 里时填 <code>wsl dreamina</code>；
+          若有 Windows 原生可执行文件则填含扩展名的完整路径（如 <code>{"C:\\\\dreamina\\\\dreamina.exe"}</code>）——
+          Node 无法直接 spawn <code>.cmd</code>/裸命令。⚠️ 走 WSL 时文生视频先可用；图生/首尾帧等要传本机文件的模式需路径转换（待校准）。
+        </span>
       </label>
       <label style={{ fontSize: 11, color: "var(--c-t2)", fontWeight: 700 }}>默认 session（可选，按项目隔离任务；留空用默认 session 0）
         <input value={sessionId} onChange={(e) => setSessionId(e.target.value)} placeholder="留空即可" className="nodrag" style={{ ...box, marginTop: 4, fontFamily: "monospace" }} />

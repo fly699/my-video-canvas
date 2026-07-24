@@ -11,7 +11,7 @@ import { drawOpenpose } from "../../../lib/directorOpenpose";
 
 // 渲控制图时用来隔离「只渲人物、避开网格/阴影/全景/gizmo」的 actors 组名。
 const ACTORS_GROUP = "__director_actors__";
-import type { DirectorScene, DirectorActor, DirectorCamera, DirectorLight, Vec3 } from "../../../../../shared/types";
+import type { DirectorScene, DirectorActor, DirectorCamera, DirectorLight, Vec3, DirectorTimeline, DirectorTrack } from "../../../../../shared/types";
 import {
   MANNEQUIN_MODELS, DIRECTOR_ASPECTS, aspectRatioValue, makeActor, makeDefaultDirectorScene, makeCrowd, bakeGroupTransform, cloneGroupWithMembers, respaceCrowdMembers, makeGroupFromActors, CROWD_SPACING,
   ensureCameras, newCameraId, nextCameraName, actorWorldPosition, shotAimTarget, faceCameraYaw,
@@ -34,6 +34,8 @@ import { PropModel } from "./PropModel";
 import { GlbModel } from "./GlbModel";
 import { PanoramaSphere } from "./Panorama";
 import { ShotPreview } from "./ShotPreview";
+import { DirectorTimeline as DirectorTimelinePanel } from "./DirectorTimeline";
+import { makeDefaultTimeline, makeTrack } from "../../../lib/directorTimeline";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -469,8 +471,40 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
 
-  // 持久化：关闭时把场景写回节点（不丢编辑）。
-  useEffect(() => () => { updateNodeData(nodeId, { scene: sceneRef.current, aspectRatio: sceneRef.current.aspectRatio, shots: shotsRef.current }, true); }, [nodeId, updateNodeData]);
+  // #329 动画层（批2）：时间线（运动轨迹/关键帧/回放）随节点持久化 + 播放头/rAF 驱动。
+  const initialTimeline = useCanvasStore((s) => {
+    const n = s.nodes.find((x) => x.id === nodeId);
+    return (n?.data.payload as { timeline?: DirectorTimeline })?.timeline;
+  });
+  const [timeline, setTimeline] = useState<DirectorTimeline>(() => initialTimeline ?? makeDefaultTimeline());
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  // rAF：播放时推进播放头；到末端按 loop 决定循环或停。（3D 对象随播放位移属批4，此处仅驱动时间线。）
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - last) / 1000; last = now;
+      setPlaybackTime((t) => {
+        const dur = Math.max(0.001, timelineRef.current.duration);
+        let nt = t + dt;
+        if (nt >= dur) {
+          if (timelineRef.current.loop) nt = nt % dur;
+          else { nt = dur; setPlaying(false); }
+        }
+        return nt;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
+  // 持久化：关闭时把场景 + 时间线写回节点（不丢编辑）。
+  useEffect(() => () => { updateNodeData(nodeId, { scene: sceneRef.current, aspectRatio: sceneRef.current.aspectRatio, shots: shotsRef.current, timeline: timelineRef.current }, true); }, [nodeId, updateNodeData]);
 
   const selected = scene.actors.find((a) => a.id === selectedId) ?? null;
   const patchScene = useCallback((p: Partial<DirectorScene>) => setScene((s) => ({ ...s, ...p })), []);
@@ -1980,6 +2014,27 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           </button>
         </div>
       </div>
+      {/* #329 底部时间线（动画层批2）：全宽横条，不侵入中栏 3D 布局；播放头/scrubber/缩放/轨道◇。 */}
+      <DirectorTimelinePanel
+        timeline={timeline}
+        currentTime={playbackTime}
+        playing={playing}
+        selectedId={camSelected ? (scene.activeCameraId ?? undefined) : (selectedId ?? undefined)}
+        selectedTarget={
+          camSelected && scene.activeCameraId ? { id: scene.activeCameraId, kind: "camera" as const }
+          : selected ? { id: selected.id, kind: (selected.prim ? "prop" : "actor") as DirectorTrack["targetKind"] }
+          : undefined
+        }
+        labelOf={(tr) => {
+          if (tr.targetKind === "camera") return ((scene.cameras ?? []).find((c) => c.id === tr.targetId)?.name) ?? scene.camera?.name ?? "机位";
+          return scene.actors.find((a) => a.id === tr.targetId)?.name ?? (tr.targetKind === "prop" ? "道具" : "角色");
+        }}
+        onSeek={(t) => { setPlaying(false); setPlaybackTime(t); }}
+        onTogglePlay={() => setPlaying((p) => !p)}
+        onToggleLoop={() => setTimeline((tl) => ({ ...tl, loop: !tl.loop }))}
+        onSelectTrack={(id) => { if (scene.actors.some((a) => a.id === id)) selectActor(id); }}
+        onChange={setTimeline}
+      />
     </div>
   );
 }

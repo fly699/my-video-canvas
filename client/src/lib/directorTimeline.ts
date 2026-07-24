@@ -574,3 +574,33 @@ export function makeDefaultTimeline(): DirectorTimeline {
 export function makeTrack(targetId: string, targetKind: DirectorTrack["targetKind"]): DirectorTrack {
   return { targetId, targetKind, channels: [] };
 }
+
+// ── 时间线 UI 辅助（批2）──────────────────────────────────────────────────────
+/** 标尺刻度：按像素密度自适应步长（保证相邻主刻度≥minPx），返回各刻度秒值（含 0 与末端）。 */
+export function timelineTicks(duration: number, pxPerSec: number, minPx = 64): number[] {
+  const dur = Math.max(0, duration);
+  if (dur <= 0 || pxPerSec <= 0) return [0];
+  // 候选步长（秒）：0.5/1/2/5/10/15/30/60…，选第一个使 step*pxPerSec≥minPx 的。
+  const candidates = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+  let step = candidates.find((s) => s * pxPerSec >= minPx);
+  if (step == null) step = Math.ceil(minPx / pxPerSec);
+  const out: number[] = [];
+  for (let t = 0; t <= dur + 1e-6; t += step) out.push(Math.round(t * 1000) / 1000);
+  if (out[out.length - 1] < dur - 1e-6) out.push(dur);
+  return out;
+}
+
+/** 该轨道所有关键帧的时间点（去重升序）——供时间线在轨道行上打◇标记。 */
+export function trackKeyframeTimes(track: DirectorTrack): number[] {
+  const set = new Set<number>();
+  for (const ch of track.channels) for (const k of ch.keyframes) set.add(Math.round(k.time * 1000) / 1000);
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+/** 秒 → mm:ss.d 展示（如 7.49 → "0:07.5"，含一位小数）。 */
+export function fmtTime(sec: number): string {
+  const s = Math.max(0, sec);
+  const m = Math.floor(s / 60);
+  const rem = s - m * 60;
+  return `${m}:${rem.toFixed(1).padStart(4, "0")}`;
+}
