@@ -137,6 +137,13 @@ export function buildImageGenInput(args: {
       aspectRatio: payload.aspectRatio || undefined,
       imageResolution: (payload.imageResolution || undefined) as "1K" | "2K" | "4K" | undefined,
     } : {}),
+    // #337 金泰（dreamina）CLI 生图专用参数（服务端按官方 -h 交叉夹取，非法回退默认）。
+    ...(raw?.startsWith("jimeng_") ? {
+      jimengImgModelVersion: resolveImageParam(raw, "jimengImgModelVersion", (payload as unknown as Record<string, unknown>).jimengImgModelVersion),
+      jimengImgRatio: resolveImageParam(raw, "jimengImgRatio", (payload as unknown as Record<string, unknown>).jimengImgRatio),
+      jimengImgResolutionType: resolveImageParam(raw, "jimengImgResolutionType", (payload as unknown as Record<string, unknown>).jimengImgResolutionType),
+      jimengImgGenerateNum: resolveImageParam(raw, "jimengImgGenerateNum", (payload as unknown as Record<string, unknown>).jimengImgGenerateNum),
+    } : {}),
     estimatedCost: costLabel || undefined,
   };
   return { input, refUrl, count, costLabel };

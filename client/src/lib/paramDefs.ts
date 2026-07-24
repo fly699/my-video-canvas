@@ -30,6 +30,8 @@ const RES_12 = ["1K", "2K"] as const;
 const RES_24 = ["2K", "4K"] as const;
 const RES_23 = ["2K", "3K"] as const;
 const FMT_PNG_JPG = ["png", "jpg"] as const;
+// #337 金泰生图比例（官方 -h：8 档，与 width/height 互斥）
+const JIMENG_IMG_RATIOS = ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"] as const;
 const FMT_KLING = ["jpeg", "png", "webp"] as const;
 const QUALITY = ["low", "medium", "high"] as const;
 
@@ -75,6 +77,25 @@ export const IMAGE_MODEL_PARAMS: Record<string, ParamDef[]> = {
   // Others
   poyo_z_image: [sizeDef(Z_SIZES, "16:9")],
   poyo_grok_image: [sizeDef(GROK_SIZES, "16:9")],
+  // #337 金泰（dreamina）CLI 生图：专用键（jimengImg*），服务端按官方 -h 交叉夹取。
+  //   text2image model_version 3.0–5.0Pro（默认 5.0）；resolution_type 依 mv（服务端夹取）。
+  jimeng_text2image: [
+    { key: "jimengImgModelVersion", type: "select", label: "模型版本", options: ["3.0", "3.1", "4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"], default: "5.0" },
+    { key: "jimengImgRatio", type: "select", label: "比例", options: JIMENG_IMG_RATIOS, default: "16:9" },
+    { key: "jimengImgResolutionType", type: "select", label: "分辨率", options: ["1k", "2k", "4k"], default: "2k" },
+    { key: "jimengImgGenerateNum", type: "number", label: "数量", min: 1, max: 10, step: 1, default: 1 },
+  ],
+  //   image2image：无 3.x 档；需参考图（≤10 张）。
+  jimeng_image2image: [
+    { key: "jimengImgModelVersion", type: "select", label: "模型版本", options: ["4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"], default: "5.0" },
+    { key: "jimengImgRatio", type: "select", label: "比例", options: JIMENG_IMG_RATIOS, default: "16:9" },
+    { key: "jimengImgResolutionType", type: "select", label: "分辨率", options: ["1k", "2k", "4k"], default: "2k" },
+    { key: "jimengImgGenerateNum", type: "number", label: "数量", min: 1, max: 10, step: 1, default: 1 },
+  ],
+  //   image_upscale：仅目标分辨率（2k/4k/8k，4k/8k 需 VIP）；需参考图。
+  jimeng_image_upscale: [
+    { key: "jimengImgResolutionType", type: "select", label: "目标分辨率", options: ["2k", "4k", "8k"], default: "2k" },
+  ],
 };
 
 /** Normalize a ParamDef option list to {value,label}[] for rendering. */

@@ -1,6 +1,6 @@
-// #328 即梦（dreamina）CLI 本机桥接型视频 provider 适配器。
+// #328 金泰（dreamina）CLI 本机桥接型视频 provider 适配器。
 //
-// 即梦 CLI 是装在服务器主机上、独立 OAuth 登录的命令行工具（文档：589e97ff）。
+// 金泰 CLI 是装在服务器主机上、独立 OAuth 登录的命令行工具（文档：589e97ff）。
 // 与 kie/poyo 的 HTTP API 不同，这里通过 child_process.spawn 调用本机 `dreamina`
 // 可执行文件——完全复用本项目已有的「本机 Claude 桥接」(claudeBridge.ts) 模式。
 //
@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { getJimengCliConfig } from "./jimengConfig";
 import { resolveToAbsoluteUrl, storagePut } from "../storage";
 
-// #333 即梦 CLI 产物是「本地文件」（query_result --download_dir 下载 <submit_id>_video_N.mp4），
+// #333 金泰 CLI 产物是「本地文件」（query_result --download_dir 下载 <submit_id>_video_N.mp4），
 // 不是公网链接。Windows 原生 Node 经 `wsl` 调用时，传给 dreamina 的路径必须是 WSL 视角
 // （/mnt/c/...），而 Node 仍按 Windows 路径读文件。以下做双向兼容的路径处理。
 function usesWslPrefix(): boolean {
@@ -42,7 +42,7 @@ function mimeForVideo(name: string): string {
 }
 
 // ── provider 注册（video）──────────────────────────────────────────────────
-// UI provider value → 即梦 CLI 子命令 + 参考素材如何映射到 CLI flag。
+// UI provider value → 金泰 CLI 子命令 + 参考素材如何映射到 CLI flag。
 // 只增不删：历史 video_tasks 行会引用这些值。
 export interface JimengSpec {
   /** dreamina 子命令 */
@@ -154,7 +154,7 @@ async function downloadToTemp(url: string, dir: string, idx: number): Promise<st
 }
 
 // ── 解析层（⚠️ 待真机校准）────────────────────────────────────────────────
-// 即梦 CLI 的 stdout JSON 结构未知。以下按「先整体 JSON.parse，再逐可能字段名兜底
+// 金泰 CLI 的 stdout JSON 结构未知。以下按「先整体 JSON.parse，再逐可能字段名兜底
 // 扫描」的防御式做法（与 poyoVideo 容忍多种结果字段名同源），并对纯文本输出也做正则
 // 兜底。拿到真实输出后，把字段名收敛为确切键即可。
 function tryParseJson(out: string): Record<string, unknown> | null {
@@ -200,7 +200,7 @@ export interface JimengTaskStatus {
   errorMessage?: string;
   /** 本地结果文件路径（result_json.videos[].path；供 checkJimengVideoStatus 读取上传）。 */
   resultPaths?: string[];
-  /** 本次生成实际消耗的即梦积分（credit_count，真机回显，非估算）。 */
+  /** 本次生成实际消耗的金泰积分（credit_count，真机回显，非估算）。 */
   creditCount?: number;
 }
 
@@ -213,7 +213,7 @@ export function parseQueryOutput(out: string): JimengTaskStatus {
   const s = (deepFindString(json ?? {}, ["gen_status", "status", "state"]) ?? "").toLowerCase();
   const creditRaw = json?.["credit_count"];
   const creditCount = typeof creditRaw === "number" ? creditRaw : undefined;
-  // result_json.videos[].path — 本地文件路径（即梦不给公网链接）。
+  // result_json.videos[].path — 本地文件路径（金泰不给公网链接）。
   const paths: string[] = [];
   const rj = json?.["result_json"] as { videos?: Array<{ path?: unknown }> } | undefined;
   if (Array.isArray(rj?.videos)) for (const v of rj!.videos!) if (v?.path) paths.push(String(v.path));
@@ -221,7 +221,7 @@ export function parseQueryOutput(out: string): JimengTaskStatus {
   const FINISHED = ["success", "succeeded", "finished", "done", "completed"];
   const FAILED = ["fail", "failed", "error", "cancelled", "canceled", "expired"];
   if (FAILED.includes(s)) {
-    return { status: "failed", errorMessage: deepFindString(json ?? {}, ["fail_reason", "message", "error", "reason"]) ?? "即梦生成失败", creditCount };
+    return { status: "failed", errorMessage: deepFindString(json ?? {}, ["fail_reason", "message", "error", "reason"]) ?? "金泰生成失败", creditCount };
   }
   if (FINISHED.includes(s)) {
     return { status: "finished", resultPaths: paths.length ? paths : undefined, creditCount };
@@ -245,7 +245,7 @@ export async function submitJimengVideo(opts: {
 }): Promise<SubmitJimengResult> {
   const spec = JIMENG_VIDEO_SPECS[opts.provider];
   if (!spec) throw new Error(`Unknown jimeng provider: ${opts.provider}`);
-  if (!jimengEnabled()) throw new Error("即梦 CLI 未启用（管理员需在部署机安装 dreamina、完成 login，并在后台开启开关）");
+  if (!jimengEnabled()) throw new Error("金泰 CLI 未启用（管理员需在部署机安装 dreamina、完成 login，并在后台开启开关）");
 
   const imgs = (opts.referenceImageUrls?.length ? opts.referenceImageUrls : (opts.referenceImageUrl ? [opts.referenceImageUrl] : []))
     .map((u) => u?.trim()).filter((u): u is string => Boolean(u));
@@ -293,11 +293,11 @@ export async function submitJimengVideo(opts: {
     // 不带 --poll：立即返回 submit_id，实际生成交给 videoTaskPoller 轮询 query_result。
 
     const r = await spawnDreamina(args, 90_000);
-    if (r.spawnError) throw new Error(`无法启动即梦 CLI：${r.spawnError}（检查 JIMENG_CLI_BIN / 是否已安装 dreamina）`);
-    if (r.timedOut) throw new Error("即梦 CLI 提交超时（>90s）");
+    if (r.spawnError) throw new Error(`无法启动金泰 CLI：${r.spawnError}（检查 JIMENG_CLI_BIN / 是否已安装 dreamina）`);
+    if (r.timedOut) throw new Error("金泰 CLI 提交超时（>90s）");
     const submitId = parseSubmitOutput(r.stdout);
     if (!submitId) {
-      throw new Error(`即梦 CLI 未返回 submit_id（退出码 ${r.code}）：${(r.stderr || r.stdout).slice(0, 200)}`);
+      throw new Error(`金泰 CLI 未返回 submit_id（退出码 ${r.code}）：${(r.stderr || r.stdout).slice(0, 200)}`);
     }
     return { externalTaskId: submitId };
   } finally {
@@ -337,21 +337,21 @@ export async function inspectJimengCli(): Promise<JimengInspectResult> {
 }
 
 // ── 查询 ────────────────────────────────────────────────────────────────────
-// 即梦产物是本地文件（query_result --download_dir 下载 <submit_id>_video_N.mp4），不是链接。
+// 金泰产物是本地文件（query_result --download_dir 下载 <submit_id>_video_N.mp4），不是链接。
 // 故：带 --download_dir 查询 → 扫下载目录找视频文件 → 上传到本项目存储 → 返回我方 URL。
 // 无论 CLI 是否干净退出（可能下载后仍阻塞被 timeout），只要目录里出现视频文件即判成功。
 export async function checkJimengVideoStatus(externalTaskId: string): Promise<JimengTaskStatus> {
-  if (!jimengEnabled()) throw new Error("即梦 CLI 未启用");
+  if (!jimengEnabled()) throw new Error("金泰 CLI 未启用");
   const dir = await mkdtemp(join(tmpdir(), "jimeng-q-"));
   try {
     const dlArg = toWslPathIfNeeded(dir);
     const r = await spawnDreamina(["query_result", `--submit_id=${externalTaskId}`, `--download_dir=${dlArg}`], 120_000);
-    if (r.spawnError) throw new Error(`无法启动即梦 CLI：${r.spawnError}`);
+    if (r.spawnError) throw new Error(`无法启动金泰 CLI：${r.spawnError}`);
 
     // gen_status / credit_count 走真机 JSON 解析（权威状态与真实积分消耗）。
     const parsed = parseQueryOutput(r.stdout);
 
-    // 扫下载目录取字节上传（即梦不给公网链接）：优先本任务前缀，回退任意视频文件。
+    // 扫下载目录取字节上传（金泰不给公网链接）：优先本任务前缀，回退任意视频文件。
     const files = await readdir(dir).catch(() => [] as string[]);
     const isVid = (f: string) => /\.(mp4|mov|webm|m4v)$/i.test(f);
     let vids = files.filter((f) => isVid(f) && f.startsWith(externalTaskId));
@@ -372,6 +372,164 @@ export async function checkJimengVideoStatus(externalTaskId: string): Promise<Ji
     // 没抓到文件：以 gen_status 为准。success 但文件未就绪 → 在途下轮再查；fail → 失败。
     if (parsed.status === "failed") return { status: "failed", errorMessage: parsed.errorMessage, creditCount: parsed.creditCount };
     return { status: "running", creditCount: parsed.creditCount };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => { /* best-effort */ });
+  }
+}
+
+// ── 生图 provider（text2image / image2image / image_upscale）─────────────────
+// 与视频同为本机 CLI 桥接、异步任务制（submit_id + query_result），但图像链路是「同步」的
+// （imageGeneration.generateImage 请求内轮询），故这里只暴露 submit + status 两个原语，
+// 由 generateImageJimeng 组织成「提交→请求内轮询→下载→上传」。
+export const JIMENG_IMAGE_SPECS: Record<string, { cmd: "text2image" | "image2image" | "image_upscale"; refMode: "none" | "multi" | "single" }> = {
+  jimeng_text2image:    { cmd: "text2image",    refMode: "none" },   // 文生图
+  jimeng_image2image:   { cmd: "image2image",   refMode: "multi" },  // 图生图：--images 1-10
+  jimeng_image_upscale: { cmd: "image_upscale", refMode: "single" }, // 图片超清：--image 一张
+};
+
+export function isJimengImageProvider(provider: string): boolean {
+  return provider in JIMENG_IMAGE_SPECS;
+}
+
+// #337 严格按官方 `dreamina <子命令> -h` 校准的交叉依赖：
+//   text2image  model_version: 3.0/3.1/4.0/4.1/4.5/4.6/4.7/5.0/5.0Pro（默认 5.0）
+//   image2image model_version: 4.0/4.1/4.5/4.6/4.7/5.0/5.0Pro（无 3.x；默认 5.0）
+//   resolution_type 必填，依 model_version：3.0/3.1→1k/2k；4.x/5.0→2k/4k；5.0Pro→1k/2k/4k
+//   image_upscale：仅 resolution_type（2k/4k/8k，4k/8k 需 VIP）
+//   ratio 8 档（与 width/height 互斥）；generate_num 1-10
+const JIMENG_IMG_MODEL_VERSIONS: Record<string, string[]> = {
+  text2image:  ["3.0", "3.1", "4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"],
+  image2image: ["4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"],
+};
+const JIMENG_IMG_RATIOS = ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"];
+function allowedResTypes(cmd: string, mv: string): string[] {
+  if (cmd === "image_upscale") return ["2k", "4k", "8k"];
+  if (mv === "3.0" || mv === "3.1") return ["1k", "2k"];
+  if (mv === "5.0Pro") return ["1k", "2k", "4k"];
+  return ["2k", "4k"]; // 4.0/4.1/4.5/4.6/4.7/5.0
+}
+
+function mimeForImage(name: string): string {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  return ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/png";
+}
+
+/** 提交生图任务，立即返回 submit_id（实际出图交给请求内轮询 checkJimengImageStatus）。 */
+export async function submitJimengImage(opts: {
+  provider: string;
+  prompt: string;
+  referenceImageUrls?: string[];
+  params?: Record<string, unknown>;
+  sessionId?: string;
+}): Promise<SubmitJimengResult> {
+  const spec = JIMENG_IMAGE_SPECS[opts.provider];
+  if (!spec) throw new Error(`Unknown jimeng image provider: ${opts.provider}`);
+  if (!jimengEnabled()) throw new Error("金泰 CLI 未启用（管理员需在部署机安装 dreamina、完成 login，并在后台开启开关）");
+
+  const imgs = (opts.referenceImageUrls ?? []).map((u) => u?.trim()).filter((u): u is string => Boolean(u));
+  const workDir = await mkdtemp(join(tmpdir(), "jimeng-img-"));
+  try {
+    const cmd = spec.cmd;
+    const args: string[] = [cmd];
+    if (cmd !== "image_upscale") args.push(`--prompt=${opts.prompt}`); // 超清无 prompt
+
+    // 参考图下载到本机临时文件；经 wsl 调用时转成 WSL 视角路径。
+    const dl = async (url: string, idx: number) => toWslPathIfNeeded(await downloadToTemp(url, workDir, idx));
+    if (spec.refMode === "single") {
+      if (!imgs[0]) throw new Error("图片超清需要一张输入图片，请连接上游图片或添加参考图");
+      args.push(`--image=${await dl(imgs[0], 0)}`);
+    } else if (spec.refMode === "multi") {
+      if (!imgs[0]) throw new Error("图生图至少需要一张输入图片，请连接上游图片或添加参考图");
+      const paths = await Promise.all(imgs.slice(0, 10).map((u, i) => dl(u, i)));
+      args.push(`--images=${paths.join(",")}`);
+    }
+
+    const p = opts.params ?? {};
+    if (cmd !== "image_upscale") {
+      // model_version（分命令枚举夹取，非法回退官方默认 5.0）
+      const mvAllowed = JIMENG_IMG_MODEL_VERSIONS[cmd] ?? [];
+      let mv = String(p.model_version ?? "").trim();
+      if (!mvAllowed.includes(mv)) mv = "5.0";
+      args.push(`--model_version=${mv}`);
+      // width/height（成对且正整数）与 ratio 互斥：有自定义尺寸就不发 ratio
+      const w = Number(p.width), h = Number(p.height);
+      const hasWH = Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0;
+      if (hasWH) {
+        args.push(`--width=${Math.round(w)}`, `--height=${Math.round(h)}`);
+      } else {
+        const ratio = String(p.ratio ?? "").trim();
+        if (JIMENG_IMG_RATIOS.includes(ratio)) args.push(`--ratio=${ratio}`);
+      }
+      // resolution_type（必填，按 model_version 交叉夹取，默认 2k）
+      const resAllowed = allowedResTypes(cmd, mv);
+      let rt = String(p.resolution_type ?? "").trim().toLowerCase();
+      if (!resAllowed.includes(rt)) rt = resAllowed.includes("2k") ? "2k" : resAllowed[0];
+      args.push(`--resolution_type=${rt}`);
+      // generate_num 1-10（默认 1，可省）
+      const gnRaw = Number(p.generate_num);
+      const gn = Number.isFinite(gnRaw) ? Math.min(10, Math.max(1, Math.round(gnRaw))) : 1;
+      if (gn > 1) args.push(`--generate_num=${gn}`);
+    } else {
+      // image_upscale：仅 resolution_type（2k/4k/8k，必填，默认 2k）
+      let rt = String(p.resolution_type ?? "").trim().toLowerCase();
+      if (!allowedResTypes(cmd, "").includes(rt)) rt = "2k";
+      args.push(`--resolution_type=${rt}`);
+    }
+
+    const sessionId = opts.sessionId || getJimengCliConfig().sessionId;
+    if (sessionId) args.push(`--session=${sessionId}`);
+
+    const r = await spawnDreamina(args, 90_000);
+    if (r.spawnError) throw new Error(`无法启动金泰 CLI：${r.spawnError}（检查 JIMENG_CLI_BIN / 是否已安装 dreamina）`);
+    if (r.timedOut) throw new Error("金泰 CLI 提交超时（>90s）");
+    const submitId = parseSubmitOutput(r.stdout);
+    if (!submitId) throw new Error(`金泰 CLI 未返回 submit_id（退出码 ${r.code}）：${(r.stderr || r.stdout).slice(0, 200)}`);
+    return { externalTaskId: submitId };
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => { /* best-effort */ });
+  }
+}
+
+export interface JimengImageStatus {
+  status: "running" | "finished" | "failed";
+  resultImageUrls?: string[];
+  errorMessage?: string;
+  creditCount?: number;
+}
+
+/** 查询生图任务：带 --download_dir 下载本地图片文件 → 上传到本项目存储 → 返回我方 URL。 */
+export async function checkJimengImageStatus(externalTaskId: string): Promise<JimengImageStatus> {
+  if (!jimengEnabled()) throw new Error("金泰 CLI 未启用");
+  const dir = await mkdtemp(join(tmpdir(), "jimeng-iq-"));
+  try {
+    const r = await spawnDreamina(["query_result", `--submit_id=${externalTaskId}`, `--download_dir=${toWslPathIfNeeded(dir)}`], 120_000);
+    if (r.spawnError) throw new Error(`无法启动金泰 CLI：${r.spawnError}`);
+    const json = tryParseJson(r.stdout);
+    const s = (deepFindString(json ?? {}, ["gen_status", "status", "state"]) ?? "").toLowerCase();
+    const creditRaw = json?.["credit_count"];
+    const creditCount = typeof creditRaw === "number" ? creditRaw : undefined;
+
+    // 扫下载目录取图片字节上传（金泰不给公网链接）：优先本任务前缀，回退任意图片文件。
+    const files = await readdir(dir).catch(() => [] as string[]);
+    const isImg = (f: string) => /\.(png|jpe?g|webp|gif)$/i.test(f);
+    let imgs = files.filter((f) => isImg(f) && f.startsWith(externalTaskId));
+    if (imgs.length === 0) imgs = files.filter(isImg);
+    imgs.sort();
+    if (imgs.length > 0) {
+      const urls: string[] = [];
+      for (const f of imgs) {
+        const buf = await readFile(join(dir, f));
+        if (buf.length < 256) continue; // 空/截断文件跳过
+        const { url } = await storagePut(`jimeng/${externalTaskId}/${f}`, buf, mimeForImage(f));
+        urls.push(url);
+      }
+      if (urls.length > 0) return { status: "finished", resultImageUrls: urls, creditCount };
+    }
+    const FAILED = ["fail", "failed", "error", "cancelled", "canceled", "expired"];
+    if (FAILED.includes(s)) {
+      return { status: "failed", errorMessage: deepFindString(json ?? {}, ["fail_reason", "message", "error", "reason"]) ?? "金泰生图失败", creditCount };
+    }
+    return { status: "running", creditCount };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => { /* best-effort */ });
   }

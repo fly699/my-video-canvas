@@ -9,6 +9,7 @@ import {
   setComfyGlobalGpuIndex,
   getProjectsByUser,
   listJimengPrices,
+  recordJimengPrice,
   getProjectsSharedWithUser,
   getProjectById,
   getProjectAccess,
@@ -92,7 +93,7 @@ import { assertWhitelisted, assertLLMAllowed, assertComfyuiAllowed, assertComfyu
 import { resolveKieKey } from "../_core/kie";
 import { isKieImageModel, kieImageSupportsNegative, recheckKieImageTask } from "../_core/kieImage";
 import { isKieVideoProvider, submitKieVideo, detectOmnihumanSubjects } from "../_core/kieVideo";
-import { isJimengVideoProvider, submitJimengVideo } from "../_core/jimengCli";
+import { isJimengVideoProvider, submitJimengVideo, isJimengImageProvider } from "../_core/jimengCli";
 import { isKieMusicModel, submitAndPollKieMusic } from "../_core/kieMusic";
 import { isKieLLMModel } from "../_core/kieLLM";
 import { isCustomLLMModel } from "../_core/customLlm";
@@ -1436,6 +1437,11 @@ export const imageGenRouter = router({
         fluxNumImages: z.number().int().min(1).max(4).optional(),
         // kie.ai: optional user-entered temporary key (from the toolbar popup).
         kieTempKey: z.string().max(256).optional(),
+        // #337 金泰（dreamina）CLI 生图参数（服务端按官方 -h 交叉夹取，非法回退默认）。
+        jimengImgModelVersion: z.string().max(16).optional(),
+        jimengImgRatio: z.string().max(16).optional(),
+        jimengImgResolutionType: z.string().max(8).optional(),
+        jimengImgGenerateNum: z.number().int().min(1).max(10).optional(),
         // 客户端实时计算的点数预估（如 "≈5 cr"），仅供管理员日志参考。
         estimatedCost: z.string().max(32).optional(),
         projectId: z.number().optional(),
@@ -1539,7 +1545,23 @@ export const imageGenRouter = router({
           // 可选分辨率档（如 GPT Image 2 1K/2K/4K，逐档计价）；服务端按模型 resOptions 夹取。
           resolution: input.imageResolution,
         } : {}),
+        // #337 金泰 CLI 生图专用参数（参考图经 originalImages 传入）。
+        ...(isJimengImageProvider(input.model ?? "") ? {
+          jimengImgModelVersion: input.jimengImgModelVersion,
+          jimengImgRatio: input.jimengImgRatio,
+          jimengImgResolutionType: input.jimengImgResolutionType,
+          jimengImgGenerateNum: input.jimengImgGenerateNum,
+        } : {}),
       });
+
+      // #337 金泰生图：记录真实积分消耗到实测计价库（与视频同表，供管理后台核算/风控）。
+      if (isJimengImageProvider(input.model ?? "") && result.creditCount) {
+        await recordJimengPrice(input.model!, {
+          model_version: input.jimengImgModelVersion,
+          resolution_type: input.jimengImgResolutionType,
+          generate_num: input.jimengImgGenerateNum,
+        }, result.creditCount).catch(() => { /* best-effort，不阻塞出图 */ });
+      }
 
       writeAuditLog({
         ctx,
@@ -1554,7 +1576,7 @@ export const imageGenRouter = router({
         },
       });
       {
-        const prov = input.model?.startsWith("hf_") ? "higgsfield" : input.model?.startsWith("poyo_") ? "poyo" : input.model?.startsWith("kie_") ? "kie" : "forge";
+        const prov = input.model?.startsWith("hf_") ? "higgsfield" : input.model?.startsWith("poyo_") ? "poyo" : input.model?.startsWith("kie_") ? "kie" : input.model?.startsWith("jimeng_") ? "jimeng" : "forge";
         for (const u of (result.urls?.length ? result.urls : (result.url ? [result.url] : []))) {
           await recordGeneratedAsset({ userId: ctx.user.id, projectId: input.projectId ?? null, type: "image", source: "generated", provider: prov, model: input.model ?? "default", url: u, name: input.model ?? "图像生成" });
         }

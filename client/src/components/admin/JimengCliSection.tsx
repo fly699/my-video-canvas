@@ -3,9 +3,9 @@ import { toast } from "sonner";
 import { Film, Save, Loader2, Stethoscope } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-/** #328 管理员后台「模型管理 › 即梦（dreamina）CLI」：本机桥接型视频 provider。
+/** #328 管理员后台「模型管理 › 金泰（dreamina）CLI」：本机桥接型视频 provider。
  *  在部署机安装 dreamina + 人工 web 登录后，在此开启开关（可选填可执行路径 / session），
- *  「即梦」分组的视频模型即出现在 video_task 节点的模型选择器里，可选比例/分辨率/时长——
+ *  「金泰」分组的视频模型即出现在 video_task 节点的模型选择器里，可选比例/分辨率/时长——
  *  与其它 API 模型形态一致。配置存 DB（替代 JIMENG_CLI_* env），保存即生效、无需重启。 */
 export function JimengCliSection() {
   const utils = trpc.useUtils();
@@ -42,22 +42,22 @@ export function JimengCliSection() {
     try {
       await saveMut.mutateAsync({ enabled, bin: bin.trim(), sessionId: sessionId.trim() });
       await utils.admin.models.getJimengCli.invalidate();
-      toast.success("已保存即梦 CLI 配置，立即生效（无需重启）");
+      toast.success("已保存金泰 CLI 配置，立即生效（无需重启）");
     } catch (e) {
       toast.error("保存失败：" + (e instanceof Error ? e.message : String(e)).slice(0, 140));
     }
   };
 
   const box: React.CSSProperties = { fontSize: 12, padding: "7px 9px", borderRadius: 8, background: "var(--c-input)", border: "1px solid var(--c-bd2)", color: "var(--c-t1)", outline: "none", width: "100%" };
-  const hue = 12; // 与 models.ts 的「即梦」平台色一致
+  const hue = 12; // 与 models.ts 的「金泰」平台色一致
 
   return (
     <div style={{ border: "1px solid var(--c-bd2)", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
-        <Film className="w-4 h-4" style={{ color: `oklch(0.7 0.18 ${hue})` }} /> 即梦（dreamina）CLI · 本机桥接视频
+        <Film className="w-4 h-4" style={{ color: `oklch(0.7 0.18 ${hue})` }} /> 金泰（dreamina）CLI · 本机桥接视频
       </div>
       <p style={{ fontSize: 11, color: "var(--c-t3)", lineHeight: 1.7, margin: 0 }}>
-        即梦 CLI 是装在<strong>服务器主机</strong>上、独立登录的命令行工具。启用后，「即梦」分组的
+        金泰 CLI 是装在<strong>服务器主机</strong>上、独立登录的命令行工具。启用后，「金泰」分组的
         <strong>文生 / 图生 / 首尾帧 / 多帧 / 全能参考</strong>视频模型出现在视频节点的模型选择器里，
         可选<strong>比例 / 分辨率 / 时长</strong>，与其它 API 模型用法一致（异步任务制，走系统轮询取回结果）。
         配置存数据库（替代 <code>JIMENG_CLI_*</code> 环境变量），<strong>保存即生效、无需重启</strong>。
@@ -76,14 +76,14 @@ export function JimengCliSection() {
 
       <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--c-t2)", cursor: "pointer" }}>
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="nodrag" style={{ marginTop: 2 }} />
-        <span><strong>启用即梦 CLI 视频</strong><br /><span style={{ fontSize: 11, color: "var(--c-t3)" }}>关闭时「即梦」分组模型不出现在选择器，提交也会被拒。需白名单用户方可使用（与 Poyo/HF 同门控）。</span></span>
+        <span><strong>启用金泰 CLI 视频</strong><br /><span style={{ fontSize: 11, color: "var(--c-t3)" }}>关闭时「金泰」分组模型不出现在选择器，提交也会被拒。需白名单用户方可使用（与 Poyo/HF 同门控）。</span></span>
       </label>
 
       <label style={{ fontSize: 11, color: "var(--c-t2)", fontWeight: 700 }}>可执行文件路径（留空 = 走主机 PATH 里的 <code>dreamina</code>）
         <input value={bin} onChange={(e) => setBin(e.target.value)} placeholder="dreamina / 绝对路径 / wsl dreamina" className="nodrag" style={{ ...box, marginTop: 4, fontFamily: "monospace" }} />
         <span style={{ display: "block", fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, marginTop: 3 }}>
           · Linux/macOS 服务器：留空即可（走 PATH）。<br />
-          · <b>Windows 服务器（本平台 Node 原生运行）</b>：即梦 CLI 装在 WSL 里时填 <code>wsl dreamina</code>；
+          · <b>Windows 服务器（本平台 Node 原生运行）</b>：金泰 CLI 装在 WSL 里时填 <code>wsl dreamina</code>；
           若有 Windows 原生可执行文件则填含扩展名的完整路径（如 <code>{"C:\\\\dreamina\\\\dreamina.exe"}</code>）——
           Node 无法直接 spawn <code>.cmd</code>/裸命令。⚠️ 走 WSL 时文生视频先可用；图生/首尾帧等要传本机文件的模式需路径转换（待校准）。
         </span>
@@ -116,11 +116,11 @@ export function JimengCliSection() {
       <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 8, borderTop: "1px solid var(--c-bd2)" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: `oklch(0.72 0.14 ${hue})` }}>实测计价表（自学习）</div>
         <p style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, margin: 0 }}>
-          即梦无官方数字价目表，改为<strong>按真实积分消耗自学习</strong>：每次生成成功记录 <code>credit_count</code>，
+          金泰无官方数字价目表，改为<strong>按真实积分消耗自学习</strong>：每次生成成功记录 <code>credit_count</code>，
           同「模型版本×分辨率×时长」组合<strong>用过一次即得真实计价</strong>，节点上直接显示、供核算与风控。
         </p>
         {(priceQ.data?.length ?? 0) === 0 ? (
-          <div style={{ fontSize: 11, color: "var(--c-t4)" }}>暂无记录——生成一次即梦视频后自动出现。</div>
+          <div style={{ fontSize: 11, color: "var(--c-t4)" }}>暂无记录——生成一次金泰视频后自动出现。</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", whiteSpace: "nowrap" }}>

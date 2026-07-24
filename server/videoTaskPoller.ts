@@ -124,7 +124,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                   params: (task.params as Record<string, unknown>) ?? undefined,
                 });
               } else if (isJimengVideoProvider(task.provider)) {
-                // #328 即梦 CLI：无云端 key；多参考素材从 params 暂存字段取回（同 poyo/kie）。
+                // #328 金泰 CLI：无云端 key；多参考素材从 params 暂存字段取回（同 poyo/kie）。
                 const tp = task.params as { _referenceImageUrls?: unknown; _referenceVideoUrls?: unknown; _referenceAudioUrls?: unknown } | null;
                 const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : undefined);
                 submitResult = await submitJimengVideo({
@@ -233,20 +233,20 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               }
             }
           } else if (isJimengVideoProvider(task.provider)) {
-            // #328/#333 即梦 CLI：query_result --download_dir 下载本地视频文件，
+            // #328/#333 金泰 CLI：query_result --download_dir 下载本地视频文件，
             // checkJimengVideoStatus 内已上传到本项目存储并返回我方 URL，无需再转存。
             const upstream = await checkJimengVideoStatus(task.externalTaskId);
             if (upstream.status === "finished") {
               const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
               if (urls.length > 0) {
                 if (upstream.creditCount != null) {
-                  console.log(`[jimeng] task ${task.id} 消耗即梦积分 ${upstream.creditCount}`);
+                  console.log(`[jimeng] task ${task.id} 消耗金泰积分 ${upstream.creditCount}`);
                   // #334 实测自学习计价：按真实 credit_count 记录/更新计价库（供显示/核算/风控）。
                   await recordJimengPrice(task.provider, task.params as Record<string, unknown> | null, upstream.creditCount).catch((e) => console.warn("[jimeng] recordJimengPrice failed", e));
                 }
                 result = { status: "succeeded", resultVideoUrl: urls.join("\n") };
               } else {
-                result = { status: "failed", errorMessage: "[CHARGED] 视频已在即梦生成完成，但下载/转存失败（积分已扣，请勿重试；可用 dreamina query_result --download_dir 手动取回）" };
+                result = { status: "failed", errorMessage: "[CHARGED] 视频已在金泰生成完成，但下载/转存失败（积分已扣，请勿重试；可用 dreamina query_result --download_dir 手动取回）" };
               }
             } else if (upstream.status === "failed") {
               result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
