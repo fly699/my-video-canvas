@@ -37,7 +37,7 @@ import { ShotPreview } from "./ShotPreview";
 import { DirectorTimeline as DirectorTimelinePanel } from "./DirectorTimeline";
 import { DirectorKeyframePanel } from "./DirectorKeyframePanel";
 import { DirectorCameraPresets } from "./DirectorCameraPresets";
-import { makeDefaultTimeline, makeTrack, sampleTransformAt, presetMoveToKeyframes, applyPreset, updateTrackIn, CAMERA_PRESET_LABELS, type CameraPreset } from "../../../lib/directorTimeline";
+import { makeDefaultTimeline, makeTrack, sampleTransformAt, presetMoveToKeyframes, applyPreset, updateTrackIn, timelineToExportData, CAMERA_PRESET_LABELS, type CameraPreset } from "../../../lib/directorTimeline";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -890,6 +890,21 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     }, (err) => toast.error("导出失败：" + String(err)), { binary: true });
   };
 
+  // #332 批6：导出运镜数据 JSON（逐帧相机/对象 TRS+FOV）——下载文件 + 写入节点 payload，
+  //   供图生视频的运镜控制入参 / 编排引用。需时间线已有动画（关键帧或运镜预设）。
+  const exportMotionData = () => {
+    const tl = timelineRef.current;
+    if (!tl.tracks.length) { toast.error("时间线还没有动画——先打关键帧或应用运镜预设再导出"); return; }
+    const data = timelineToExportData(tl, sceneRef.current);
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "director-motion.json"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    updateNodeData(nodeId, { motionExport: data }, true); // 存入节点，连线/编排可读
+    toast.success(`已导出运镜数据（${data.camera.length} 机位轨 · ${data.actors.length} 对象轨 · ${data.fps}fps · ${data.duration}s）`);
+  };
+
   // #85 提交入口只剩「机位视角拖拽瞄准」一条路（CameraRig 内已按 locked 门控）。
   const onCommitCam = useCallback((position: Vec3, target: Vec3) => patchCam({ position, target }), [patchCam]);
   const bindCapture = useCallback((h: CaptureHandle) => { captureRef.current = h; }, []);
@@ -1563,6 +1578,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           <button onClick={exportSceneGlb} style={{ ...chip, justifyContent: "center", marginTop: 4 }}
             title="把当前场景（人物+道具+导入模型）导出为 .glb，可在 Blender 等工具打开或再导入">
             <Download size={11} /> 导出场景（.glb）
+          </button>
+          {/* #332 批6：导出运镜数据（逐帧相机/对象轨迹 JSON），供图生视频运镜控制/编排引用 */}
+          <button onClick={exportMotionData} style={{ ...chip, justifyContent: "center", marginTop: 4 }}
+            title="把时间线动画导出为结构化运镜数据（逐帧相机位置/焦点/FOV + 各对象 TRS），下载 JSON 并存入本节点，供图生视频运镜控制或编排引用。需先在时间线打关键帧或应用运镜预设。">
+            <Download size={11} /> 导出运镜数据（JSON）
           </button>
           <input ref={glbInputRef} type="file" accept=".glb,.gltf,.obj,.stl,.fbx,model/gltf-binary" style={{ display: "none" }} onChange={onGlbFile} />
         </div>
