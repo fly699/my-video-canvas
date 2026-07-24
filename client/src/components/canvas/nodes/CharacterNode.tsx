@@ -29,7 +29,8 @@ import { buildRecognitionRows, type RecognitionFieldRow } from "@/lib/characterR
 import { LLMModelPicker, type LLMModelId } from "../LLMModelPicker";
 import { ModelPicker, IMAGE_MODEL_PICKER_OPTIONS, type ModelPickerOption, useResolvedDefaultImageOption } from "../ModelPicker";
 import { estimateImageCost, costEstimateLabel } from "../../../lib/costEstimate";
-import { countCharacterCoverage } from "../../../lib/characterCoverage";
+import { countCharacterCoverage, coveredNodeIds } from "../../../lib/characterCoverage";
+import { useReactFlow } from "@xyflow/react";
 import { resolveCharacterVoice, voiceShortLabel, voiceFullLabel } from "../../../lib/characterVoice";
 import { COMFY_LOCAL_MODEL, COMFY_LOCAL_OPTION, loadComfyCkpt, loadComfyBase } from "../../../lib/comfyLocalRoute";
 import { ComfyCkptSelect } from "../ComfyCkptSelect";
@@ -220,6 +221,15 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       return [r.total, r.withRef];
     }),
   );
+  // 覆盖镜头 id（点覆盖徽标 → 把视野框到这些下游镜头，导演一眼看到"本角色出现在哪些镜"）。
+  const coveredIds = useCanvasStore(
+    useShallow((s) => coveredNodeIds(id, s.edges, s.nodes.map((n) => ({ id: n.id, nodeType: n.data.nodeType })))),
+  );
+  const reactFlow = useReactFlow();
+  const focusCoveredShots = useCallback(() => {
+    if (!coveredIds.length) return;
+    reactFlow.fitView({ nodes: coveredIds.map((nid) => ({ id: nid })), padding: 0.25, duration: 400, maxZoom: 1.2 });
+  }, [coveredIds, reactFlow]);
 
   // #297 音色徽标：遍历所有锁定途径——①声音档案（助手 set_voice / 镜头表配音回写 /
   // 角色库带入都落这里）②脚本节点 castVoices（配音面板只写脚本、不回写档案，不扫这层
@@ -750,10 +760,11 @@ export const CharacterNode = memo(function CharacterNode({ id, selected, data }:
       <span
         data-testid="char-coverage-chip"
         onPointerDown={(e) => e.stopPropagation()}
+        onClick={coveredShots > 0 ? (e) => { e.stopPropagation(); focusCoveredShots(); } : undefined}
         title={coveredShots > 0
-          ? `本角色已连入 ${coveredShots} 个下游生成节点（分镜/图像/视频/ComfyUI），其中 ${coveredWithRef} 个已带本角色主参考图。参考图未随行的镜头可用「应用到分镜」一键套用。`
+          ? `本角色已连入 ${coveredShots} 个下游生成节点（分镜/图像/视频/ComfyUI），其中 ${coveredWithRef} 个已带本角色主参考图。点击把视野框到这些镜头（看本角色出现在哪些镜）。参考图未随行的镜头可用「应用到分镜」一键套用。`
           : "本角色还未接入任何镜头——把角色节点连到分镜/图像/视频等生成节点，注入才会生效。"}
-        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 9.5, fontWeight: 700, lineHeight: 1, background: coveredShots > 0 ? "oklch(0.55 0.14 150 / 0.4)" : "oklch(0 0 0 / 0.45)", border: `1px solid ${coveredShots > 0 ? "oklch(0.65 0.14 150 / 0.7)" : "var(--c-bd3)"}`, color: "#fff", cursor: "help" }}
+        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 9.5, fontWeight: 700, lineHeight: 1, background: coveredShots > 0 ? "oklch(0.55 0.14 150 / 0.4)" : "oklch(0 0 0 / 0.45)", border: `1px solid ${coveredShots > 0 ? "oklch(0.65 0.14 150 / 0.7)" : "var(--c-bd3)"}`, color: "#fff", cursor: coveredShots > 0 ? "pointer" : "help" }}
       >
         🎬 {coveredShots} 镜{coveredShots > 0 && coveredWithRef < coveredShots ? ` · 图${coveredWithRef}` : ""}
       </span>

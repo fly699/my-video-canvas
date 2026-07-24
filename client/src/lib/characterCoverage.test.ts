@@ -1,6 +1,6 @@
 // #225 批②「已覆盖 N 镜」计数纯函数
 import { describe, it, expect } from "vitest";
-import { countCharacterCoverage } from "./characterCoverage";
+import { countCharacterCoverage, coveredNodeIds } from "./characterCoverage";
 
 const REF = "https://cdn.example.com/face.png";
 const nodes = [
@@ -45,5 +45,22 @@ describe("countCharacterCoverage", () => {
 
   it("零连线 → {0,0}", () => {
     expect(countCharacterCoverage("c1", REF, [], nodes)).toEqual({ total: 0, withRef: 0 });
+  });
+});
+
+describe("coveredNodeIds", () => {
+  it("返回接入的生成节点 id（唯一、按边序）；非生成/角色→角色/重复目标剔除", () => {
+    const edges = [
+      { source: "c1", target: "s1" },
+      { source: "c1", target: "n1" }, // note 非生成，剔除
+      { source: "c1", target: "g1" },
+      { source: "c1", target: "s1" }, // 重复目标，只留一次
+      { source: "c1", target: "c2" }, // 角色→角色，剔除
+      { source: "cX", target: "v1" }, // 非本角色为 source，剔除
+    ];
+    expect(coveredNodeIds("c1", edges, nodes)).toEqual(["s1", "g1"]);
+  });
+  it("零连线 → []", () => {
+    expect(coveredNodeIds("c1", [], nodes)).toEqual([]);
   });
 });
