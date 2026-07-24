@@ -72,12 +72,23 @@ function jimengEnabled(): boolean {
 interface SpawnResult { stdout: string; stderr: string; code: number | null; timedOut: boolean; spawnError?: string }
 
 function spawnDreamina(args: string[], timeoutMs: number): Promise<SpawnResult> {
-  const bin = jimengBin();
+  // 支持「前缀命令」写法：后台可执行路径可填 `wsl dreamina`（Windows 原生 Node → 调 WSL 里的
+  // dreamina）。以 `wsl ` 开头时按空格拆成 命令+前缀参数（数组传参，无 shell、免注入）；否则整串
+  // 作为可执行文件（兼容含空格的 Windows 完整路径，如 `C:\Program Files\...\dreamina.exe`）。
+  const raw = jimengBin();
+  let cmd = raw;
+  let prefix: string[] = [];
+  if (/^wsl\s+/i.test(raw)) {
+    const parts = raw.split(/\s+/);
+    cmd = parts[0];
+    prefix = parts.slice(1);
+  }
+  const finalArgs = [...prefix, ...args];
   return new Promise((resolve) => {
     let stdout = "", stderr = "", done = false, timedOut = false, spawnError: string | undefined;
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(bin, args, {
+      child = spawn(cmd, finalArgs, {
         cwd: tmpdir(), env: process.env, stdio: ["ignore", "pipe", "pipe"],
         detached: process.platform !== "win32",
       });
