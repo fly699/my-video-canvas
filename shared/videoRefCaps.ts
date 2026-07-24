@@ -77,6 +77,12 @@ export const VIDEO_PROVIDER_MAX_REF_IMAGES: Record<string, number> = {
   hf_dop_standard: 1,
   hf_dop_lite: 1,
   hf_dop_turbo: 1,
+  // #328 即梦（dreamina）CLI 视频
+  jimeng_text2video: 0,       // 纯文生
+  jimeng_image2video: 1,      // 首帧图 --image
+  jimeng_frames2video: 2,     // 首尾帧 --first/--last
+  jimeng_multiframe2video: 9, // 多帧 --images（3 张以上可用 transition）
+  jimeng_multimodal2video: 1, // 全能参考：图 1 张（另可接视频/音频参考，走独立字段）
 };
 
 /** Max reference images a provider consumes. Unknown providers default to 1. */

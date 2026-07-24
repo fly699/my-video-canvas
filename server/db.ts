@@ -27,6 +27,7 @@ import {
   type SuperAgentConfig,
   type TranscribeEndpointConfig,
   type VoxcpmEndpointConfig,
+  type JimengCliConfig,
   auditLogs,
   comfyUsageLogs,
   llmUsageLogs,
@@ -145,7 +146,7 @@ export function isDupEntryError(e: unknown): boolean {
 // Dev-mode whitelist state
 const devWhitelistSettings = { id: 1, enabled: false, comfyuiBypass: false, llmBypass: false, kieEnabled: false, updatedAt: new Date() };
 const devStorageSettings = { id: 1, persistAudio: true, persistVideo: true, persistImage: true, presignTtlSec: 3600, poyoUploadFallback: false, uploadStagingProvider: "", minioOnly: true, preferUpstreamRefSource: false, downloadAuthEnabled: false, downloadAuthBypassLevel: 1, forceStorageRelay: false, watermarkEnabled: false, downloadWatermarkEnabled: false, devtoolsBlockEnabled: false, updatedAt: new Date() };
-const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string>; transcribeEndpoint?: import("../drizzle/schema").TranscribeEndpointConfig; voxcpmEndpoint?: import("../drizzle/schema").VoxcpmEndpointConfig } = { disabledModels: [] };
+const devModelToggleSettings: { disabledModels: string[]; selfHostedLlm?: import("../drizzle/schema").SelfHostedLlmConfig; bridgeMcp?: import("../drizzle/schema").BridgeMcpConfig; superAgent?: import("../drizzle/schema").SuperAgentConfig; systemDefaultModels?: Record<string, string>; transcribeEndpoint?: import("../drizzle/schema").TranscribeEndpointConfig; voxcpmEndpoint?: import("../drizzle/schema").VoxcpmEndpointConfig; jimengCli?: import("../drizzle/schema").JimengCliConfig } = { disabledModels: [] };
 const devAuthSettings = { emailVerificationEnabled: false, registrationApprovalEnabled: false, smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "" };
 const devWhitelistEntries: Array<{ id: number; type: "ip" | "user"; value: string; note: string | null; createdBy: number | null; createdAt: Date }> = [];
 let devNextWhitelistId = 1;
@@ -1849,6 +1850,36 @@ export async function setVoxcpmEndpointConfig(cfg: VoxcpmEndpointConfig): Promis
   if (!db) { devModelToggleSettings.voxcpmEndpoint = voxcpmEndpoint; return; }
   await db.insert(modelToggleSettings).values({ id: 1, voxcpmEndpoint })
     .onDuplicateKeyUpdate({ set: { voxcpmEndpoint } });
+}
+
+/** #328 归一化「即梦 CLI」列。返回 null=后台从未配置（列 NULL）→ 回退 env；非 null=以此为准。 */
+export function normalizeJimengCli(v: unknown): JimengCliConfig | null {
+  let o: Record<string, unknown> | null = null;
+  if (typeof v === "string") { try { o = JSON.parse(v) as Record<string, unknown>; } catch { o = null; } }
+  else if (v && typeof v === "object") o = v as Record<string, unknown>;
+  if (!o) return null;
+  return {
+    enabled: o.enabled === true,
+    bin: typeof o.bin === "string" ? o.bin.trim() : "",
+    sessionId: typeof o.sessionId === "string" ? o.sessionId.trim() : "",
+  };
+}
+
+/** 管理员配置的「即梦 CLI」本机桥接视频 provider（替代 JIMENG_CLI_* env）。单行 id=1 的 JSON 列。
+ *  返回 null=后台未配置（回退 env）；非 null=DB 显式覆盖（含 enabled:false）。 */
+export async function getJimengCliConfigRaw(): Promise<JimengCliConfig | null> {
+  const db = await getDb();
+  if (!db) return normalizeJimengCli(devModelToggleSettings.jimengCli ?? null);
+  const rows = await db.select().from(modelToggleSettings).limit(1);
+  return normalizeJimengCli(rows[0]?.jimengCli);
+}
+
+export async function setJimengCliConfig(cfg: JimengCliConfig): Promise<void> {
+  const jimengCli: JimengCliConfig = { enabled: !!cfg.enabled, bin: (cfg.bin ?? "").trim(), sessionId: (cfg.sessionId ?? "").trim() };
+  const db = await getDb();
+  if (!db) { devModelToggleSettings.jimengCli = jimengCli; return; }
+  await db.insert(modelToggleSettings).values({ id: 1, jimengCli })
+    .onDuplicateKeyUpdate({ set: { jimengCli } });
 }
 
 // ── ComfyUI 知识记忆体持久化（跨重启）。dev/无 DB 时返回 null / no-op：记忆体退化为纯进程内缓存，

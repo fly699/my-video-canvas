@@ -20,6 +20,7 @@ import { SelfHostedLlmSection } from "@/components/admin/SelfHostedLlmSection";
 import { TranscribeEndpointSection } from "@/components/admin/TranscribeEndpointSection";
 import { VoxcpmEndpointSection } from "@/components/admin/VoxcpmEndpointSection";
 import { BridgeMcpSection } from "@/components/admin/BridgeMcpSection";
+import { JimengCliSection } from "@/components/admin/JimengCliSection";
 import { SuperAgentPermSection } from "@/components/admin/SuperAgentPermSection";
 import { SystemDefaultModelsSection } from "@/components/admin/SystemDefaultModelsSection";
 import { TunnelPanel } from "@/components/admin/TunnelPanel";
@@ -1750,6 +1751,8 @@ function ModelsHubPanel() {
           <VoxcpmEndpointSection />
           {/* 桥接 MCP 配置（贴 mcpServers JSON → 保存即生效，让本机 Claude 桥接能调 ComfyUI 等 MCP） */}
           <BridgeMcpSection />
+          {/* #328 即梦（dreamina）CLI 本机桥接视频 provider：开关 + 路径 + 检测（DB 优先 + env 兜底） */}
+          <JimengCliSection />
         </div>
       )}
       {sub === "skills" && <ModelSkillsPanel />}

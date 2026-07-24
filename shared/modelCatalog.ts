@@ -268,5 +268,11 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "hf_dop_standard",         label: "DoP Standard",        group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "运镜"] },
   { value: "hf_dop_lite",             label: "DoP Lite",            group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
   { value: "hf_dop_turbo",            label: "DoP Turbo",           group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
+  // ── #328 即梦（dreamina）CLI 本机桥接（需管理员在部署机安装 dreamina + 登录 + 后台开启；按即梦积分计费）──
+  { value: "jimeng_text2video",       label: "即梦 文生视频",       group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["T2V", "比例", "分辨率", "时长"] },
+  { value: "jimeng_image2video",      label: "即梦 图生视频",       group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["I2V", "首帧", "分辨率", "时长"] },
+  { value: "jimeng_frames2video",     label: "即梦 首尾帧视频",     group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["首尾帧", "分辨率", "时长"] },
+  { value: "jimeng_multiframe2video", label: "即梦 多帧视频",       group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["多帧", "转场", "时长"] },
+  { value: "jimeng_multimodal2video", label: "即梦 全能参考视频",   group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["图/视频/音频参考", "时长"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ] as const;

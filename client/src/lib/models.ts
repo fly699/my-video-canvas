@@ -106,6 +106,7 @@ export const CHAT_MODELS = LLM_MODELS;
 const PLATFORM_HUE: Record<string, number> = {
   Poyo: 240, Manus: 160, Forge: 160, Higgsfield: 310, Kie: 200,
   Suno: 285, MiniMax: 30, OpenAI: 150, Local: 95, Dev: 20, SelfHosted: 200, Custom: 320, Groq: 25,
+  即梦: 12, // #328 即梦（dreamina）CLI 本机桥接
 };
 export function platformBadge(name: string): { bg: string; fg: string } {
   const h = PLATFORM_HUE[name] ?? 265;
@@ -119,7 +120,7 @@ export function platformBadge(name: string): { bg: string; fg: string } {
 // 故必须显式置顶（-1），与各 picker「self-hosted 数组前插」的本意一致。
 const GROUP_ORDER: Record<string, number> = {
   // 自定义模型（用户自带 key）置于自建之后、内置之前——既显眼又不抢自建基建的头位。
-  SelfHosted: -1, Groq: -0.8, Custom: -0.5, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
+  SelfHosted: -1, Groq: -0.8, Custom: -0.5, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, 即梦: 2.5, Higgsfield: 3, Dev: 8,
 };
 export function modelGroupOrder(group: string): number {
   return GROUP_ORDER[group] ?? 4;

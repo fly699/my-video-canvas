@@ -3,6 +3,7 @@ import { getPendingVideoTasks, updateVideoTask, completeVideoTaskIfProcessing, c
 import { isPoyoVideoProvider, submitPoyoVideo, checkPoyoVideoStatus } from "./_core/poyoVideo";
 import { isHiggsfieldVideoProvider, submitHiggsfieldVideo, checkHiggsfieldVideoStatus } from "./_core/higgsfield";
 import { isKieVideoProvider, submitKieVideo, checkKieVideoStatus } from "./_core/kieVideo";
+import { isJimengVideoProvider, submitJimengVideo, checkJimengVideoStatus } from "./_core/jimengCli";
 import { decryptKieKey } from "./_core/kieCrypto";
 import { persistVideoOrFallback, persistVideosOrFallback } from "./_core/persistVideo";
 import { auditVideoTaskResult } from "./_core/auditLog";
@@ -122,6 +123,19 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
                   negativePrompt: task.negativePrompt ?? undefined,
                   params: (task.params as Record<string, unknown>) ?? undefined,
                 });
+              } else if (isJimengVideoProvider(task.provider)) {
+                // #328 即梦 CLI：无云端 key；多参考素材从 params 暂存字段取回（同 poyo/kie）。
+                const tp = task.params as { _referenceImageUrls?: unknown; _referenceVideoUrls?: unknown; _referenceAudioUrls?: unknown } | null;
+                const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : undefined);
+                submitResult = await submitJimengVideo({
+                  provider: task.provider,
+                  prompt: task.prompt ?? "",
+                  referenceImageUrl: task.referenceImageUrl ?? undefined,
+                  referenceImageUrls: arr(tp?._referenceImageUrls),
+                  referenceVideoUrls: arr(tp?._referenceVideoUrls),
+                  referenceAudioUrls: arr(tp?._referenceAudioUrls),
+                  params: (task.params as Record<string, unknown>) ?? undefined,
+                });
               } else if (task.provider === "mock") {
                 submitResult = await submitMockTask();
               } else {
@@ -217,6 +231,22 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
               } else {
                 result = { status: "processing" };
               }
+            }
+          } else if (isJimengVideoProvider(task.provider)) {
+            // #328 即梦 CLI：query_result 查状态；产物 URL 转存到本项目存储（同 poyo/kie）。
+            const upstream = await checkJimengVideoStatus(task.externalTaskId);
+            if (upstream.status === "finished") {
+              const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
+              if (urls.length > 0) {
+                const persistedList = await persistVideosOrFallback(urls, task.provider);
+                result = { status: "succeeded", resultVideoUrl: persistedList.join("\n") };
+              } else {
+                result = { status: "failed", errorMessage: "[CHARGED] 视频已在即梦生成完成，但本系统未识别 URL（积分已扣，请勿重试；可用 dreamina query_result 查看）" };
+              }
+            } else if (upstream.status === "failed") {
+              result = { status: "failed", errorMessage: upstream.errorMessage ?? "生成失败" };
+            } else {
+              result = { status: "processing" };
             }
           } else if (isHiggsfieldVideoProvider(task.provider)) {
             // Higgsfield status check
