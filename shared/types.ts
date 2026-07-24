@@ -674,8 +674,70 @@ export interface DirectorScene {
   captureQuality?: "high" | "medium" | "low";
 }
 
+// ── 动画层（#327 导演台运动轨迹/时间线/回放/导出）──────────────────────────
+// 纯数据模型，随 DirectorNodeData 持久化；由 client/src/lib/directorTimeline.ts
+// 的纯函数负责插值/缓动/采样/运镜预设，UI 层只驱动这些函数。
+
+/** 三次贝塞尔缓动控制点 [p1x,p1y,p2x,p2y]（CSS cubic-bezier 语义），线性=[0,0,1,1]。 */
+export type Bezier = [number, number, number, number];
+
+/** 一个关键帧：某通道在 time(秒) 处的标量值 + 到「下一帧」的缓动曲线。 */
+export interface DirectorKeyframe {
+  time: number;      // 秒（相对时间线起点）
+  value: number;     // 标量值（位置/旋转分量、fov、缩放…）
+  easing?: Bezier;   // 段缓动（本帧→下一帧）；缺省线性
+}
+
+/** 可 K 帧的属性通道：对象某个可动属性的一条关键帧序列（按 time 升序）。 */
+export interface DirectorChannel {
+  prop: "position" | "rotation" | "scale" | "uniformScale" | "focus" | "fov" | "opacity";
+  axis?: "x" | "y" | "z";     // 向量属性(position/rotation/scale/focus)的分量；标量属性(fov/uniformScale/opacity)省略
+  keyframes: DirectorKeyframe[];
+}
+
+/** 3D 样条运动路径：对象沿路径移动（替代/叠加 position 通道）。 */
+export interface DirectorPath {
+  points: Vec3[];                          // 控制点（≥2）
+  kind: "catmullrom" | "bezier" | "linear"; // 插值方式
+  orient: "free" | "lookAt" | "velocity";   // 朝向策略：不改朝向 / 看向目标 / 沿切线
+  lookAtId?: string;                        // orient="lookAt" 时的注视目标对象 id
+  closed?: boolean;                         // 闭合环路
+}
+
+/** 一个对象(相机/角色/道具)的动画轨道。 */
+export interface DirectorTrack {
+  targetId: string;                        // 对应 DirectorScene 里对象 id（camera 用其 id / actor.id / prop 复用 actor.id）
+  targetKind: "camera" | "actor" | "prop";
+  channels: DirectorChannel[];
+  path?: DirectorPath;                      // 可选：沿样条运动
+  clip?: { start: number; end: number };   // 该对象在时间线上的活动区间(秒)；缺省=整条时间线
+}
+
+/** 导演台时间线：一组对象轨道 + 播放参数，随节点持久化。 */
+export interface DirectorTimeline {
+  duration: number;        // 总时长(秒)
+  fps: number;             // 采样/导出帧率
+  loop?: boolean;
+  tracks: DirectorTrack[];
+}
+
+/** 导出用结构化运镜数据（喂视频模型/存编排）。 */
+export interface DirectorExportData {
+  duration: number;
+  fps: number;
+  camera: {
+    id?: string;
+    keyframes: { t: number; position: Vec3; target: Vec3; fov: number }[];
+  }[];
+  actors: {
+    id: string;
+    keyframes: { t: number; position: Vec3; rotation: Vec3; scale: number }[];
+  }[];
+}
+
 export interface DirectorNodeData {
   scene?: DirectorScene;     // 3D 场景（编辑器读写、随节点持久化）
+  timeline?: DirectorTimeline; // #327 动画层：运动轨迹/关键帧/回放（随节点持久化）
   imageUrl?: string;          // 渲染截图（本节点的图像产出，供下游作参考图）
   imageStorageKey?: string;
   prompt?: string;            // 可选：场景文字描述/备注
