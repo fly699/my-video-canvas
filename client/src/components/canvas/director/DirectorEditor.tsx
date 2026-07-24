@@ -36,7 +36,7 @@ import { PanoramaSphere } from "./Panorama";
 import { ShotPreview } from "./ShotPreview";
 import { DirectorTimeline as DirectorTimelinePanel } from "./DirectorTimeline";
 import { DirectorKeyframePanel } from "./DirectorKeyframePanel";
-import { makeDefaultTimeline, makeTrack } from "../../../lib/directorTimeline";
+import { makeDefaultTimeline, makeTrack, sampleTransformAt } from "../../../lib/directorTimeline";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -508,6 +508,25 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   useEffect(() => () => { updateNodeData(nodeId, { scene: sceneRef.current, aspectRatio: sceneRef.current.aspectRatio, shots: shotsRef.current, timeline: timelineRef.current }, true); }, [nodeId, updateNodeData]);
 
   const selected = scene.actors.find((a) => a.id === selectedId) ?? null;
+  // #331 动画层批4：某对象是否有动画轨道（有则回放/scrub 时按时间线采样位移，编辑改走关键帧面板）。
+  const isAnimated = useCallback((id: string): boolean => {
+    const t = timeline.tracks.find((x) => x.targetId === id);
+    return !!t && t.channels.length > 0;
+  }, [timeline]);
+  // 采样某角色/道具在当前播放头的显示变换（无轨道 → 静态原值）。
+  const displayActor = useCallback((a: DirectorActor): { position: Vec3; rotation: Vec3; scale: number } => {
+    const t = timeline.tracks.find((x) => x.targetId === a.id);
+    if (!t || t.channels.length === 0) return { position: a.position, rotation: a.rotation, scale: a.scale };
+    const s = sampleTransformAt(t, playbackTime, { position: a.position, rotation: a.rotation, scale: a.scale });
+    return { position: s.position, rotation: s.rotation, scale: s.scale };
+  }, [timeline, playbackTime]);
+  // 采样某机位在当前播放头的显示位姿（无轨道 → 静态原值）。
+  const displayCam = useCallback((c: DirectorCamera): DirectorCamera => {
+    const t = timeline.tracks.find((x) => x.targetId === c.id);
+    if (!t || t.channels.length === 0) return c;
+    const s = sampleTransformAt(t, playbackTime, { position: c.position, focus: c.target, fov: c.fov });
+    return { ...c, position: s.position, target: s.focus, fov: s.fov };
+  }, [timeline, playbackTime]);
   const patchScene = useCallback((p: Partial<DirectorScene>) => setScene((s) => ({ ...s, ...p })), []);
   const patchActor = useCallback((id: string, p: Partial<DirectorActor>) => {
     setScene((s) => ({ ...s, actors: s.actors.map((a) => (a.id === id ? { ...a, ...p } : a)) }));
@@ -1591,11 +1610,11 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {/* #84 3D 机位实体（对齐 LibTV）：全部命名机位在场景中可见/可点选/可拖拽；
                   机位视角下隐藏当前机位自身（正从它眼里看） */}
               {cameras.map((c) => (
-                <CameraGizmo key={c.id} cam={c} active={c.id === activeCameraId}
+                <CameraGizmo key={c.id} cam={displayCam(c)} active={c.id === activeCameraId}
                   hidden={viewMode === "camera" && c.id === activeCameraId}
                   labelsVisible={scene.labelsVisible !== false}
                   onSelect={() => selectCameraFromScene(c.id!)}
-                  bindRef={camSelected && c.id === activeCameraId ? ((el) => setCamGizmoTarget(el)) : undefined} />
+                  bindRef={camSelected && c.id === activeCameraId && !isAnimated(c.id!) ? ((el) => setCamGizmoTarget(el)) : undefined} />
               ))}
               {/* #110 机位动画路径可视化：起点→终点连线 + 终点虚影方块（组名 cam-marker，
                   截图/宫格/入库时随机位实体统一隐藏，不进成片） */}
@@ -1666,17 +1685,40 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {/* 独立人偶 / 导入模型：选中项挂 ref 供拖拽手柄 */}
               {scene.actors.filter((a) => !a.groupId).map((a) => {
                 const sel = !camSelected && a.id === selectedId;
+                const anim = isAnimated(a.id);           // #331 动画态：回放采样 + 不挂 gizmo（改用关键帧面板编辑）
+                const d = displayActor(a);
                 return (
-                  <group key={a.id} name={`actor:${a.id}`} ref={sel ? ((el) => setGizmoTarget(el)) : undefined}
-                    position={a.position} rotation={[a.rotation[0] * Math.PI / 180, a.rotation[1] * Math.PI / 180, a.rotation[2] * Math.PI / 180]} scale={a.scale}
+                  <group key={a.id} name={`actor:${a.id}`} ref={sel && !anim ? ((el) => setGizmoTarget(el)) : undefined}
+                    position={d.position} rotation={[d.rotation[0] * Math.PI / 180, d.rotation[1] * Math.PI / 180, d.rotation[2] * Math.PI / 180]} scale={d.scale}
                     onPointerDown={(e) => { e.stopPropagation(); selectActor(a.id); }}>
                     {a.prim ? <PropModel actor={a} selected={sel} /> : a.glbUrl ? <GlbModel actor={a} selected={sel} /> : <HumanModel actor={a} selected={sel} />}
                   </group>
                 );
               })}
               </group>
-              {/* 拖拽手柄：选中独立人偶时可在画面里直接移动/旋转/缩放 */}
-              {selected && !selected.groupId && gizmoTarget && (
+              {/* #331 运动轨迹折线：选中的动画角色（独立）在整段时间线上的位置采样折线（紫色）。
+                  顶层 name="cam-marker" → 截图/入库时随辅助几何统一隐藏；复刻 ACTORS_GROUP 的
+                  场景平移/缩放变换以对齐坐标。 */}
+              {selected && !selected.groupId && isAnimated(selected.id) && (() => {
+                const tr = timeline.tracks.find((x) => x.targetId === selected.id);
+                if (!tr) return null;
+                const N = 48;
+                const pts = new Float32Array((N + 1) * 3);
+                for (let i = 0; i <= N; i++) {
+                  const s = sampleTransformAt(tr, (i / N) * Math.max(0.001, timeline.duration), { position: selected.position, rotation: selected.rotation, scale: selected.scale });
+                  pts[i * 3] = s.position[0]; pts[i * 3 + 1] = s.position[1]; pts[i * 3 + 2] = s.position[2];
+                }
+                return (
+                  <group name="cam-marker" position={[scene.sceneOffsetX ?? 0, scene.sceneOffsetY ?? 0, scene.sceneOffsetZ ?? 0]} scale={scene.sceneScale ?? 1}>
+                    <line>
+                      <bufferGeometry><bufferAttribute attach="attributes-position" args={[pts, 3]} /></bufferGeometry>
+                      <lineBasicMaterial color="#8b5cf6" transparent opacity={0.75} />
+                    </line>
+                  </group>
+                );
+              })()}
+              {/* 拖拽手柄：选中独立人偶时可在画面里直接移动/旋转/缩放（动画态改用关键帧面板编辑，不挂 gizmo） */}
+              {selected && !selected.groupId && !isAnimated(selected.id) && gizmoTarget && (
                 <TransformControls
                   object={gizmoTarget} mode={gizmoMode} size={0.8}
                   translationSnap={snap ? 0.25 : undefined}
