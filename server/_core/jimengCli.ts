@@ -94,6 +94,9 @@ function spawnDreamina(args: string[], timeoutMs: number): Promise<SpawnResult> 
       child = spawn(cmd, finalArgs, {
         cwd: tmpdir(), env: process.env, stdio: ["ignore", "pipe", "pipe"],
         detached: process.platform !== "win32",
+        // Windows：隐藏子进程控制台窗口——否则每次 spawn wsl/dreamina（提交/轮询/检测）
+        // 都会弹一个黑框（轮询期尤其烦）。windowsHide 对非 Windows 平台无副作用。
+        windowsHide: true,
       });
     } catch (e) {
       return resolve({ stdout: "", stderr: "", code: null, timedOut: false, spawnError: e instanceof Error ? e.message : String(e) });
