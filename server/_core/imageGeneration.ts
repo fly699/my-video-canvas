@@ -3,6 +3,7 @@ import { ENV } from "./env";
 import { generateHiggsfieldImage, type HiggsfieldImageModel } from "./higgsfield";
 import { isImagePersistenceEnabled } from "./storageConfig";
 import { isKieImageModel, generateImageKie } from "./kieImage";
+import { isJimengImageProvider, submitJimengImage, checkJimengImageStatus } from "./jimengCli";
 
 export type GenerateImageOptions = {
   prompt: string;
@@ -34,6 +35,11 @@ export type GenerateImageOptions = {
   // kie.ai: the resolved key (router owns kie auth via resolveKieKey) — only set
   // for kie_* models, ignored by all other providers.
   kieApiKey?: string;
+  // #337 金泰（dreamina）CLI 生图参数（仅 jimeng_* image provider 用）。
+  jimengImgModelVersion?: string;
+  jimengImgRatio?: string;
+  jimengImgResolutionType?: string;
+  jimengImgGenerateNum?: number;
 };
 
 export type GenerateImageResponse = {
@@ -46,6 +52,8 @@ export type GenerateImageResponse = {
   sourceUrl?: string;
   sourceUrls?: string[];
   sourceAt?: number; // ms epoch when generated
+  // #337 金泰 CLI 生图本次真实积分消耗（credit_count 回显）；供 router 记录实测计价。
+  creditCount?: number;
 };
 
 const POYO_BASE = "https://api.poyo.ai";
@@ -346,9 +354,38 @@ async function generateImageForge(options: GenerateImageOptions): Promise<Genera
   return { url };
 }
 
+// #337 金泰（dreamina）CLI 生图：本机 CLI 异步任务制，但图像链路整体同步——这里在请求内
+// 提交 + 轮询 query_result 直到出图（与 poyo/kie 图像的「请求内 poll」同构）。
+async function generateImageJimeng(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  const provider = options.model!;
+  const refs = (options.originalImages ?? []).map((o) => o.url).filter((u): u is string => Boolean(u));
+  const { externalTaskId } = await submitJimengImage({
+    provider,
+    prompt: options.prompt,
+    referenceImageUrls: refs,
+    params: {
+      model_version: options.jimengImgModelVersion,
+      ratio: options.jimengImgRatio,
+      resolution_type: options.jimengImgResolutionType,
+      generate_num: options.jimengImgGenerateNum,
+    },
+  });
+  for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    const st = await checkJimengImageStatus(externalTaskId);
+    if (st.status === "finished" && st.resultImageUrls?.length) {
+      return { url: st.resultImageUrls[0], urls: st.resultImageUrls, creditCount: st.creditCount };
+    }
+    if (st.status === "failed") throw new Error(st.errorMessage ?? "金泰生图失败");
+  }
+  throw new Error("金泰生图超时（任务可能仍在生成，可稍后用 dreamina query_result 手动取回）");
+}
+
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   // Route by explicit model selection
   if (options.model === "manus_forge") return generateImageForge(options);
+  // #337 金泰 CLI 生图（本机桥接，jimeng_* image provider）
+  if (options.model && isJimengImageProvider(options.model)) return generateImageJimeng(options);
   // All Poyo image models (incl. legacy wire aliases) resolve via POYO_IMAGE_SPECS.
   if (options.model && (options.model.startsWith("poyo_") || options.model in POYO_IMAGE_SPECS)) {
     return generateImagePoyo(options);

@@ -34,9 +34,9 @@ export type ImageModelMeta = {
   value: string;
   label: string;
   desc: string;
-  group: "Manus" | "Poyo" | "Higgsfield" | "Kie";
+  group: "Manus" | "Poyo" | "Higgsfield" | "Kie" | "金泰";
   family: string;
-  provider: "Manus" | "Poyo" | "Higgsfield" | "Kie";
+  provider: "Manus" | "Poyo" | "Higgsfield" | "Kie" | "金泰";
   cost?: number;
   costNote?: string;
   caps?: string[];
@@ -142,6 +142,11 @@ export const IMAGE_MODELS: readonly ImageModelMeta[] = [
   { value: "kie_nano_banana_2_lite",     label: "Nano Banana 2 Lite",      desc: "Google Lite · 廉价",  group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "4 点/张", caps: ["T2I"] },
   { value: "kie_nano_banana_2_lite_i2i", label: "Nano Banana 2 Lite 编辑", desc: "图生图 · ≤10图",      group: "Kie", family: "Nano Banana", provider: "Kie", costNote: "4 点/张", caps: ["I2I", "编辑"], requiresRef: true },
   { value: "kie_seedream_5pro_i2i",      label: "Seedream 5 Pro 编辑",     desc: "字节旗舰 · 图生图",   group: "Kie", family: "Seedream",    provider: "Kie", costNote: "7 点/张", caps: ["I2I", "编辑"], requiresRef: true },
+
+  // ── #337 金泰（dreamina）CLI 本机桥接生图（需管理员装 dreamina + 登录 + 后台开启；按金泰积分计费，实测自学习）──
+  { value: "jimeng_text2image",    label: "金泰 文生图",   desc: "Dreamina · 3.0–5.0 多档 · 1-4K", group: "金泰", family: "Dreamina", provider: "金泰", costNote: "本机 CLI · 金泰积分", caps: ["T2I", "多版本", "比例", "1-4K", "批量"] },
+  { value: "jimeng_image2image",   label: "金泰 图生图",   desc: "参考图编辑 · 需参考图（≤10张）",   group: "金泰", family: "Dreamina", provider: "金泰", costNote: "本机 CLI · 金泰积分", caps: ["I2I", "编辑", "多图参考", "1-4K"], requiresRef: true },
+  { value: "jimeng_image_upscale", label: "金泰 图片超清", desc: "2K/4K/8K 放大 · 需参考图",         group: "金泰", family: "Dreamina", provider: "金泰", costNote: "本机 CLI · 金泰积分", caps: ["超清放大", "2K/4K/8K"], requiresRef: true },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -268,11 +273,11 @@ export const VIDEO_MODELS: readonly VideoModelMeta[] = [
   { value: "hf_dop_standard",         label: "DoP Standard",        group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "运镜"] },
   { value: "hf_dop_lite",             label: "DoP Lite",            group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
   { value: "hf_dop_turbo",            label: "DoP Turbo",           group: "Higgsfield", family: "DoP", costLabel: "HF 计费",    caps: ["I2V", "4s"] },
-  // ── #328 即梦（dreamina）CLI 本机桥接（需管理员在部署机安装 dreamina + 登录 + 后台开启；按即梦积分计费）──
-  { value: "jimeng_text2video",       label: "即梦 文生视频 · Seedance 2.0",   group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["T2V", "Seedance 2.0", "比例", "分辨率", "时长"] },
-  { value: "jimeng_image2video",      label: "即梦 图生视频 · Seedance 2.0",   group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["I2V", "Seedance 2.0", "首帧", "分辨率", "时长"] },
-  { value: "jimeng_frames2video",     label: "即梦 首尾帧视频 · Seedance 2.0", group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["首尾帧", "Seedance 2.0", "分辨率", "时长"] },
-  { value: "jimeng_multiframe2video", label: "即梦 多帧视频（智能多帧）",       group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["多帧", "转场", "时长"] },
-  { value: "jimeng_multimodal2video", label: "即梦 全能参考视频 · Seedance 2.0", group: "即梦", family: "Dreamina", costLabel: "本机 CLI · 即梦积分", caps: ["图/视频/音频参考", "Seedance 2.0", "时长"] },
+  // ── #328/#337 金泰（dreamina）CLI 本机桥接（需管理员在部署机安装 dreamina + 登录 + 后台开启；按金泰积分计费）──
+  { value: "jimeng_text2video",       label: "金泰 文生视频 · Seedance 2.0",   group: "金泰", family: "Dreamina", costLabel: "本机 CLI · 金泰积分", caps: ["T2V", "Seedance 2.0", "比例", "分辨率", "时长"] },
+  { value: "jimeng_image2video",      label: "金泰 图生视频 · Seedance 2.0",   group: "金泰", family: "Dreamina", costLabel: "本机 CLI · 金泰积分", caps: ["I2V", "Seedance 2.0", "首帧", "分辨率", "时长"] },
+  { value: "jimeng_frames2video",     label: "金泰 首尾帧视频 · Seedance 2.0", group: "金泰", family: "Dreamina", costLabel: "本机 CLI · 金泰积分", caps: ["首尾帧", "Seedance 2.0", "分辨率", "时长"] },
+  { value: "jimeng_multiframe2video", label: "金泰 多帧视频（智能多帧）",       group: "金泰", family: "Dreamina", costLabel: "本机 CLI · 金泰积分", caps: ["多帧", "转场", "时长"] },
+  { value: "jimeng_multimodal2video", label: "金泰 全能参考视频 · Seedance 2.0", group: "金泰", family: "Dreamina", costLabel: "本机 CLI · 金泰积分", caps: ["图/视频/音频参考", "Seedance 2.0", "时长"] },
   { value: "mock",                    label: "Mock 测试",           group: "Dev",        family: "Dev", costLabel: "免费",       caps: ["测试"] },
 ] as const;

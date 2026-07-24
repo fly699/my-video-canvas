@@ -572,11 +572,11 @@ const JIMENG_VIDEO_RES_MF: ParamDef = {
   options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }],
 };
 const JIMENG_DURATION: ParamDef = {
-  type: "number", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5,
+  type: "range", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5, unit: "s",
 };
 // 多帧 2 图快捷转场时长 1-8s（默认 3）。
 const JIMENG_DURATION_MF: ParamDef = {
-  type: "number", key: "duration", label: "转场时长（秒）", min: 1, max: 8, step: 1, default: 3,
+  type: "range", key: "duration", label: "转场时长（秒）", min: 1, max: 8, step: 1, default: 3, unit: "s",
 };
 // seedance2.0 家族（5 档，各视频命令共用基集）。
 const SEEDANCE20_FAMILY = [

@@ -16,11 +16,17 @@ export interface JimengPriceEntry {
   updatedAt: number;    // ms
 }
 
-/** 计价签名：provider + 影响价格的参数（模型版本/分辨率/时长）。缺省值归一，保证同组合同签名。 */
+/** 计价签名：provider + 影响价格的参数（模型版本/分辨率/时长）。缺省值归一，保证同组合同签名。
+ *  #337 兼容生图：分辨率取 video_resolution（视频）或 resolution_type（生图）；生图另按
+ *  generate_num 追加 `|nN` 段（同分辨率不同张数价不同）。视频参数无 generate_num → 段不追加，
+ *  签名格式与原来逐字节一致（现有 video 计价与测试不受影响）。 */
 export function jimengPriceSignature(provider: string, params?: Record<string, unknown> | null): string {
   const mv = String((params?.model_version ?? "") || "");
-  const res = String((params?.video_resolution ?? "") || "");
+  const res = String((params?.video_resolution ?? params?.resolution_type ?? "") || "");
   const durRaw = Number(params?.duration);
   const dur = Number.isFinite(durRaw) && durRaw > 0 ? Math.round(durRaw) : 0;
-  return `${provider}|${mv}|${res}|${dur}`;
+  const gnRaw = Number(params?.generate_num);
+  const gn = Number.isFinite(gnRaw) && gnRaw > 0 ? Math.round(gnRaw) : 0;
+  const base = `${provider}|${mv}|${res}|${dur}`;
+  return gn > 0 ? `${base}|n${gn}` : base;
 }

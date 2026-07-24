@@ -1897,7 +1897,7 @@ export async function recordJimengPrice(
   if (!provider || !(credit > 0)) return; // 无效积分不记
   const signature = jimengPriceSignature(provider, params);
   const modelVersion = String((params?.model_version ?? "") || "");
-  const resolution = String((params?.video_resolution ?? "") || "");
+  const resolution = String((params?.video_resolution ?? params?.resolution_type ?? "") || ""); // #337 兼容生图
   const durRaw = Number(params?.duration);
   const duration = Number.isFinite(durRaw) && durRaw > 0 ? Math.round(durRaw) : 0;
   const db = await getDb();
