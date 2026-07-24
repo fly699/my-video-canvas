@@ -37,7 +37,8 @@ import { ShotPreview } from "./ShotPreview";
 import { DirectorTimeline as DirectorTimelinePanel } from "./DirectorTimeline";
 import { DirectorKeyframePanel } from "./DirectorKeyframePanel";
 import { DirectorCameraPresets } from "./DirectorCameraPresets";
-import { makeDefaultTimeline, makeTrack, sampleTransformAt, presetMoveToKeyframes, applyPreset, updateTrackIn, timelineToExportData, CAMERA_PRESET_LABELS, type CameraPreset } from "../../../lib/directorTimeline";
+import { makeDefaultTimeline, makeTrack, sampleTransformAt, samplePath, presetMoveToKeyframes, applyPreset, updateTrackIn, timelineToExportData, CAMERA_PRESET_LABELS, type CameraPreset } from "../../../lib/directorTimeline";
+import { describeMotionExport } from "../../../lib/directorMotionDescribe";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
   const r = new FileReader();
@@ -526,25 +527,32 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   useEffect(() => () => { updateNodeData(nodeId, { scene: sceneRef.current, aspectRatio: sceneRef.current.aspectRatio, shots: shotsRef.current, timeline: timelineRef.current }, true); }, [nodeId, updateNodeData]);
 
   const selected = scene.actors.find((a) => a.id === selectedId) ?? null;
-  // #331 动画层批4：某对象是否有动画轨道（有则回放/scrub 时按时间线采样位移，编辑改走关键帧面板）。
+  // #331 动画层批4：某对象是否有动画（关键帧通道 或 #341 运动轨迹 path ≥2 点）。
+  // 有则回放/scrub 时按时间线采样位移，编辑改走关键帧面板。此前只认 channels——
+  // path-only 轨道被当静态、播放不动（真机测出的 bug）。
   const isAnimated = useCallback((id: string): boolean => {
     const t = timeline.tracks.find((x) => x.targetId === id);
-    return !!t && t.channels.length > 0;
+    return !!t && (t.channels.length > 0 || (t.path?.points.length ?? 0) >= 2);
   }, [timeline]);
+  // 轨道采样 span：clip 优先，否则整条时间线。此前不传 span → path 轨道按批1 默认
+  // [0,1] 一秒跑完整条路径（bug）。
+  const trackSpan = useCallback((t: { clip?: { start: number; end: number } }): [number, number] => (
+    t.clip ? [t.clip.start, t.clip.end] : [0, Math.max(0.001, timeline.duration)]
+  ), [timeline.duration]);
   // 采样某角色/道具在当前播放头的显示变换（无轨道 → 静态原值）。
   const displayActor = useCallback((a: DirectorActor): { position: Vec3; rotation: Vec3; scale: number } => {
     const t = timeline.tracks.find((x) => x.targetId === a.id);
-    if (!t || t.channels.length === 0) return { position: a.position, rotation: a.rotation, scale: a.scale };
-    const s = sampleTransformAt(t, playbackTime, { position: a.position, rotation: a.rotation, scale: a.scale });
+    if (!t || (t.channels.length === 0 && (t.path?.points.length ?? 0) < 2)) return { position: a.position, rotation: a.rotation, scale: a.scale };
+    const s = sampleTransformAt(t, playbackTime, { position: a.position, rotation: a.rotation, scale: a.scale }, { span: trackSpan(t) });
     return { position: s.position, rotation: s.rotation, scale: s.scale };
-  }, [timeline, playbackTime]);
+  }, [timeline, playbackTime, trackSpan]);
   // 采样某机位在当前播放头的显示位姿（无轨道 → 静态原值）。
   const displayCam = useCallback((c: DirectorCamera): DirectorCamera => {
     const t = timeline.tracks.find((x) => x.targetId === c.id);
-    if (!t || t.channels.length === 0) return c;
-    const s = sampleTransformAt(t, playbackTime, { position: c.position, focus: c.target, fov: c.fov });
+    if (!t || (t.channels.length === 0 && (t.path?.points.length ?? 0) < 2)) return c;
+    const s = sampleTransformAt(t, playbackTime, { position: c.position, focus: c.target, fov: c.fov }, { span: trackSpan(t) });
     return { ...c, position: s.position, target: s.focus, fov: s.fov };
-  }, [timeline, playbackTime]);
+  }, [timeline, playbackTime, trackSpan]);
   // #332 批5：把运镜预设合入「当前活动机位」的轨道（replace 覆盖同通道 / append 接末尾）。
   // base 取该机位当前位姿（含 fov，供变焦推算保持主体大小的目标 FOV）；时长用时间线总时长。
   const applyCameraPreset = useCallback((preset: CameraPreset, mode: "replace" | "append") => {
@@ -801,6 +809,42 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     });
   }, []);
 
+  // ── #341 角色运动轨迹绘制：选中角色 → 「绘制轨迹」→ 点击地面逐点加控制点 →
+  //   「完成」写入该角色轨道 path（catmullrom · 朝向沿行进方向）+ clip=整条时间线，
+  //   播放即沿轨迹行走（sampleTransformAt 批1 已支持 path，此前一直缺创建入口）。
+  const [pathDraw, setPathDraw] = useState<{ actorId: string; points: Vec3[] } | null>(null);
+  const startPathDraw = useCallback(() => {
+    const a = sceneRef.current.actors.find((x) => x.id === selectedId && !x.groupId);
+    if (!a) return;
+    // 起点 = 角色当前位置（路径从脚下出发），后续点击地面追加途经点。
+    setPathDraw({ actorId: a.id, points: [[a.position[0], a.position[1], a.position[2]]] });
+    setPlaying(false);
+  }, [selectedId]);
+  const addPathPoint = useCallback((wx: number, wz: number) => {
+    // 世界坐标 → 场景组局部坐标（与 placeActorAt 同换算，全景缩放/平移下落点仍踩点击处）。
+    const s = sceneRef.current;
+    const S = s.sceneScale ?? 1;
+    const lx = (wx - (s.sceneOffsetX ?? 0)) / S, lz = (wz - (s.sceneOffsetZ ?? 0)) / S;
+    setPathDraw((p) => (p ? { ...p, points: [...p.points, [Number(lx.toFixed(2)), p.points[0][1], Number(lz.toFixed(2))]] } : p));
+  }, []);
+  const finishPathDraw = useCallback((commit: boolean) => {
+    setPathDraw((p) => {
+      if (p && commit && p.points.length >= 2) {
+        setTimeline((tl) => updateTrackIn(tl, p.actorId, "actor", (t) => ({
+          ...t,
+          path: { points: p.points, kind: "catmullrom", orient: "velocity" },
+          clip: { start: 0, end: Math.max(0.001, timelineRef.current.duration) },
+        })));
+        toast.success(`已绘制轨迹（${p.points.length} 个点）——播放即沿轨迹行走`);
+      }
+      return null;
+    });
+  }, []);
+  const clearActorPath = useCallback((actorId: string) => {
+    setTimeline((tl) => updateTrackIn(tl, actorId, "actor", (t) => ({ ...t, path: undefined, clip: undefined })));
+    toast.success("已清除轨迹");
+  }, []);
+
   // #71 多物体：几何道具（与人偶同链路：选中/变换/编组/控制图）
   const addProp = (prim: PropPrim) => {
     setScene((s) => {
@@ -919,8 +963,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     a.href = URL.createObjectURL(blob); a.download = "director-motion.json"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     updateNodeData(nodeId, { motionExport: data }, true); // 存入节点，连线/编排可读
+    // #341 附带中文运镜提示词复制到剪贴板（可直接粘进图生视频提示词）。
+    const s = sceneRef.current;
+    const camNames: Record<string, string> = {};
+    for (const c of (s.cameras ?? [s.camera])) if (c?.id) camNames[c.id] = c.name ?? "机位";
+    const prompt = describeMotionExport(data, camNames);
+    navigator.clipboard?.writeText(prompt).catch(() => { /* 剪贴板不可用则仅下载 JSON */ });
     const progNote = data.program ? ` · 节目流 ${data.program.cuts.length} 切点` : "";
-    toast.success(`已导出运镜数据（${data.camera.length} 机位轨 · ${data.actors.length} 对象轨${progNote} · ${data.fps}fps · ${data.duration}s）`);
+    toast.success(`已导出运镜数据（${data.camera.length} 机位轨 · ${data.actors.length} 对象轨${progNote}）+ 运镜提示词已复制`);
   };
 
   // #85 提交入口只剩「机位视角拖拽瞄准」一条路（CameraRig 内已按 locked 门控）。
@@ -1767,11 +1817,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                 position={[0, -0.001, 0]}
                 onClick={(e) => {
                   if (e.delta > 5 || e.intersections[0]?.eventObject !== e.eventObject) return;
+                  // #341 轨迹绘制模式：单击地面 = 追加途经点（不取消选中）。
+                  if (pathDraw) { e.stopPropagation(); addPathPoint(e.point.x, e.point.z); return; }
                   setSelectedId(null); setSelectedGroupId(null); setSelectedLightId(null);
                 }}
                 onDoubleClick={(e) => {
                   if (e.delta > 5 || e.intersections[0]?.eventObject !== e.eventObject) return;
                   e.stopPropagation();
+                  if (pathDraw) return; // 绘制中不放人偶
                   placeActorAt(e.point.x, e.point.z);
                 }}
               >
@@ -1810,13 +1863,14 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
               {/* #331 运动轨迹折线：选中的动画角色（独立）在整段时间线上的位置采样折线（紫色）。
                   顶层 name="cam-marker" → 截图/入库时随辅助几何统一隐藏；复刻 ACTORS_GROUP 的
                   场景平移/缩放变换以对齐坐标。 */}
-              {selected && !selected.groupId && isAnimated(selected.id) && (() => {
+              {selected && !selected.groupId && isAnimated(selected.id) && !pathDraw && (() => {
                 const tr = timeline.tracks.find((x) => x.targetId === selected.id);
                 if (!tr) return null;
                 const N = 48;
                 const pts = new Float32Array((N + 1) * 3);
                 for (let i = 0; i <= N; i++) {
-                  const s = sampleTransformAt(tr, (i / N) * Math.max(0.001, timeline.duration), { position: selected.position, rotation: selected.rotation, scale: selected.scale });
+                  // #341：传 span（clip 或整条时间线），path 轨道才能画出完整路径曲线
+                  const s = sampleTransformAt(tr, (i / N) * Math.max(0.001, timeline.duration), { position: selected.position, rotation: selected.rotation, scale: selected.scale }, { span: trackSpan(tr) });
                   pts[i * 3] = s.position[0]; pts[i * 3 + 1] = s.position[1]; pts[i * 3 + 2] = s.position[2];
                 }
                 return (
@@ -1825,6 +1879,43 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                       <bufferGeometry><bufferAttribute attach="attributes-position" args={[pts, 3]} /></bufferGeometry>
                       <lineBasicMaterial color="#8b5cf6" transparent opacity={0.75} />
                     </line>
+                    {/* path 控制点标记（有轨迹时可见，便于对照/重绘） */}
+                    {tr.path?.points.map((p, i) => (
+                      <mesh key={i} position={p}>
+                        <sphereGeometry args={[0.06, 12, 12]} />
+                        <meshBasicMaterial color="#8b5cf6" />
+                      </mesh>
+                    ))}
+                  </group>
+                );
+              })()}
+              {/* #341 轨迹绘制中：控制点小球 + Catmull-Rom 实时预览曲线（绿色） */}
+              {pathDraw && (() => {
+                const pts = pathDraw.points;
+                let curve: Float32Array | null = null;
+                if (pts.length >= 2) {
+                  const N = 64;
+                  curve = new Float32Array((N + 1) * 3);
+                  const previewPath = { points: pts, kind: "catmullrom" as const, orient: "free" as const };
+                  for (let i = 0; i <= N; i++) {
+                    const p = samplePath(previewPath, i / N);
+                    curve[i * 3] = p[0]; curve[i * 3 + 1] = p[1]; curve[i * 3 + 2] = p[2];
+                  }
+                }
+                return (
+                  <group name="cam-marker" position={[scene.sceneOffsetX ?? 0, scene.sceneOffsetY ?? 0, scene.sceneOffsetZ ?? 0]} scale={scene.sceneScale ?? 1}>
+                    {pts.map((p, i) => (
+                      <mesh key={i} position={[p[0], p[1] + 0.02, p[2]]}>
+                        <sphereGeometry args={[0.08, 12, 12]} />
+                        <meshBasicMaterial color={i === 0 ? "#f59e0b" : "#22c55e"} />
+                      </mesh>
+                    ))}
+                    {curve && (
+                      <line>
+                        <bufferGeometry><bufferAttribute attach="attributes-position" args={[curve, 3]} /></bufferGeometry>
+                        <lineBasicMaterial color="#22c55e" transparent opacity={0.9} />
+                      </line>
+                    )}
                   </group>
                 );
               })()}
@@ -1953,6 +2044,41 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
                   onChange={setTimeline}
                   onSeek={(t) => { setPlaying(false); setPlaybackTime(t); }}
                 />
+              </div>
+            );
+          })()}
+          {/* #341 角色运动轨迹：选中独立角色/道具时可绘制地面行走路径（点击地面逐点） */}
+          {!camSelected && selected && !selected.groupId && (() => {
+            const tr = timeline.tracks.find((x) => x.targetId === selected.id);
+            const hasPath = (tr?.path?.points.length ?? 0) >= 2;
+            const drawing = pathDraw?.actorId === selected.id;
+            return (
+              <div style={panel}>
+                <div style={ttl}>运动轨迹</div>
+                {!drawing ? (
+                  <>
+                    <button onClick={startPathDraw} style={{ ...headBtn(hasPath), justifyContent: "center", width: "100%", height: 30 }}>
+                      <Crosshair size={13} /> {hasPath ? "重绘轨迹" : "绘制轨迹"}
+                    </button>
+                    {hasPath && (
+                      <button onClick={() => clearActorPath(selected.id)} style={{ ...headBtn(), justifyContent: "center", width: "100%", height: 28, marginTop: 6 }}>
+                        <Trash2 size={12} /> 清除轨迹
+                      </button>
+                    )}
+                    <p style={{ fontSize: 10.5, color: "var(--c-t4)", marginTop: 6, lineHeight: 1.5 }}>
+                      {hasPath ? "该角色沿轨迹行走（朝向自动沿路径方向）。播放查看。" : "点「绘制轨迹」后在地面上依次点击落点，角色将沿曲线行走。"}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 11, color: "oklch(0.8 0.14 150)", marginBottom: 6 }}>绘制中：地面点击加点（已 {pathDraw!.points.length} 点）</div>
+                    <div className="flex gap-2">
+                      <button onClick={() => finishPathDraw(true)} disabled={pathDraw!.points.length < 2}
+                        style={{ ...headBtn(true), flex: 1, justifyContent: "center", height: 30, opacity: pathDraw!.points.length < 2 ? 0.5 : 1 }}>完成</button>
+                      <button onClick={() => finishPathDraw(false)} style={{ ...headBtn(), flex: 1, justifyContent: "center", height: 30 }}>取消</button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })()}
