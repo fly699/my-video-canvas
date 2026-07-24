@@ -12,6 +12,25 @@ export const COVERAGE_GEN_TYPES: readonly string[] = [
 export interface CoverageEdge { source: string; target: string }
 export interface CoverageNode { id: string; nodeType: string; payload?: unknown }
 
+/** 该角色接入的下游【生成节点】id 列表（唯一、按边序）——供「点覆盖徽标聚焦这些镜头」用。 */
+export function coveredNodeIds(
+  characterId: string,
+  edges: CoverageEdge[],
+  nodes: CoverageNode[],
+): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of edges) {
+    if (e.source !== characterId || seen.has(e.target)) continue;
+    const t = byId.get(e.target);
+    if (!t || !COVERAGE_GEN_TYPES.includes(t.nodeType)) continue;
+    seen.add(e.target);
+    out.push(e.target);
+  }
+  return out;
+}
+
 export function countCharacterCoverage(
   characterId: string,
   mainRefUrl: string | undefined | null,
