@@ -546,11 +546,13 @@ const POYO_WAN_ANIMATE_PARAMS: ParamDef[] = [
     options: [{ value: "480p", label: "480p" }, { value: "580p", label: "580p" }, { value: "720p", label: "720p" }] },
 ];
 
-// ── #328 即梦（dreamina）CLI 视频参数（本机桥接型）──────────────────────────
-// ⚠️ 待真机校准：以下枚举取自官方接入文档（589e97ff）的示例值——ratio 1:1/16:9、
-//   video_resolution 720p、duration 3/5、model_version seedance2.0fast。完整枚举
-//   （更多比例/分辨率/时长档/model_version 列表）需在装了 dreamina 的机器上跑
-//   `dreamina <子命令> -h` 确认后补齐；CLI flag 名见 server/_core/jimengCli.ts。
+// ── #328/#333 即梦（dreamina）CLI 视频参数（本机桥接型）─────────────────────
+// ✅ 已按真机官方 `dreamina <子命令> -h` 精确校准（#333，用户 Windows/WSL 实测）。
+//   flag 名见 server/_core/jimengCli.ts。各命令 model_version 枚举/默认不同：
+//   text2video 默认 seedance2.0fast；image2video/frames2video/multimodal2video 默认
+//   seedance2.0_vip（i2v/frames 另含 seedance1.x）；multiframe2video model_version 固定不可配。
+//   video_resolution：全模型 720p，仅 seedance2.0_vip 支持 1080p/4k（多帧仅 720p/1080p）。
+//   duration：4-15s（多帧为分段时长 1-8s）。ratio：6 档，仅 text2video/multimodal2video 可设。
 const JIMENG_RATIO: ParamDef = {
   type: "select", key: "ratio", label: "比例", default: "16:9",
   options: [
@@ -559,23 +561,59 @@ const JIMENG_RATIO: ParamDef = {
     { value: "3:4", label: "3:4 竖屏" }, { value: "21:9", label: "21:9 超宽" },
   ],
 };
+// 720p 全模型可用；1080p/4k 仅 seedance2.0_vip（后端按所选模型校验，非法即拒）。
 const JIMENG_VIDEO_RES: ParamDef = {
+  type: "select", key: "video_resolution", label: "分辨率", default: "720p",
+  options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p（限 VIP 模型）" }, { value: "4k", label: "4K（限 VIP 模型）" }],
+};
+// 多帧仅 720p/1080p。
+const JIMENG_VIDEO_RES_MF: ParamDef = {
   type: "select", key: "video_resolution", label: "分辨率", default: "720p",
   options: [{ value: "720p", label: "720p" }, { value: "1080p", label: "1080p" }],
 };
 const JIMENG_DURATION: ParamDef = {
-  type: "select", key: "duration", label: "时长（秒）", default: 5,
-  options: [{ value: 3, label: "3 秒" }, { value: 5, label: "5 秒" }, { value: 10, label: "10 秒" }],
+  type: "number", key: "duration", label: "时长（秒）", min: 4, max: 15, step: 1, default: 5,
 };
-const JIMENG_MODEL_VER: ParamDef = {
+// 多帧 2 图快捷转场时长 1-8s（默认 3）。
+const JIMENG_DURATION_MF: ParamDef = {
+  type: "number", key: "duration", label: "转场时长（秒）", min: 1, max: 8, step: 1, default: 3,
+};
+// seedance2.0 家族（5 档，各视频命令共用基集）。
+const SEEDANCE20_FAMILY = [
+  { value: "seedance2.0", label: "Seedance 2.0" },
+  { value: "seedance2.0fast", label: "Seedance 2.0 Fast" },
+  { value: "seedance2.0_vip", label: "Seedance 2.0 VIP（支持 1080p/4K）" },
+  { value: "seedance2.0fast_vip", label: "Seedance 2.0 Fast VIP" },
+  { value: "seedance2.0mini", label: "Seedance 2.0 Mini" },
+];
+const JIMENG_MODEL_T2V: ParamDef = {
   type: "select", key: "model_version", label: "模型版本", default: "seedance2.0fast",
-  options: [{ value: "seedance2.0fast", label: "Seedance 2.0 Fast" }],
+  options: [...SEEDANCE20_FAMILY],
 };
-const JIMENG_T2V_PARAMS: ParamDef[] = [JIMENG_RATIO, JIMENG_VIDEO_RES, JIMENG_DURATION];
-const JIMENG_I2V_PARAMS: ParamDef[] = [JIMENG_VIDEO_RES, JIMENG_DURATION];
-const JIMENG_FRAMES_PARAMS: ParamDef[] = [JIMENG_VIDEO_RES, JIMENG_DURATION, JIMENG_MODEL_VER];
-const JIMENG_MULTIFRAME_PARAMS: ParamDef[] = [JIMENG_DURATION];
-const JIMENG_MULTIMODAL_PARAMS: ParamDef[] = [JIMENG_DURATION, JIMENG_MODEL_VER];
+const JIMENG_MODEL_I2V: ParamDef = {
+  type: "select", key: "model_version", label: "模型版本", default: "seedance2.0_vip",
+  options: [
+    { value: "seedance1.0fast", label: "Seedance 1.0 Fast（时长 5-10s）" },
+    { value: "seedance1.5pro", label: "Seedance 1.5 Pro（时长 5-12s）" },
+    ...SEEDANCE20_FAMILY,
+  ],
+};
+const JIMENG_MODEL_FRAMES: ParamDef = {
+  type: "select", key: "model_version", label: "模型版本", default: "seedance2.0_vip",
+  options: [
+    { value: "seedance1.5pro", label: "Seedance 1.5 Pro（时长 5-12s）" },
+    ...SEEDANCE20_FAMILY,
+  ],
+};
+const JIMENG_MODEL_MM: ParamDef = {
+  type: "select", key: "model_version", label: "模型版本", default: "seedance2.0_vip",
+  options: [...SEEDANCE20_FAMILY],
+};
+const JIMENG_T2V_PARAMS: ParamDef[] = [JIMENG_MODEL_T2V, JIMENG_RATIO, JIMENG_VIDEO_RES, JIMENG_DURATION];
+const JIMENG_I2V_PARAMS: ParamDef[] = [JIMENG_MODEL_I2V, JIMENG_VIDEO_RES, JIMENG_DURATION];
+const JIMENG_FRAMES_PARAMS: ParamDef[] = [JIMENG_MODEL_FRAMES, JIMENG_VIDEO_RES, JIMENG_DURATION];
+const JIMENG_MULTIFRAME_PARAMS: ParamDef[] = [JIMENG_VIDEO_RES_MF, JIMENG_DURATION_MF];
+const JIMENG_MULTIMODAL_PARAMS: ParamDef[] = [JIMENG_MODEL_MM, JIMENG_RATIO, JIMENG_VIDEO_RES, JIMENG_DURATION];
 
 export const PROVIDER_PARAMS: Record<string, ParamDef[]> = {
   poyo_seedance: [
