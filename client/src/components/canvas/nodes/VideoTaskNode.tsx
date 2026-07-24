@@ -29,7 +29,7 @@ import { RefImageReachabilityBadge, RefImageSwitchButton, useRefImageGuard, prov
 import { ModelPicker } from "../ModelPicker";
 import { confirmRegenerate } from "@/lib/confirmRegenerate";
 import { SyncNodesDialog } from "../SyncNodesDialog";
-import { platformBadge, VIDEO_MODELS } from "../../../lib/models";
+import { platformBadge, VIDEO_MODELS, modelGroupOrder } from "../../../lib/models";
 import { estimateVideoCost, costEstimateLabel } from "../../../lib/costEstimate";
 import { ImageLightbox } from "../ImageLightbox";
 import { WatermarkedVideo } from "@/components/WatermarkedVideo";
@@ -1358,7 +1358,7 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {/* 并行模式各 provider 参数互不相同，统一用各自默认参数（不沿用上方调过的 params）。 */}
             <p style={{ fontSize: 9.5, color: "var(--c-t4)", opacity: 0.85 }}>注：并行模式使用各模型的默认参数（不套用上方手动调整的时长/分辨率等）。</p>
             <div className="flex flex-col gap-1">
-              {PROVIDERS.filter(p => p.value !== "mock").map((p) => {
+              {PROVIDERS.filter(p => p.value !== "mock").slice().sort((a, b) => modelGroupOrder(a.group) - modelGroupOrder(b.group)).map((p) => {
                 const checked = parallelProviders.includes(p.value);
                 return (
                   <button
