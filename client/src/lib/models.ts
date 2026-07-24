@@ -120,7 +120,8 @@ export function platformBadge(name: string): { bg: string; fg: string } {
 // 故必须显式置顶（-1），与各 picker「self-hosted 数组前插」的本意一致。
 const GROUP_ORDER: Record<string, number> = {
   // 自定义模型（用户自带 key）置于自建之后、内置之前——既显眼又不抢自建基建的头位。
-  SelfHosted: -1, Groq: -0.8, Custom: -0.5, Manus: 0, Forge: 0, Kie: 1, Poyo: 2, 即梦: 2.5, Higgsfield: 3, Dev: 8,
+  // 即梦（本机 CLI，用户明确要求排在 Kie/Poyo 之前）置于内置(Manus/Forge=0)之后、Kie(1)之前。
+  SelfHosted: -1, Groq: -0.8, Custom: -0.5, Manus: 0, Forge: 0, 即梦: 0.5, Kie: 1, Poyo: 2, Higgsfield: 3, Dev: 8,
 };
 export function modelGroupOrder(group: string): number {
   return GROUP_ORDER[group] ?? 4;
