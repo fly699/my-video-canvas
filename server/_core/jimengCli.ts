@@ -198,34 +198,35 @@ export interface JimengTaskStatus {
   resultVideoUrl?: string;
   resultVideoUrls?: string[];
   errorMessage?: string;
+  /** 本地结果文件路径（result_json.videos[].path；供 checkJimengVideoStatus 读取上传）。 */
+  resultPaths?: string[];
+  /** 本次生成实际消耗的即梦积分（credit_count，真机回显，非估算）。 */
+  creditCount?: number;
 }
 
-/** 从 query_result 输出解析状态 + 结果 URL（待真机校准）。 */
+// query_result 真机 JSON（#333 已校准）：
+//   { submit_id, gen_status: "success"|"fail"|"querying"…, credit_count: 45,
+//     result_json: { images: [...], videos: [{ path, fps, width, height, format, duration }] } }
+/** 从 query_result 的 JSON 输出解析状态 / 本地文件路径 / 积分消耗。 */
 export function parseQueryOutput(out: string): JimengTaskStatus {
   const json = tryParseJson(out);
-  // 状态字段：gen_status / status / state；成功值可能是 success/finished/done/completed
-  const rawStatus = (json ? deepFindString(json, ["gen_status", "status", "state"]) : undefined)
-    ?? (/\b(success|succeeded|finished|done|completed|failed|error)\b/i.exec(out)?.[1]);
-  const s = (rawStatus ?? "").toLowerCase();
-  const FINISHED = ["success", "succeeded", "finished", "done", "completed"];
-  const FAILED = ["failed", "error", "cancelled", "canceled", "expired"];
-  // 收集所有像视频 URL 的串（http(s) + .mp4/.mov/.webm）。
-  const urls: string[] = [];
-  const seen = new Set<string>();
-  const push = (u: string) => { if (u && !seen.has(u)) { seen.add(u); urls.push(u); } };
-  const urlRe = /https?:\/\/[^\s"'<>]+?\.(?:mp4|mov|webm|m4v)(?:\?[^\s"'<>]*)?/gi;
-  let mm: RegExpExecArray | null;
-  while ((mm = urlRe.exec(out))) push(mm[0]);
+  const s = (deepFindString(json ?? {}, ["gen_status", "status", "state"]) ?? "").toLowerCase();
+  const creditRaw = json?.["credit_count"];
+  const creditCount = typeof creditRaw === "number" ? creditRaw : undefined;
+  // result_json.videos[].path — 本地文件路径（即梦不给公网链接）。
+  const paths: string[] = [];
+  const rj = json?.["result_json"] as { videos?: Array<{ path?: unknown }> } | undefined;
+  if (Array.isArray(rj?.videos)) for (const v of rj!.videos!) if (v?.path) paths.push(String(v.path));
 
+  const FINISHED = ["success", "succeeded", "finished", "done", "completed"];
+  const FAILED = ["fail", "failed", "error", "cancelled", "canceled", "expired"];
   if (FAILED.includes(s)) {
-    return { status: "failed", errorMessage: deepFindString(json ?? {}, ["message", "error", "fail_reason", "reason"]) ?? "生成失败" };
+    return { status: "failed", errorMessage: deepFindString(json ?? {}, ["fail_reason", "message", "error", "reason"]) ?? "即梦生成失败", creditCount };
   }
   if (FINISHED.includes(s)) {
-    return { status: "finished", resultVideoUrl: urls[0], resultVideoUrls: urls.length ? urls : undefined };
+    return { status: "finished", resultPaths: paths.length ? paths : undefined, creditCount };
   }
-  // 未明确 → 若已抓到 URL 也视作完成（防御：有些 CLI 完成即直接给 URL 不带显式状态）
-  if (urls.length) return { status: "finished", resultVideoUrl: urls[0], resultVideoUrls: urls };
-  return { status: "running" };
+  return { status: "running", creditCount };
 }
 
 // ── 提交 ────────────────────────────────────────────────────────────────────
@@ -347,7 +348,10 @@ export async function checkJimengVideoStatus(externalTaskId: string): Promise<Ji
     const r = await spawnDreamina(["query_result", `--submit_id=${externalTaskId}`, `--download_dir=${dlArg}`], 120_000);
     if (r.spawnError) throw new Error(`无法启动即梦 CLI：${r.spawnError}`);
 
-    // 扫下载目录：优先匹配本任务前缀，回退到任意视频文件。
+    // gen_status / credit_count 走真机 JSON 解析（权威状态与真实积分消耗）。
+    const parsed = parseQueryOutput(r.stdout);
+
+    // 扫下载目录取字节上传（即梦不给公网链接）：优先本任务前缀，回退任意视频文件。
     const files = await readdir(dir).catch(() => [] as string[]);
     const isVid = (f: string) => /\.(mp4|mov|webm|m4v)$/i.test(f);
     let vids = files.filter((f) => isVid(f) && f.startsWith(externalTaskId));
@@ -358,21 +362,16 @@ export async function checkJimengVideoStatus(externalTaskId: string): Promise<Ji
       const urls: string[] = [];
       for (const f of vids) {
         const buf = await readFile(join(dir, f));
-        // 半成品/截断兜底：<1KB 视作无效（曾遇 Ctrl+C 截断的 400KB 整块，这里只拦真空文件）。
-        if (buf.length < 1024) continue;
+        if (buf.length < 1024) continue; // 空/截断文件跳过（真实产物为 MB 级）
         const { url } = await storagePut(`jimeng/${externalTaskId}/${f}`, buf, mimeForVideo(f));
         urls.push(url);
       }
-      if (urls.length > 0) return { status: "finished", resultVideoUrl: urls[0], resultVideoUrls: urls };
+      if (urls.length > 0) return { status: "finished", resultVideoUrl: urls[0], resultVideoUrls: urls, creditCount: parsed.creditCount };
     }
 
-    // 没抓到文件：看输出判失败/在途。timeout 或仍 querying → 在途下轮再查。
-    const out = `${r.stdout}\n${r.stderr}`;
-    if (/\b(fail|failed|error)\b/i.test(out) && !/querying|processing|pending|running/i.test(out)) {
-      const parsed = parseQueryOutput(r.stdout);
-      return { status: "failed", errorMessage: parsed.errorMessage ?? "即梦生成失败" };
-    }
-    return { status: "running" };
+    // 没抓到文件：以 gen_status 为准。success 但文件未就绪 → 在途下轮再查；fail → 失败。
+    if (parsed.status === "failed") return { status: "failed", errorMessage: parsed.errorMessage, creditCount: parsed.creditCount };
+    return { status: "running", creditCount: parsed.creditCount };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => { /* best-effort */ });
   }

@@ -239,6 +239,7 @@ export function setupVideoTaskPoller(io: SocketIOServer) {
             if (upstream.status === "finished") {
               const urls = upstream.resultVideoUrls ?? (upstream.resultVideoUrl ? [upstream.resultVideoUrl] : []);
               if (urls.length > 0) {
+                if (upstream.creditCount != null) console.log(`[jimeng] task ${task.id} 消耗即梦积分 ${upstream.creditCount}`);
                 result = { status: "succeeded", resultVideoUrl: urls.join("\n") };
               } else {
                 result = { status: "failed", errorMessage: "[CHARGED] 视频已在即梦生成完成，但下载/转存失败（积分已扣，请勿重试；可用 dreamina query_result --download_dir 手动取回）" };
