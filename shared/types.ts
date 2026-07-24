@@ -720,12 +720,21 @@ export interface DirectorTrack {
   clip?: { start: number; end: number };   // 该对象在时间线上的活动区间(秒)；缺省=整条时间线
 }
 
+/** #338 多机位镜头序列的一段：[start,end) 时间段用哪台机位（多机位剪辑/串联）。 */
+export interface DirectorCut {
+  cameraId: string;   // 该段生效机位 id（DirectorScene.cameras[].id / camera.id）
+  start: number;      // 段起(秒)
+  end: number;        // 段止(秒)
+}
+
 /** 导演台时间线：一组对象轨道 + 播放参数，随节点持久化。 */
 export interface DirectorTimeline {
   duration: number;        // 总时长(秒)
   fps: number;             // 采样/导出帧率
   loop?: boolean;
   tracks: DirectorTrack[];
+  /** #338 批7 多机位镜头序列：按时间段切换机位，导出时合成单相机「节目流」。空=单机位。 */
+  shotSequence?: DirectorCut[];
 }
 
 /** 导出用结构化运镜数据（喂视频模型/存编排）。 */
@@ -740,6 +749,12 @@ export interface DirectorExportData {
     id: string;
     keyframes: { t: number; position: Vec3; rotation: Vec3; scale: number }[];
   }[];
+  /** #338 多机位「节目流」：按 shotSequence 逐帧切换机位合成的单相机轨（cut=该帧发生切机）。
+   *  无 shotSequence 时缺省。喂视频模型时可用作确定的单条运镜 + 切点表。 */
+  program?: {
+    keyframes: { t: number; cameraId: string; position: Vec3; target: Vec3; fov: number; cut: boolean }[];
+    cuts: { t: number; cameraId: string }[];
+  };
 }
 
 export interface DirectorNodeData {

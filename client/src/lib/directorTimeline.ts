@@ -6,6 +6,7 @@
 import type {
   Bezier,
   DirectorChannel,
+  DirectorCut,
   DirectorExportData,
   DirectorKeyframe,
   DirectorPath,
@@ -655,7 +656,70 @@ export function timelineToExportData(timeline: DirectorTimeline, scene: Director
       });
     }
   }
-  return { duration: dur, fps, camera, actors };
+  const program = sequenceToProgram(timeline, scene);
+  return { duration: dur, fps, camera, actors, ...(program ? { program } : {}) };
+}
+
+// ── 多机位镜头序列（#338 批7：multicam cut → 单相机节目流）────────────────────
+/** 规整镜头序列：夹取到 [0,duration]、丢弃非法段（无机位/end≤start）、按 start 升序。 */
+export function normalizeShotSequence(cuts: DirectorCut[] | undefined, duration: number): DirectorCut[] {
+  const dur = Math.max(0, duration);
+  return (cuts ?? [])
+    .map((c) => ({ cameraId: c.cameraId, start: clamp(c.start, 0, dur), end: clamp(c.end, 0, dur) }))
+    .filter((c) => c.cameraId && c.end - c.start > EPS)
+    .sort((a, b) => a.start - b.start);
+}
+
+/** time 处生效的镜头段：命中 [start,end) 直接返回；落在空隙沿用上一段；早于首段用首段；空→null。 */
+export function activeCutAt(cuts: DirectorCut[], time: number): DirectorCut | null {
+  if (!cuts || cuts.length === 0) return null;
+  let prev: DirectorCut | null = null;
+  for (const c of cuts) {
+    if (time >= c.start - EPS && time < c.end - EPS) return c;
+    if (time >= c.start - EPS) prev = c;
+  }
+  return prev ?? cuts[0];
+}
+
+/** 采样某机位在 time 的相机变换（有相机轨则按轨采样，否则用场景静态机位）。 */
+function sampleCameraProgramAt(
+  timeline: DirectorTimeline,
+  scene: DirectorScene,
+  cameraId: string,
+  time: number,
+): { position: Vec3; target: Vec3; fov: number } {
+  const base = cameraBase(scene, cameraId);
+  const track = timeline.tracks.find((t) => t.targetKind === "camera" && t.targetId === cameraId);
+  if (!track) return { position: base.position, target: base.focus ?? [0, 0, 0], fov: base.fov ?? 50 };
+  const span: [number, number] = track.clip ? [track.clip.start, track.clip.end] : [0, timeline.duration];
+  const s = sampleTransformAt(track, time, base, { span });
+  return { position: s.position, target: s.focus, fov: s.fov };
+}
+
+/** 时间线 + 镜头序列 → 单相机「节目流」（逐帧切机合成）。无 shotSequence → null。 */
+export function sequenceToProgram(
+  timeline: DirectorTimeline,
+  scene: DirectorScene,
+): NonNullable<DirectorExportData["program"]> | null {
+  const cuts = normalizeShotSequence(timeline.shotSequence, timeline.duration);
+  if (cuts.length === 0) return null;
+  const fps = Math.max(1, timeline.fps);
+  const dur = Math.max(0, timeline.duration);
+  const frames = Math.max(1, Math.round(dur * fps));
+  const keyframes: NonNullable<DirectorExportData["program"]>["keyframes"] = [];
+  const cutList: NonNullable<DirectorExportData["program"]>["cuts"] = [];
+  let prevCam: string | null = null;
+  for (let f = 0; f <= frames; f++) {
+    const t = (f / frames) * dur;
+    const active = activeCutAt(cuts, t);
+    const cameraId = active ? active.cameraId : cuts[0].cameraId;
+    const isCut = cameraId !== prevCam;
+    if (isCut) cutList.push({ t, cameraId });
+    const s = sampleCameraProgramAt(timeline, scene, cameraId, t);
+    keyframes.push({ t, cameraId, position: s.position, target: s.target, fov: s.fov, cut: isCut });
+    prevCam = cameraId;
+  }
+  return { keyframes, cuts: cutList };
 }
 
 // ── 工厂 ────────────────────────────────────────────────────────────────────

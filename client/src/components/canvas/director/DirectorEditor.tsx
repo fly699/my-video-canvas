@@ -894,7 +894,7 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   //   供图生视频的运镜控制入参 / 编排引用。需时间线已有动画（关键帧或运镜预设）。
   const exportMotionData = () => {
     const tl = timelineRef.current;
-    if (!tl.tracks.length) { toast.error("时间线还没有动画——先打关键帧或应用运镜预设再导出"); return; }
+    if (!tl.tracks.length && !(tl.shotSequence ?? []).length) { toast.error("时间线还没有动画——先打关键帧/应用运镜预设，或设置多机位序列再导出"); return; }
     const data = timelineToExportData(tl, sceneRef.current);
     const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: "application/json" });
@@ -902,7 +902,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
     a.href = URL.createObjectURL(blob); a.download = "director-motion.json"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     updateNodeData(nodeId, { motionExport: data }, true); // 存入节点，连线/编排可读
-    toast.success(`已导出运镜数据（${data.camera.length} 机位轨 · ${data.actors.length} 对象轨 · ${data.fps}fps · ${data.duration}s）`);
+    const progNote = data.program ? ` · 节目流 ${data.program.cuts.length} 切点` : "";
+    toast.success(`已导出运镜数据（${data.camera.length} 机位轨 · ${data.actors.length} 对象轨${progNote} · ${data.fps}fps · ${data.duration}s）`);
   };
 
   // #85 提交入口只剩「机位视角拖拽瞄准」一条路（CameraRig 内已按 locked 门控）。
@@ -1584,6 +1585,48 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
             title="把时间线动画导出为结构化运镜数据（逐帧相机位置/焦点/FOV + 各对象 TRS），下载 JSON 并存入本节点，供图生视频运镜控制或编排引用。需先在时间线打关键帧或应用运镜预设。">
             <Download size={11} /> 导出运镜数据（JSON）
           </button>
+
+          {/* #338 批7：多机位镜头序列（按时间段切机 → 导出附带单相机「节目流」+ 切点表） */}
+          {cameras.length >= 2 && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--c-bd2)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--c-t2)" }} title="把整条时间线分成若干段，每段指定一台机位；导出运镜数据时按此逐帧切机，合成一条单相机「节目流」并附切点表。多机位剪辑用。">多机位序列</span>
+                <button
+                  onClick={() => setTimeline((tl) => {
+                    const dur = tl.duration;
+                    const seq = tl.shotSequence ?? [];
+                    const start = seq.length ? Math.min(dur, seq[seq.length - 1].end) : 0;
+                    const end = Math.min(dur, start + Math.max(1, dur / 3));
+                    if (end - start <= 0.01) return tl;
+                    return { ...tl, shotSequence: [...seq, { cameraId: activeCameraId, start, end }] };
+                  })}
+                  style={{ ...chip, padding: "2px 8px" }} title="添加一段镜头（某机位覆盖一段时间）">
+                  <Plus size={11} /> 添加镜头
+                </button>
+              </div>
+              {(timeline.shotSequence ?? []).length === 0 && (
+                <div style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.5 }}>未设置：导出为多机位分轨。设置后导出附带「节目流」（逐帧切机的单相机轨 + 切点表）。</div>
+              )}
+              {(timeline.shotSequence ?? []).map((cut, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <select value={cut.cameraId}
+                    onChange={(e) => setTimeline((tl) => ({ ...tl, shotSequence: (tl.shotSequence ?? []).map((c, j) => (j === i ? { ...c, cameraId: e.target.value } : c)) }))}
+                    style={{ flex: 1, minWidth: 0, height: 24, fontSize: 11, background: "var(--c-surface)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }}>
+                    {cameras.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <input type="number" step={0.5} min={0} max={timeline.duration} value={cut.start}
+                    onChange={(e) => setTimeline((tl) => ({ ...tl, shotSequence: (tl.shotSequence ?? []).map((c, j) => (j === i ? { ...c, start: Number(e.target.value) } : c)) }))}
+                    style={{ width: 46, height: 24, fontSize: 11, textAlign: "center", background: "var(--c-surface)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }} title="起(秒)" />
+                  <span style={{ fontSize: 10, color: "var(--c-t4)" }}>→</span>
+                  <input type="number" step={0.5} min={0} max={timeline.duration} value={cut.end}
+                    onChange={(e) => setTimeline((tl) => ({ ...tl, shotSequence: (tl.shotSequence ?? []).map((c, j) => (j === i ? { ...c, end: Number(e.target.value) } : c)) }))}
+                    style={{ width: 46, height: 24, fontSize: 11, textAlign: "center", background: "var(--c-surface)", color: "var(--c-t1)", border: "1px solid var(--c-bd2)", borderRadius: 6 }} title="止(秒)" />
+                  <button onClick={() => setTimeline((tl) => ({ ...tl, shotSequence: (tl.shotSequence ?? []).filter((_, j) => j !== i) }))}
+                    style={{ ...iconBtn, width: 24, height: 24 }} title="删除该段"><Trash2 size={11} /></button>
+                </div>
+              ))}
+            </div>
+          )}
           <input ref={glbInputRef} type="file" accept=".glb,.gltf,.obj,.stl,.fbx,model/gltf-binary" style={{ display: "none" }} onChange={onGlbFile} />
         </div>
 
