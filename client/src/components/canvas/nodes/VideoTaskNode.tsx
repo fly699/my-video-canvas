@@ -19,7 +19,7 @@ import { SUPPORTS_REF_VIDEO, SUPPORTS_REF_AUDIO, collectVideoRefMedia, planChara
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Handle, Position } from "@xyflow/react";
-import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, ArrowUp, Check } from "lucide-react";
+import { Play, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, AlertCircle, Download, ChevronDown, ChevronRight, Layers, Plus, X as XIcon, Film, ArrowUp } from "lucide-react";
 import { isOwnStorageUrl } from "@/lib/ownStorage";
 import { mediaFetchUrl, onDownloadMedia } from "@/lib/download";
 import { listCustomPresets, saveCustomPreset, deleteCustomPreset, type CustomVideoPreset } from "@/lib/customPresets";
@@ -83,51 +83,6 @@ function InlinePill({ active, disabled, onClick, children }: {
     >
       {children}
     </button>
-  );
-}
-
-// 输入条内联的关键 select 参数键（模型版本/比例/分辨率）——直接常显在控制行，无需进
-// 「参数」浮层或「高级」。即梦：model_version/ratio/video_resolution；kie/poyo：aspect_ratio/
-// resolution/quality。（duration 等留在「参数」浮层，避免控制行过宽。）
-const INLINE_BAR_PARAM_KEYS = new Set<string>([
-  "model_version", "ratio", "aspect_ratio", "video_resolution", "resolution", "quality",
-]);
-
-// 自绘紧凑下拉（缩放安全）：React Flow 视口 transform: scale 下原生 <select> 弹层会错位/
-// 点错项（CLAUDE.md 血泪教训），故用 in-DOM 下拉。向上弹出（底部输入条不遮挡）。
-function BarSelect({ value, options, onChange, disabled, title }: {
-  value: string; options: { value: string; label: string }[]; onChange: (v: string) => void; disabled?: boolean; title?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const cur = options.find((o) => String(o.value) === String(value));
-  return (
-    <span className="nodrag" style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
-      <button className="nodrag" disabled={disabled} title={title}
-        onClick={(e) => { e.stopPropagation(); if (!disabled) setOpen((v) => !v); }}
-        style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 28, maxWidth: 140, padding: "0 8px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: open ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: disabled ? "not-allowed" : "pointer", whiteSpace: "nowrap", overflow: "hidden" }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{cur?.label ?? value}</span>
-        <ChevronDown size={12} style={{ flexShrink: 0, opacity: 0.7 }} />
-      </button>
-      {open && (
-        <>
-          <div onClick={(e) => { e.stopPropagation(); setOpen(false); }} style={{ position: "fixed", inset: 0, zIndex: 45 }} />
-          <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
-            style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 46, minWidth: 150, maxHeight: 260, overflowY: "auto", padding: 4, borderRadius: 10, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
-            {options.map((o) => {
-              const active = String(o.value) === String(value);
-              return (
-                <button key={String(o.value)} className="nodrag"
-                  onClick={(e) => { e.stopPropagation(); onChange(String(o.value)); setOpen(false); }}
-                  style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 7, fontSize: 11, background: active ? "color-mix(in oklab, var(--ui-accent) 16%, transparent)" : "transparent", border: "none", color: active ? "var(--c-t1)" : "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}>
-                  {active && <Check size={12} style={{ flexShrink: 0 }} />}
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{o.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </span>
   );
 }
 
@@ -948,12 +903,20 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
   );
   void observedJimengPriceVersion;
 
-  // 「参数」按钮文案：模型版本/比例/分辨率已内联到控制行，这里聚焦剩余参数（时长为主）。
+  // LibTV 化 2.2：就地输入条的参数摘要（如「16:9 · 720p · 5秒」）。挑最常用的三类
+  // （比例 / 分辨率档 / 时长）；provider 没有该参数就跳过，全无则显示「参数」。
   const inlineParamSummary = useMemo(() => {
     const defs = PROVIDER_PARAMS[payload.provider] ?? [];
     const p = payload.params ?? {};
-    const dur = p.duration ?? defs.find((d) => d.key === "duration")?.default;
-    return dur !== undefined && dur !== "" ? `${dur}秒 · 更多` : "更多参数";
+    const get = (k: string) => p[k] ?? defs.find((d) => d.key === k)?.default;
+    const parts: string[] = [];
+    const ar = get("aspect_ratio");
+    if (ar !== undefined && ar !== "") parts.push(String(ar));
+    const res = get("resolution") ?? get("quality");
+    if (res !== undefined && res !== "") parts.push(String(res));
+    const dur = get("duration");
+    if (dur !== undefined && dur !== "") parts.push(`${dur}秒`);
+    return parts.length ? parts.join(" · ") : "参数";
   }, [payload.provider, payload.params]);
 
   // ── Custom presets (localStorage-backed) ────────────────────────────────
@@ -2279,23 +2242,11 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
           />
           {/* LibTV 控制行分组竖分隔线：模型 │ 参数·主体·高级 … 积分 │ 发送 */}
           <span style={{ width: 1, height: 15, background: "var(--c-bd2)", flexShrink: 0 }} />
-          {/* 关键 select 参数（模型版本/比例/分辨率）直接内联常显——无需进「参数」浮层或「高级」 */}
-          {paramDefs.map((def) => {
-            if (def.type !== "select" || !INLINE_BAR_PARAM_KEYS.has(def.key)) return null;
-            const curVal = params[def.key] ?? def.default;
-            return (
-              <BarSelect key={def.key} title={def.label} disabled={isLocked}
-                value={String(curVal ?? "")}
-                options={def.options.map((o) => ({ value: String(o.value), label: o.label }))}
-                onChange={(raw) => { const num = Number(raw); handleParamChange(def.key, isNaN(num) || raw === "" ? raw : num); }}
-              />
-            );
-          })}
           <span style={{ position: "relative", display: "inline-flex" }}>
             <button
               className="nodrag"
               onClick={(e) => { e.stopPropagation(); setInlineParamsOpen((v) => !v); }}
-              title="更多生成参数（时长/种子等；模型版本·比例·分辨率已内联在上方）"
+              title="生成参数（该模型全部可调项）"
               style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, background: inlineParamsOpen ? "var(--c-elevated)" : "var(--c-surface)", border: "1px solid var(--c-bd2)", color: "var(--c-t2)", cursor: "pointer", whiteSpace: "nowrap" }}
             >
               {inlineParamSummary}
@@ -2303,12 +2254,10 @@ export const VideoTaskNode = memo(function VideoTaskNode({ id, selected, data }:
             {inlineParamsOpen && (
               <div className="nodrag nowheel" onClick={(e) => e.stopPropagation()}
                 style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 40, width: 300, maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 12, background: "var(--c-elevated)", border: "1px solid var(--c-bd2)", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
-                {paramDefs.filter((d) => !(d.type === "select" && INLINE_BAR_PARAM_KEYS.has(d.key))).length === 0 && (
-                  <div style={{ fontSize: 11, color: "var(--c-t3)" }}>其余参数已内联在上方控制行</div>
+                {paramDefs.length === 0 && (
+                  <div style={{ fontSize: 11, color: "var(--c-t3)" }}>该模型没有可调参数</div>
                 )}
                 {paramDefs.map((def) => {
-                  // 模型版本/比例/分辨率已内联在控制行，浮层不再重复渲染
-                  if (def.type === "select" && INLINE_BAR_PARAM_KEYS.has(def.key)) return null;
                   // 与配置区同规则：无运动/固定机位时速度项无意义
                   if (def.key === "camera_motion_speed") {
                     const motionType = params.camera_motion_type ?? "none";
