@@ -72,7 +72,7 @@ export function DirectorTimeline({
   const playheadX = currentTime * pxPerSec;
 
   return (
-    <div data-testid="director-timeline" style={{ display: "flex", flexDirection: "column", background: "var(--c-panel, #17181b)", borderTop: "1px solid var(--c-bd2, #333)", color: "var(--c-t1, #eee)", fontSize: 11, userSelect: "none" }}>
+    <div data-testid="director-timeline" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--c-panel, #17181b)", borderTop: "1px solid var(--c-bd2, #333)", color: "var(--c-t1, #eee)", fontSize: 11, userSelect: "none" }}>
       {/* 工具条 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderBottom: "1px solid var(--c-bd3, #2a2a2a)" }}>
         <button data-testid="tl-play" onClick={onTogglePlay} title={playing ? "暂停 (空格)" : "播放 (空格)"} style={btn}>
@@ -101,12 +101,12 @@ export function DirectorTimeline({
         </div>
       </div>
 
-      {/* 轨道区：左标签列 + 右滚动泳道 */}
-      <div style={{ display: "flex", maxHeight: 220, overflow: "hidden" }}>
+      {/* 轨道区：左标签列 + 右滚动泳道（填充容器高度，随外层可拖拽调高） */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* 左标签列 */}
-        <div style={{ width: LABEL_W, flexShrink: 0, borderRight: "1px solid var(--c-bd3, #2a2a2a)" }}>
-          <div style={{ height: RULER_H, borderBottom: "1px solid var(--c-bd3, #2a2a2a)", display: "flex", alignItems: "center", padding: "0 8px", color: "var(--c-t3, #888)", fontSize: 10 }}>轨道</div>
-          <div style={{ overflowY: "auto", maxHeight: 220 - RULER_H }}>
+        <div style={{ width: LABEL_W, flexShrink: 0, borderRight: "1px solid var(--c-bd3, #2a2a2a)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ height: RULER_H, flexShrink: 0, borderBottom: "1px solid var(--c-bd3, #2a2a2a)", display: "flex", alignItems: "center", padding: "0 8px", color: "var(--c-t3, #888)", fontSize: 10 }}>轨道</div>
+          <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
             {timeline.tracks.length === 0 && (
               <div style={{ padding: "10px 8px", color: "var(--c-t4, #666)", fontSize: 10, lineHeight: 1.6 }}>暂无动画轨道<br />选中对象后「绘制轨迹 / 打帧」建立</div>
             )}

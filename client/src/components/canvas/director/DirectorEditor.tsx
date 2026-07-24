@@ -483,6 +483,23 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
   timelineRef.current = timeline;
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // #340 底部时间线面板高度可拖拽调整（默认 240；范围 [120, 70vh]），修复轨道显示不全。
+  const [tlHeight, setTlHeight] = useState(240);
+  const tlResize = useRef<{ startY: number; startH: number } | null>(null);
+  const onTlResizeDown = (e: React.PointerEvent) => {
+    tlResize.current = { startY: e.clientY, startH: tlHeight };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onTlResizeMove = (e: React.PointerEvent) => {
+    if (!tlResize.current) return;
+    const delta = tlResize.current.startY - e.clientY; // 向上拖 = 变高
+    const max = Math.round((typeof window !== "undefined" ? window.innerHeight : 900) * 0.7);
+    setTlHeight(Math.max(120, Math.min(max, tlResize.current.startH + delta)));
+  };
+  const onTlResizeUp = (e: React.PointerEvent) => {
+    tlResize.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  };
   // rAF：播放时推进播放头；到末端按 loop 决定循环或停。（3D 对象随播放位移属批4，此处仅驱动时间线。）
   useEffect(() => {
     if (!playing) return;
@@ -2187,7 +2204,15 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
           </button>
         </div>
       </div>
-      {/* #329 底部时间线（动画层批2）：全宽横条，不侵入中栏 3D 布局；播放头/scrubber/缩放/轨道◇。 */}
+      {/* #329 底部时间线（动画层批2）：全宽横条，不侵入中栏 3D 布局；播放头/scrubber/缩放/轨道◇。
+          #340：固定高度 + flexShrink:0（不再被压缩裁掉轨道）+ 顶部拖拽手柄调高。 */}
+      <div style={{ flexShrink: 0, height: tlHeight, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div onPointerDown={onTlResizeDown} onPointerMove={onTlResizeMove} onPointerUp={onTlResizeUp}
+          title="拖动调整时间线高度" role="separator" aria-orientation="horizontal"
+          style={{ height: 7, flexShrink: 0, cursor: "ns-resize", background: "var(--c-bd2)", borderTop: "1px solid var(--c-bd3, #2a2a2a)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 40, height: 3, borderRadius: 2, background: "var(--c-t4, #666)" }} />
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
       <DirectorTimelinePanel
         timeline={timeline}
         currentTime={playbackTime}
@@ -2208,6 +2233,8 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
         onSelectTrack={(id) => { if (scene.actors.some((a) => a.id === id)) selectActor(id); }}
         onChange={setTimeline}
       />
+        </div>
+      </div>
     </div>
   );
 }
