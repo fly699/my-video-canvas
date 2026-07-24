@@ -35,6 +35,7 @@ import { GlbModel } from "./GlbModel";
 import { PanoramaSphere } from "./Panorama";
 import { ShotPreview } from "./ShotPreview";
 import { DirectorTimeline as DirectorTimelinePanel } from "./DirectorTimeline";
+import { DirectorKeyframePanel } from "./DirectorKeyframePanel";
 import { makeDefaultTimeline, makeTrack } from "../../../lib/directorTimeline";
 
 const blobToBase64 = (blob: Blob): Promise<string> => new Promise((res, rej) => {
@@ -1772,6 +1773,31 @@ export function DirectorEditor({ nodeId, projectId, onClose }: { nodeId: string;
 
         {/* 右：参数面板 */}
         <div className="flex flex-col gap-3 p-3" style={{ width: 248, borderLeft: "1px solid var(--c-bd2)", overflowY: "auto" }}>
+          {/* #329 动画层批3：逐轴打帧 / 跳帧 / 设置曲线（选中角色/道具/机位时显示） */}
+          {(() => {
+            const kfTargetId = camSelected ? (scene.activeCameraId ?? scene.camera?.id) : selectedId;
+            if (!kfTargetId) return null;
+            const kfKind: DirectorTrack["targetKind"] = camSelected ? "camera" : (selected?.prim ? "prop" : "actor");
+            const kfBase = camSelected
+              ? { position: scene.camera.position, rotation: [0, 0, 0] as Vec3, scale: 1, fov: scene.camera.fov, focus: scene.camera.target }
+              : selected
+                ? { position: selected.position, rotation: selected.rotation, scale: selected.scale }
+                : null;
+            if (!kfBase) return null;
+            return (
+              <div style={panel}>
+                <DirectorKeyframePanel
+                  timeline={timeline}
+                  targetId={kfTargetId}
+                  targetKind={kfKind}
+                  currentTime={playbackTime}
+                  base={kfBase}
+                  onChange={setTimeline}
+                  onSeek={(t) => { setPlaying(false); setPlaybackTime(t); }}
+                />
+              </div>
+            );
+          })()}
           {camSelected ? (
             <div style={panel}>
               <div style={ttl}>机位参数</div>

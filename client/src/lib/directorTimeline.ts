@@ -604,3 +604,93 @@ export function fmtTime(sec: number): string {
   const rem = s - m * 60;
   return `${m}:${rem.toFixed(1).padStart(4, "0")}`;
 }
+
+// ── 逐轴打帧 / 跳帧 / 设缓动（批3；纯函数，返回新对象）────────────────────────
+const KF_EPS = 1e-3;
+
+/** 关键帧数组在 time 附近是否已有帧。 */
+export function hasKeyframeAt(kfs: DirectorKeyframe[], time: number, eps = KF_EPS): boolean {
+  return kfs.some((k) => Math.abs(k.time - time) <= eps);
+}
+
+/** 从时间点集合里找 time 的下一/上一关键帧时间（dir=1 后 / -1 前）；无则 null。 */
+export function adjacentKeyframeTime(times: number[], time: number, dir: 1 | -1, eps = KF_EPS): number | null {
+  const sorted = [...times].sort((a, b) => a - b);
+  if (dir === 1) {
+    for (const t of sorted) if (t > time + eps) return t;
+    return null;
+  }
+  for (let i = sorted.length - 1; i >= 0; i--) if (sorted[i] < time - eps) return sorted[i];
+  return null;
+}
+
+/** 切换某通道在 time 的关键帧：已有则删、没有则以 value 打帧。空通道会被剔除。返回新轨道。 */
+export function toggleKeyframe(
+  track: DirectorTrack,
+  prop: DirectorChannel["prop"],
+  axis: "x" | "y" | "z" | undefined,
+  time: number,
+  value: number,
+  eps = KF_EPS,
+): DirectorTrack {
+  const channels = track.channels.map((c) => ({ ...c, keyframes: [...c.keyframes] }));
+  let ch = channels.find((c) => c.prop === prop && c.axis === axis);
+  if (!ch) { ch = { prop, axis, keyframes: [] }; channels.push(ch); }
+  ch.keyframes = hasKeyframeAt(ch.keyframes, time, eps)
+    ? removeKeyframeAt(ch.keyframes, time, eps)
+    : addKeyframe(ch.keyframes, { time, value });
+  return { ...track, channels: channels.filter((c) => c.keyframes.length > 0) };
+}
+
+/** 把 time 处所有通道关键帧的段缓动设为 easing（liblib「设置曲线」的跨通道套用）。返回新轨道。 */
+export function setEasingAt(track: DirectorTrack, time: number, easing: Bezier, eps = KF_EPS): DirectorTrack {
+  return {
+    ...track,
+    channels: track.channels.map((c) => ({
+      ...c,
+      keyframes: c.keyframes.map((k) => (Math.abs(k.time - time) <= eps ? { ...k, easing } : k)),
+    })),
+  };
+}
+
+/** 读 time 处任一通道关键帧的段缓动（用于回填曲线编辑器）；无则 null。 */
+export function easingAt(track: DirectorTrack, time: number, eps = KF_EPS): Bezier | null {
+  for (const c of track.channels) {
+    const k = c.keyframes.find((x) => Math.abs(x.time - time) <= eps);
+    if (k) return k.easing ?? LINEAR;
+  }
+  return null;
+}
+
+/** 对时间线里 targetId 的轨道应用 fn（不存在则先建空轨道）；结果为空轨道（无通道且无 path）会被剔除。 */
+export function updateTrackIn(
+  timeline: DirectorTimeline,
+  targetId: string,
+  targetKind: DirectorTrack["targetKind"],
+  fn: (t: DirectorTrack) => DirectorTrack,
+): DirectorTimeline {
+  const idx = timeline.tracks.findIndex((t) => t.targetId === targetId);
+  const base = idx >= 0 ? timeline.tracks[idx] : makeTrack(targetId, targetKind);
+  const next = fn(base);
+  const tracks = idx >= 0 ? timeline.tracks.map((t, i) => (i === idx ? next : t)) : [...timeline.tracks, next];
+  return { ...timeline, tracks: tracks.filter((t) => t.channels.length > 0 || (t.path && t.path.points.length >= 2)) };
+}
+
+/** 某类对象可 K 帧的通道定义（右面板逐轴打帧用）。 */
+export interface ChannelDef { prop: DirectorChannel["prop"]; axis?: "x" | "y" | "z"; label: string }
+export function channelsForKind(kind: DirectorTrack["targetKind"]): ChannelDef[] {
+  const xyz = (prop: DirectorChannel["prop"], base: string): ChannelDef[] =>
+    (["x", "y", "z"] as const).map((axis) => ({ prop, axis, label: `${base}.${axis.toUpperCase()}` }));
+  if (kind === "camera") {
+    return [
+      ...xyz("position", "位置"),
+      ...xyz("focus", "焦点"),
+      { prop: "fov", label: "视角(FOV)" },
+    ];
+  }
+  return [
+    ...xyz("position", "位置"),
+    ...xyz("rotation", "旋转"),
+    { prop: "uniformScale", label: "缩放" },
+  ];
+}
