@@ -19,22 +19,39 @@ import { COMFY_LOCAL_MODEL } from "./comfyLocalRoute";
 import { buildCharacterImagePrompt, characterToolkitImageModel } from "./characterPortrait";
 import { RUNNABLE_TYPES } from "./runnableTypes";
 import type { CharacterNodeData } from "../../../shared/types";
+import { jimengPriceSignature, type JimengPriceEntry } from "../../../shared/jimengPricing";
 
+// 单位：cr（Poyo）/ 点（kie）/ 即梦（即梦 CLI 自有账户积分，第三币种，不与前两者混算）。
 export type CostEstimate = {
   credits: number;
-  unit: "cr" | "点";
+  unit: "cr" | "点" | "即梦";
   approx: boolean;
 } | null;
 
-/** 把预估格式化成按钮上的短标签，如 "≈60 点" / "20 cr"；null → ""。 */
+const UNIT_LABEL: Record<string, string> = { cr: "cr", 点: "点", 即梦: "即梦积分" };
+/** 把预估格式化成按钮上的短标签，如 "≈60 点" / "20 cr" / "≈45 即梦积分"；null → ""。 */
 export function costEstimateLabel(e: CostEstimate): string {
   if (!e) return "";
   const n = Number.isInteger(e.credits) ? e.credits : Math.round(e.credits * 10) / 10;
-  return `${e.approx ? "≈" : ""}${n} ${e.unit}`;
+  return `${e.approx ? "≈" : ""}${n} ${UNIT_LABEL[e.unit] ?? e.unit}`;
 }
 
 const cr = (credits: number, approx = false): CostEstimate => ({ credits, unit: "cr", approx });
 const pt = (credits: number, approx = false): CostEstimate => ({ credits, unit: "点", approx });
+
+// ── #334 即梦实测自学习计价（真实 credit_count 回显；用过一次即得真实价）──────────
+// 即梦无官方数字价目表，计价禁止硬编（CLAUDE.md）；改为读「实测计价库」——服务端每次
+// 生成成功按 credit_count 记录，客户端启动时拉取灌入此模块级注册表，estimateVideoCost
+// 即梦分支据此显示真实价。未观测过的组合返回 null（UI 标「首次生成后校准」）。
+let observedJimengPrices: Map<string, JimengPriceEntry> = new Map();
+/** 客户端拉到实测计价后灌入（见 useJimengPricing）。 */
+export function setObservedJimengPrices(entries: JimengPriceEntry[]): void {
+  observedJimengPrices = new Map(entries.map((e) => [e.signature, e]));
+}
+/** 当前实测计价库大小（作 useMemo 依赖，数据到位后触发重算）。 */
+export function observedJimengPriceVersion(): number {
+  return observedJimengPrices.size;
+}
 
 // ── 视频 ─────────────────────────────────────────────────────────────────────
 type P = Record<string, unknown>;
@@ -194,8 +211,13 @@ const VIDEO_RULES: Record<string, (p: P) => CostEstimate> = {
   mock: () => cr(0),
 };
 
-/** 视频任务：按 provider + 当前参数估算（duration/resolution/sound 等变化即时反映）。 */
+/** 视频任务：按 provider + 当前参数估算（duration/resolution/sound 等变化即时反映）。
+ *  即梦（本机 CLI）无官方价目表 → 读实测计价库（同组合用过一次即得真实价），未观测 → null。 */
 export function estimateVideoCost(provider: string, params: P | undefined): CostEstimate {
+  if (provider.startsWith("jimeng_")) {
+    const hit = observedJimengPrices.get(jimengPriceSignature(provider, params));
+    return hit ? { credits: hit.lastCredit, unit: "即梦", approx: hit.sampleCount < 2 } : null;
+  }
   const rule = VIDEO_RULES[provider];
   return rule ? rule(params ?? {}) : null;
 }
@@ -291,10 +313,11 @@ export function estimateTtsCost(model: string, textLength: number): CostEstimate
 // 把整张画布上所有「会消耗云端点数/积分」的生成节点逐个用上面的精确单价函数估算，
 // 汇总成 kie 点 / Poyo cr 两路总额 + 按模型分组明细，供「预算管控面板」对照余额。
 // comfyui_* 走用户自有服务器，记为本地免费；无法估价的记为 unknown。
-export type CanvasBudgetLine = { key: string; label: string; unit: "点" | "cr"; count: number; credits: number };
+export type CanvasBudgetLine = { key: string; label: string; unit: "点" | "cr" | "即梦"; count: number; credits: number };
 export type CanvasBudget = {
   pt: number;            // kie 点 总额
   cr: number;            // Poyo cr 总额
+  jm: number;            // #334 即梦积分 总额（用户自有账户，不与 pt/cr 混算）
   approx: boolean;       // 任一项取了近似值
   lines: CanvasBudgetLine[];
   unknownCount: number;  // 选了模型但无法估价 / 未选模型
@@ -338,11 +361,11 @@ export function estimateCanvasBudget(
   edges?: BudgetEdge[],
 ): CanvasBudget {
   const map = new Map<string, CanvasBudgetLine>();
-  let totPt = 0, totCr = 0, approx = false, unknownCount = 0, localCount = 0, runnableCount = 0;
+  let totPt = 0, totCr = 0, totJm = 0, approx = false, unknownCount = 0, localCount = 0, runnableCount = 0;
   const add = (key: string, label: string, est: CostEstimate) => {
     if (!est) { unknownCount++; return; }
     if (est.approx) approx = true;
-    if (est.unit === "点") totPt += est.credits; else totCr += est.credits;
+    if (est.unit === "点") totPt += est.credits; else if (est.unit === "即梦") totJm += est.credits; else totCr += est.credits;
     const ex = map.get(key);
     if (ex) { ex.count++; ex.credits += est.credits; }
     else map.set(key, { key, label, unit: est.unit, count: 1, credits: est.credits });
@@ -419,6 +442,7 @@ export function estimateCanvasBudget(
   return {
     pt: Math.round(totPt * 10) / 10,
     cr: Math.round(totCr * 10) / 10,
+    jm: Math.round(totJm * 10) / 10,
     approx, unknownCount, localCount, runnableCount,
     lines: Array.from(map.values()).sort((a, b) => b.credits - a.credits),
   };
@@ -590,8 +614,8 @@ export function buildRunPlanItems(
 export function aggregateRunPlan(
   items: RunPlanItem[],
   deselected?: ReadonlySet<string>,
-): { pt: number; cr: number; approx: boolean; unknownCount: number; selectedCount: number; selectableCount: number; skippedCount: number } {
-  let pt = 0, cr = 0, approx = false, unknownCount = 0, selectedCount = 0, selectableCount = 0, skippedCount = 0;
+): { pt: number; cr: number; jm: number; approx: boolean; unknownCount: number; selectedCount: number; selectableCount: number; skippedCount: number } {
+  let pt = 0, cr = 0, jm = 0, approx = false, unknownCount = 0, selectedCount = 0, selectableCount = 0, skippedCount = 0;
   for (const it of items) {
     if (it.kind === "skipped") { skippedCount++; continue; }
     selectableCount++;
@@ -600,12 +624,13 @@ export function aggregateRunPlan(
     if (it.kind === "unknown") unknownCount++;
     if (it.kind === "priced" && it.est) {
       if (it.est.approx) approx = true;
-      if (it.est.unit === "点") pt += it.est.credits; else cr += it.est.credits;
+      if (it.est.unit === "点") pt += it.est.credits; else if (it.est.unit === "即梦") jm += it.est.credits; else cr += it.est.credits;
     }
   }
   return {
     pt: Math.round(pt * 10) / 10,
     cr: Math.round(cr * 10) / 10,
+    jm: Math.round(jm * 10) / 10,
     approx, unknownCount, selectedCount, selectableCount, skippedCount,
   };
 }

@@ -11,6 +11,8 @@ export function JimengCliSection() {
   const utils = trpc.useUtils();
   const q = trpc.admin.models.getJimengCli.useQuery();
   const saveMut = trpc.admin.models.setJimengCli.useMutation();
+  // #334 实测自学习计价库：每次生成成功按真实 credit_count 聚合，供核算/风控。
+  const priceQ = trpc.projects.jimengPricing.useQuery(undefined, { staleTime: 30_000 });
 
   const [enabled, setEnabled] = useState(false);
   const [bin, setBin] = useState("");
@@ -109,6 +111,42 @@ export function JimengCliSection() {
           {inspect.error && <div style={{ color: "var(--c-t4)", marginTop: 2, wordBreak: "break-all" }}>{inspect.error}</div>}
         </div>
       )}
+
+      {/* #334 实测自学习计价表：每次生成成功按真实 credit_count 聚合，供显示/核算/风控 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 8, borderTop: "1px solid var(--c-bd2)" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: `oklch(0.72 0.14 ${hue})` }}>实测计价表（自学习）</div>
+        <p style={{ fontSize: 10.5, color: "var(--c-t4)", lineHeight: 1.7, margin: 0 }}>
+          即梦无官方数字价目表，改为<strong>按真实积分消耗自学习</strong>：每次生成成功记录 <code>credit_count</code>，
+          同「模型版本×分辨率×时长」组合<strong>用过一次即得真实计价</strong>，节点上直接显示、供核算与风控。
+        </p>
+        {(priceQ.data?.length ?? 0) === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--c-t4)" }}>暂无记录——生成一次即梦视频后自动出现。</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", whiteSpace: "nowrap" }}>
+              <thead>
+                <tr style={{ color: "var(--c-t3)", textAlign: "left" }}>
+                  {["模型版本", "分辨率", "时长", "最近积分", "区间", "样本"].map((h) => (
+                    <th key={h} style={{ padding: "4px 8px", borderBottom: "1px solid var(--c-bd2)", fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {priceQ.data!.slice().sort((a, b) => a.signature.localeCompare(b.signature)).map((r) => (
+                  <tr key={r.signature} style={{ color: "var(--c-t2)" }}>
+                    <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--c-bd3)" }}>{r.modelVersion || "—"}</td>
+                    <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--c-bd3)" }}>{r.resolution || "—"}</td>
+                    <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--c-bd3)" }}>{r.duration ? `${r.duration}s` : "—"}</td>
+                    <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--c-bd3)", fontWeight: 700, color: `oklch(0.74 0.16 ${hue})` }}>{r.lastCredit} 积分</td>
+                    <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--c-bd3)", color: "var(--c-t4)" }}>{r.minCredit === r.maxCredit ? "稳定" : `${r.minCredit}–${r.maxCredit}`}</td>
+                    <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--c-bd3)", color: "var(--c-t4)" }}>{r.sampleCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       <button onClick={save} disabled={saveMut.isPending} className="nodrag flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg self-start"
         style={{ fontSize: 12, fontWeight: 700, background: "oklch(0.7 0.16 150)", border: "1px solid oklch(0.7 0.16 150 / 0.5)", color: "#06250f", cursor: saveMut.isPending ? "not-allowed" : "pointer" }}>
