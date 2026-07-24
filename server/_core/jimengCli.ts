@@ -7,13 +7,14 @@
 // 异步任务制：submit(不带 --poll) → 拿 submit_id → query_result --submit_id 轮询，
 // 正好接进现有 videoTaskPoller（提交/查询两段），与 poyo/kie 同构。
 //
-// ⚠️⚠️ 解析层「待真机校准」（本环境网络策略封禁 jimeng.jianying.com、且 CLI 需人工
-//   web 登录，无法在此复现 CLI 的确切 JSON 输出格式）。因此 parseSubmitOutput /
-//   parseQueryOutput 采用**防御式解析**（先 JSON.parse，再按多种可能字段名兜底扫描），
-//   并在下方集中标注。拿到一次真实 `dreamina text2video --poll=30` 与
-//   `dreamina query_result` 的 JSON 输出后，只需改这两个函数即可精确对齐。
-//   —— 参数枚举取自官方文档示例值（ratio 1:1/16:9、video_resolution 720p、duration
-//   3/5、model_version seedance2.0fast），完整枚举同样待真机 `dreamina <cmd> -h` 校准。
+// ✅ #333 参数枚举已按真机官方 `dreamina <子命令> -h` 精确校准（见 shared/videoModelParams.ts
+//   与下方 JIMENG_PARAM_FLAGS）：model_version 分命令枚举、video_resolution 必填（缺失兜底
+//   720p）、duration 4-15s、ratio 6 档、多帧/多模态修正到位。
+// ⚠️ 仅**解析层**仍「待一次真实输出定格式」：SKILL.md 确认关键字段为 submit_id、
+//   gen_status（querying|success|fail）、fail_reason，但 stdout 的确切结构（JSON vs 文本、
+//   结果视频 URL 落点）需一次真实 `dreamina text2video --poll=N` + `query_result` 输出确认。
+//   故 parseSubmitOutput / parseQueryOutput 暂用**防御式解析**（先 JSON.parse，再按上述字段
+//   名兜底扫描 + 文本正则），拿到真实输出后收敛为确切键即可。
 
 import { spawn } from "node:child_process";
 import { writeFile, mkdtemp, rm } from "node:fs/promises";
@@ -43,16 +44,18 @@ export const JIMENG_VIDEO_SPECS: Record<string, JimengSpec> = {
   jimeng_multimodal2video:{ cmd: "multimodal2video",refMode: "multimodal", takesVideo: true, takesAudio: true },
 };
 
-// 每个 provider 允许透传给 CLI 的参数键 → CLI flag 名（严格按文档表；勿凭猜增删）。
-// 文档：text2video 支持 --duration/--ratio/--video_resolution；image2video 支持
-// --duration/--video_resolution；frames2video 额外支持 --model_version；
-// multiframe/ multimodal 主要靠 prompt(+transition / model_version)。
+// 每个 provider 允许透传给 CLI 的参数键 → CLI flag 名（#333 严格按真机官方 `-h` 校准）。
+//   text2video/multimodal2video：--model_version/--ratio/--video_resolution/--duration
+//   image2video/frames2video：--model_version/--video_resolution/--duration（ratio 由图推断）
+//   multiframe2video：仅 --video_resolution/--duration（model_version 固定不可配；
+//     --transition-prompt/--transition-duration 为多段数组，节点常用 2 图快捷路径不透传）
+// ⚠️ --video_resolution 所有视频命令**必填**且无 CLI 默认，缺失时下方兜底注入 720p。
 const JIMENG_PARAM_FLAGS: Record<string, Record<string, string>> = {
-  jimeng_text2video:       { duration: "duration", ratio: "ratio", video_resolution: "video_resolution", model_version: "model_version" },
-  jimeng_image2video:      { duration: "duration", video_resolution: "video_resolution", model_version: "model_version" },
-  jimeng_frames2video:     { duration: "duration", video_resolution: "video_resolution", model_version: "model_version" },
-  jimeng_multiframe2video: { duration: "duration", transition: "transition", model_version: "model_version" },
-  jimeng_multimodal2video: { duration: "duration", model_version: "model_version" },
+  jimeng_text2video:       { model_version: "model_version", ratio: "ratio", video_resolution: "video_resolution", duration: "duration" },
+  jimeng_image2video:      { model_version: "model_version", video_resolution: "video_resolution", duration: "duration" },
+  jimeng_frames2video:     { model_version: "model_version", video_resolution: "video_resolution", duration: "duration" },
+  jimeng_multiframe2video: { video_resolution: "video_resolution", duration: "duration" },
+  jimeng_multimodal2video: { model_version: "model_version", ratio: "ratio", video_resolution: "video_resolution", duration: "duration" },
 };
 
 export function isJimengVideoProvider(provider: string): boolean {
@@ -256,6 +259,10 @@ export async function submitJimengVideo(opts: {
       const raw = p[key];
       if (raw === undefined || raw === null || raw === "") continue;
       args.push(`--${flag}=${String(raw)}`);
+    }
+    // --video_resolution 所有视频命令必填且 CLI 无默认，缺失即报错——兜底注入 720p（全模型通用）。
+    if (allowed.video_resolution && !args.some((a) => a.startsWith("--video_resolution="))) {
+      args.push("--video_resolution=720p");
     }
     const sessionId = opts.sessionId || getJimengCliConfig().sessionId;
     if (sessionId) args.push(`--session=${sessionId}`);
