@@ -758,6 +758,8 @@ export interface DirectorNodeData {
   shots?: { url: string; name: string }[];
   status?: "idle" | "processing" | "done" | "failed";
   errorMessage?: string;
+  /** #332 批6：导出的结构化运镜数据（逐帧相机/对象 TRS+FOV），供图生视频运镜控制/编排引用。 */
+  motionExport?: DirectorExportData;
 }
 
 export interface NoteNodeData {
